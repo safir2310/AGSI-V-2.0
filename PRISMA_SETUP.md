@@ -39,7 +39,8 @@ POSTGRES_URL="(sama dengan DATABASE_URL)"
 
 1. Push repo (sudah di GitHub `safir2310/AGSI-V-2.0`).
 2. Di Vercel → Project → **Settings ▸ Environment Variables**, isi untuk
-   Production (+ Preview bila perlu). **Semua nilai ada di `.env` lokal:**
+   Production (+ Preview bila perlu). Daftar lengkap variabel ada di
+   **`.env.example`** di root repo; ringkasannya:
 
    | Nama | Sumber nilai | Fungsi |
    | --- | --- | --- |
