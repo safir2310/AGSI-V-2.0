@@ -2,9 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  // @libsql/client (Turso) berisi binding native — jangan di-bundle oleh Next,
-  // biarkan dimuat langsung dari node_modules di server.
-  serverExternalPackages: ["@libsql/client", "@prisma/adapter-libsql"],
   /* config options here */
   typescript: {
     ignoreBuildErrors: true,

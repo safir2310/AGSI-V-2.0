@@ -2,6 +2,10 @@ generator client {
   // Koneksi standar Prisma Postgres / Postgres biasa — TANPA driver adapter
   // (db.prisma.io memakai wire protocol Postgres standar + sslmode=require).
   provider = "prisma-client-js"
+  // binaryTargets: runtime Vercel (Amazon Linux, OpenSSL 3) + platform lokal.
+  // Tanpa ini query engine bisa tidak ditemukan saat deploy di Vercel
+  // (gejala: semua route DB → "Terjadi kesalahan server.").
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {

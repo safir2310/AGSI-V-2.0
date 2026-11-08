@@ -1,5 +1,13 @@
 // Hapus user uji E2E OTP lupa-password (EMAIL env), dari database
 import { PrismaClient } from "@prisma/client";
+import { readFileSync } from "fs";
+import { resolve } from "path";
+
+// Shell sandbox kadang mengekspor DATABASE_URL lama (file:…) yang menimpa
+// .env — paksa nilai .env untuk skrip ini (sumber kebenaran = .env proyek).
+const envFile = resolve(process.cwd(), ".env");
+const m = readFileSync(envFile, "utf8").match(/^DATABASE_URL="?(.*?)"?$/m);
+if (m?.[1]) process.env.DATABASE_URL = m[1];
 
 const db = new PrismaClient();
 const email = process.env.EMAIL ?? "";

@@ -67,3 +67,4 @@ server.log
 # file backup lokal
 *.bak
 *.backup-*
+.otp-dev.log

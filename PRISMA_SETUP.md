@@ -39,20 +39,42 @@ POSTGRES_URL="(sama dengan DATABASE_URL)"
 
 1. Push repo (sudah di GitHub `safir2310/AGSI-V-2.0`).
 2. Di Vercel → Project → **Settings ▸ Environment Variables**, isi untuk
-   Production (+ Preview bila perlu):
+   Production (+ Preview bila perlu). **Semua nilai ada di `.env` lokal:**
 
-   | Nama | Nilai |
-   | --- | --- |
-   | `DATABASE_URL` | koneksi Prisma Postgres (sama dengan `.env`) |
-   | `PRISMA_DATABASE_URL` | sama |
-   | `POSTGRES_URL` | sama |
+   | Nama | Sumber nilai | Fungsi |
+   | --- | --- | --- |
+   | `DATABASE_URL` | `.env` (postgres://…@db.prisma.io) | Database (WAJIB — tanpa ini login gagal "Terjadi kesalahan server.") |
+   | `PRISMA_DATABASE_URL` | sama dengan `DATABASE_URL` | standby Prisma |
+   | `POSTGRES_URL` | sama dengan `DATABASE_URL` | standby Vercel |
+   | `FIREBASE_PROJECT_ID` | `.env` | Push FCM |
+   | `FIREBASE_CLIENT_EMAIL` | `.env` | Push FCM |
+   | `FIREBASE_PRIVATE_KEY` | `.env` (pertahankan tanda kutip + `\n`) | Push FCM |
+   | `FIREBASE_WEB_API_KEY` | `.env` | Web push Chrome |
+   | `FIREBASE_AUTH_DOMAIN` | `.env` | Web push Chrome |
+   | `FIREBASE_SENDER_ID` | `.env` | Web push Chrome |
+   | `FIREBASE_STORAGE_BUCKET` | `.env` | Web push |
+   | `FIREBASE_APP_ID` | `.env` | Web push Chrome |
+   | `FIREBASE_VAPID_KEY` | Firebase Console ▸ Cloud Messaging ▸ Web Push certificates | Opsional — push Chrome |
+   | `RESEND_API_KEY` | `.env` (`re_…`) | OTP email lupa password |
+   | `RESEND_FROM` | `AGSI POS <onboarding@resend.dev>` | Pengirim email (ganti ke domain terverifikasi bila sudah) |
 
-   Kredensial lain yang sudah dipakai aplikasi juga diisi di sini:
-   `FIREBASE_*` (push), `RESEND_API_KEY` (email), dst.
-3. Deploy. **Tidak perlu** `prisma db push` saat build — tabel sudah dibuat.
+3. Deploy. `postinstall` otomatis menjalankan `prisma generate`, dan
+   `binaryTargets = ["native","rhel-openssl-3.0.x"]` di schema memastikan
+   query engine cocok dengan runtime Vercel. **Tidak perlu** `db push` saat
+   build — tabel sudah dibuat.
 4. Bila perlu mengubah schema di kemudian hari: ubah `prisma/schema.prisma`
    lalu jalankan `bunx prisma db push` dari lokal (atau CI) — koneksi dari
    laptop ke db.prisma.io sudah terbukti jalan.
+
+### Troubleshooting deploy Vercel
+
+| Gejala | Sebab & solusi |
+| --- | --- |
+| Login/daftar/pesanan → "Terjadi kesalahan server." | Env DB belum diisi di Vercel, ATAU deploy lama sebelum fix. Isi `DATABASE_URL` (+ standby) lalu **Redeploy**. |
+| Build gagal: `@prisma/client did not initialize yet` | Sudah diperbaiki via `postinstall: prisma generate` — pastikan deploy memakai commit terbaru. |
+| Build OK tapi runtime error `Query engine library … could not be found` | Sudah diperbaiki via `binaryTargets` di schema — pastikan commit terbaru. |
+| OTP email: "You can only send testing emails to your own email address" | Domain Resend belum verified — lihat EMAIL_SETUP.md §3 (pasang DNS `agsi.co.id`). |
+
 
 ## 3. Perintah Prisma (dari laptop)
 
