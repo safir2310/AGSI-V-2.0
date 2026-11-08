@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.Agsi" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:statusBarColor">@color/brand_orange</item>
+        <item name="android:windowBackground">@color/brand_orange</item>
+    </style>
+</resources>

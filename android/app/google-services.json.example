@@ -1,0 +1,30 @@
+{
+  "_PETUNJUK": "GANTI berkas ini dengan google-services.json ASLI milikmu: Firebase Console → Project settings → ikon Android (package com.agsi.pos) → Download google-services.json → simpan sebagai android/app/google-services.json. Berkas contoh ini TIDAK bisa dipakai build.",
+  "project_info": {
+    "project_number": "000000000000",
+    "project_id": "agsi-pos",
+    "storage_bucket": "agsi-pos.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "android_client_info": {
+          "package_name": "com.agsi.pos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCONTOH_GANTI_DENGAN_API_KEY_ASLI_00000"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

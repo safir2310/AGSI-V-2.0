@@ -1,0 +1,236 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  /* Palet identitas AYAM GEPREK SAMBAL IJO: orange + putih + hijau sambal */
+  --color-brand-50: #FFF7ED;
+  --color-brand-100: #FFEDD5;
+  --color-brand-200: #FED7AA;
+  --color-brand-300: #FDBA74;
+  --color-brand-400: #FB923C;
+  --color-brand-500: #F97316;
+  --color-brand-600: #EA580C;
+  --color-brand-700: #C2410C;
+  --color-brand-800: #9A3412;
+  --color-brand-900: #7C2D12;
+  --color-sambal-400: #4ADE80;
+  --color-sambal-500: #22C55E;
+  --color-sambal-600: #16A34A;
+  --color-sambal-700: #15803D;
+}
+
+:root {
+  --radius: 0.75rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.2 0.02 50);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.02 50);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.02 50);
+  --primary: oklch(0.646 0.222 41.116); /* orange-600 */
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.97 0.025 75); /* orange-50 lembut */
+  --secondary-foreground: oklch(0.47 0.157 37.304); /* orange-800 */
+  --muted: oklch(0.972 0 0);
+  --muted-foreground: oklch(0.5 0.02 50);
+  --accent: oklch(0.954 0.038 75.164); /* orange-100 */
+  --accent-foreground: oklch(0.553 0.195 38.402); /* orange-700 */
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0.015 70);
+  --input: oklch(0.922 0.015 70);
+  --ring: oklch(0.705 0.213 47.604); /* orange-500 */
+  --chart-1: oklch(0.705 0.213 47.604); /* orange-500 */
+  --chart-2: oklch(0.837 0.128 66.29); /* orange-300 */
+  --chart-3: oklch(0.627 0.194 149.214); /* green-500 sambal */
+  --chart-4: oklch(0.75 0.183 55.934); /* orange-400 */
+  --chart-5: oklch(0.553 0.195 38.402); /* orange-700 */
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.2 0.02 50);
+  --sidebar-primary: oklch(0.646 0.222 41.116);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.954 0.038 75.164);
+  --sidebar-accent-foreground: oklch(0.553 0.195 38.402);
+  --sidebar-border: oklch(0.922 0.015 70);
+  --sidebar-ring: oklch(0.705 0.213 47.604);
+}
+
+.dark {
+  --background: oklch(0.185 0.015 45);
+  --foreground: oklch(0.96 0.01 75);
+  --card: oklch(0.23 0.02 45);
+  --card-foreground: oklch(0.96 0.01 75);
+  --popover: oklch(0.23 0.02 45);
+  --popover-foreground: oklch(0.96 0.01 75);
+  --primary: oklch(0.705 0.213 47.604);
+  --primary-foreground: oklch(0.15 0.01 45);
+  --secondary: oklch(0.28 0.03 50);
+  --secondary-foreground: oklch(0.9 0.075 70.14);
+  --muted: oklch(0.26 0.015 45);
+  --muted-foreground: oklch(0.7 0.02 60);
+  --accent: oklch(0.3 0.05 50);
+  --accent-foreground: oklch(0.9 0.075 70.14);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.75 0.183 55.934);
+  --chart-1: oklch(0.75 0.183 55.934);
+  --chart-2: oklch(0.646 0.222 41.116);
+  --chart-3: oklch(0.627 0.194 149.214);
+  --chart-4: oklch(0.837 0.128 66.29);
+  --chart-5: oklch(0.6 0.15 40);
+  --sidebar: oklch(0.23 0.02 45);
+  --sidebar-foreground: oklch(0.96 0.01 75);
+  --sidebar-primary: oklch(0.705 0.213 47.604);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.3 0.05 50);
+  --sidebar-accent-foreground: oklch(0.9 0.075 70.14);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.75 0.183 55.934);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    /* Pastikan env(safe-area-inset-*) aktif di iOS/Android */
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+@layer utilities {
+  /* Padding aman mengikuti area sistem HP (gesture bar / tombol navigasi) */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  /* Ruang konten agar tidak tertutup navigasi bawah LIQUID GLASS mengambang
+     (pill ≈4,35rem + jarak bawah 0,75rem + sisa napas — plus safe area sistem) */
+  .pb-nav-offset {
+    padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+  }
+  /* Teks gradasi orange khas merek */
+  .text-gradient-brand {
+    background: linear-gradient(135deg, #C2410C 0%, #F97316 45%, #FB923C 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* Latar gradasi hero orange tua -> cerah -> putih */
+  .bg-brand-gradient {
+    background: linear-gradient(160deg, #C2410C 0%, #F97316 42%, #FB923C 68%, #FFF7ED 100%);
+  }
+  /* Efek tekan tombol */
+  .press-effect {
+    transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+  }
+  .press-effect:active {
+    transform: scale(0.96);
+    filter: brightness(0.97);
+  }
+  /* Kartu lift saat hover */
+  .card-lift {
+    transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  }
+  .card-lift:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 30px -12px rgba(234, 88, 12, 0.28);
+  }
+  /* Scrollbar ramping bernuansa orange */
+  .scrollbar-slim {
+    scrollbar-width: thin;
+    scrollbar-color: #FDBA74 transparent;
+  }
+  .scrollbar-slim::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-slim::-webkit-scrollbar-thumb {
+    background: #FDBA74;
+    border-radius: 999px;
+  }
+  .scrollbar-slim::-webkit-scrollbar-thumb:hover {
+    background: #F97316;
+  }
+}
+
+/* Hormati preferensi pengguna yang mengurangi gerakan */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ===== CETAK STRUK (ReceiptSheet) =====
+   Pratinjau struk dicetak via window.print() TANPA iframe (iframe memicu
+   SecurityError lintas-origin di lingkungan preview yang berjalan di dalam
+   frame). Saat mencetak: seluruh aplikasi disembunyikan, hanya portal struk
+   (elemen langsung <body>) yang tampil di kertas. */
+@media print {
+  body > *:not(.struk-print-portal) {
+    display: none !important;
+  }
+  .struk-print-portal {
+    display: block !important;
+    position: static !important;
+  }
+  @page {
+    margin: 5mm;
+  }
+}

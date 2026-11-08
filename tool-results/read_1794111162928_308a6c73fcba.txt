@@ -1,0 +1,750 @@
+     1→"use client";
+     2→
+     3→import { useCallback, useEffect, useRef, useState } from "react";
+     4→import { createPortal } from "react-dom";
+     5→import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+     6→import { QRCodeSVG } from "qrcode.react";
+     7→import {
+     8→  BadgeCheck,
+     9→  FlaskConical,
+    10→  Loader2,
+    11→  Printer,
+    12→  RefreshCw,
+    13→  ScanLine,
+    14→  ShieldCheck,
+    15→  Timer,
+    16→  TriangleAlert,
+    17→  X,
+    18→  XCircle,
+    19→} from "lucide-react";
+    20→import { apiFetch } from "@/lib/api";
+    21→import { formatIDR } from "@/lib/types";
+    22→import { cn } from "@/lib/utils";
+    23→
+    24→/** Pesanan yang akan dibayar via QRIS */
+    25→export type QrisPayOrder = { id: string; code: string; total: number };
+    26→
+    27→type Phase = "scan" | "paid" | "cancelled";
+    28→
+    29→type QrisInfo = {
+    30→  payload: string | null;
+    31→  imageUrl: string | null;
+    32→  mode: "GATEWAY" | "LOCAL";
+    33→  autoVerify: boolean;
+    34→  /** gateway QRIS bawaan (sandbox) aktif — tombol simulasi dana ditampilkan */
+    35→  sandbox: boolean;
+    36→  /** penyedia verifikasi: "midtrans" | "midtrans-sandbox" | "internal" | null */
+    37→  provider: string | null;
+    38→  /** Alasan penyedia utama (Midtrans) ditolak sehingga QR berasal dari fallback uji lokal */
+    39→  fallbackReason: string | null;
+    40→  /** Galat gateway saat mode LOCAL — ditampilkan jujur (kanal belum aktif, dll.) */
+    41→  gatewayError: string | null;
+    42→  /** Sandbox Midtrans: tautan simulator uji pembayaran (QR berisi URL uji) */
+    43→  sandboxSimulatorUrl: string | null;
+    44→};
+    45→
+    46→/** Interval polling verifikasi otomatis */
+    47→const POLL_MS = 4000;
+    48→/** Batas waktu pembayaran — 30 menit sejak pesanan dibuat.
+    49→ *  Lewat dari itu pesanan batal otomatis (server membatalkan saat sweep/poll). */
+    50→const DURATION_SEC = 30 * 60; // 30 menit
+    51→
+    52→function mmss(sec: number): string {
+    53→  const m = Math.floor(sec / 60);
+    54→  const s = sec % 60;
+    55→  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    56→}
+    57→
+    58→/**
+    59→ * Layar pembayaran QRIS — pelanggan maupun kasir memakai layar yang sama.
+    60→ *
+    61→ * VERIFIKASI OTOMATIS: setelah QR tampil, layar ini memantau status ke server
+    62→ * tiap beberapa detik; server bertanya ke penyedia QRIS "sudah masuk belum
+    63→ * dananya?" dan melunaskan pesanan begitu dana masuk. TIDAK ADA tombol
+    64→ * "Saya Sudah Bayar" / "Uang Sudah Masuk" — kasir memang tidak boleh
+    65→ * (dan tidak bisa) melunaskan pesanan QRIS secara manual.
+    66→ */
+    67→export function QrisPaySheet({
+    68→  order,
+    69→  variant,
+    70→  onClose,
+    71→  onPaid,
+    72→  onPrintReceipt,
+    73→}: {
+    74→  order: QrisPayOrder;
+    75→  variant: "customer" | "pos";
+    76→  onClose: () => void;
+    77→  /** dipanggil saat status pembayaran berubah menjadi lunas (mis. refresh daftar) */
+    78→  onPaid?: () => void | Promise<void>;
+    79→  /** POS: cetak struk setelah lunas (bila disediakan halaman pemanggil) */
+    80→  onPrintReceipt?: () => void | Promise<void>;
+    81→}) {
+    82→  const prefersReduced = useReducedMotion();
+    83→  const isPos = variant === "pos";
+    84→
+    85→  const [info, setInfo] = useState<QrisInfo | null>(null);
+    86→  const [loadError, setLoadError] = useState<string | null>(null);
+    87→  const [phase, setPhase] = useState<Phase>("scan");
+    88→  const [secondsLeft, setSecondsLeft] = useState(DURATION_SEC);
+    89→  const [checkingNow, setCheckingNow] = useState(false);
+    90→  const [regenerating, setRegenerating] = useState(false);
+    91→  /** true saat simulasi dana masuk (sandbox) sedang diproses */
+    92→  const [simulating, setSimulating] = useState(false);
+    93→  /** pesan error simulasi (ditampilkan di bawah tombolnya) */
+    94→  const [simulateError, setSimulateError] = useState<string | null>(null);
+    95→  /** status terakhir dari penyedia (mis. "EXPIRED") */
+    96→  const [gatewayStatus, setGatewayStatus] = useState<string | null>(null);
+    97→  /** gangguan sementara saat memantau (diciutkan agar tidak bikin cemas) */
+    98→  const [monitorNote, setMonitorNote] = useState<string | null>(null);
+    99→  /** batas waktu pesanan (createdAt + 30 menit) dalam ms epoch */
+   100→  const [orderDeadline, setOrderDeadline] = useState<number | null>(null);
+   101→  const paidNotified = useRef(false);
+   102→  /** onPaid disimpan di ref: identitas prop baru dari re-render parent
+   103→   *  (mis. jam kasir yang berdetik tiap detik) TIDAK boleh memicu ulang
+   104→   *  efek fetch/polling di bawah — itulah penyebab layar QR berkedip. */
+   105→  const onPaidRef = useRef(onPaid);
+   106→  useEffect(() => {
+   107→    onPaidRef.current = onPaid;
+   108→  }, [onPaid]);
+   109→
+   110→  /** Stabil antar-render — aman dipakai sebagai dependensi efek */
+   111→  const notifyPaid = useCallback(() => {
+   112→    if (paidNotified.current) return;
+   113→    paidNotified.current = true;
+   114→    void onPaidRef.current?.();
+   115→  }, []);
+   116→
+   117→  /** Penomoran permintaan: respons yang datang terlambat dari fetch lama
+   118→   *  tidak boleh menimpa data fetch terbaru (cegah QR "maju-mundur"). */
+   119→  const fetchSeq = useRef(0);
+   120→  /** Ambil kode QRIS dari server (gateway bila aktif, fallback lokal).
+   121→   *  soft=true → QR lama TETAP tampil selagi data baru diambil (kode
+   122→   *  langsung tertukar saat respons tiba) sehingga layar tak berkedip. */
+   123→  const fetchPayload = useCallback(async (soft = false) => {
+   124→    const seq = ++fetchSeq.current;
+   125→    setLoadError(null);
+   126→    setGatewayStatus(null);
+   127→    if (!soft) setInfo(null);
+   128→    try {
+   129→      const res = await apiFetch(`/api/orders/${order.id}/qris`, { cache: "no-store" });
+   130→      const data = await res.json();
+   131→      if (seq !== fetchSeq.current) return; // respons kedaluwarsa — abaikan
+   132→      if (!res.ok) {
+   133→        // Pesanan ternyata sudah lunas → langsung tampilkan sukses
+   134→        if (typeof data.error === "string" && data.error.toLowerCase().includes("lunas")) {
+   135→          setPhase("paid");
+   136→          notifyPaid();
+   137→          return;
+   138→        }
+   139→        // Pesanan dibatalkan otomatis (lewat batas 30 menit) → tampilan batal
+   140→        if (data.cancelled === true) {
+   141→          setPhase("cancelled");
+   142→          return;
+   143→        }
+   144→        setLoadError(data.error ?? "Gagal memuat kode QRIS.");
+   145→        return;
+   146→      }
+   147→      if (data.paid === true) {
+   148→        setPhase("paid");
+   149→        notifyPaid();
+   150→        return;
+   151→      }
+   152→      const expiresAt = data.expiresAt ? new Date(data.expiresAt as string) : null;
+   153→      const cancelMs = data.cancelAt ? new Date(data.cancelAt as string).getTime() : null;
+   154→      if (cancelMs) setOrderDeadline(cancelMs);
+   155→      setInfo({
+   156→        payload: (data.payload as string) ?? null,
+   157→        imageUrl: (data.imageUrl as string) ?? null,
+   158→        mode: data.mode === "GATEWAY" ? "GATEWAY" : "LOCAL",
+   159→        autoVerify: !!data.autoVerify,
+   160→        sandbox: data.sandbox === true,
+   161→        provider: typeof data.provider === "string" ? data.provider : null,
+   162→        fallbackReason:
+   163→          typeof data.fallbackReason === "string" ? data.fallbackReason : null,
+   164→        gatewayError:
+   165→          typeof data.gatewayError === "string" ? data.gatewayError : null,
+   166→        sandboxSimulatorUrl:
+   167→          typeof data.sandboxSimulatorUrl === "string" ? data.sandboxSimulatorUrl : null,
+   168→      });
+   169→      // Hitung mundur pakai batas TERKETAT: umur kode gateway vs batas pesanan
+   170→      const nowMs = Date.now();
+   171→      const gatewaySec = expiresAt
+   172→        ? Math.max(0, Math.floor((expiresAt.getTime() - nowMs) / 1000))
+   173→        : DURATION_SEC;
+   174→      const orderSec = cancelMs
+   175→        ? Math.max(0, Math.floor((cancelMs - nowMs) / 1000))
+   176→        : DURATION_SEC;
+   177→      setSecondsLeft(Math.max(0, Math.min(DURATION_SEC, gatewaySec, orderSec)));
+   178→    } catch {
+   179→      if (seq !== fetchSeq.current) return; // respons kedaluwarsa — abaikan
+   180→      setLoadError("Tidak dapat menghubungi server. Periksa koneksi lalu coba lagi.");
+   181→    }
+   182→    // notifyPaid stabil ([]) — dependensi ini tidak berubah antar-render
+   183→    // parent, sehingga QR hanya diambil SEKALI per pesanan (bukan tiap detik).
+   184→  }, [order.id, notifyPaid]);
+   185→
+   186→  useEffect(() => {
+   187→    void fetchPayload();
+   188→  }, [fetchPayload]);
+   189→
+   190→  // Hitung waktu mundur (hanya saat fase scan)
+   191→  useEffect(() => {
+   192→    if (phase !== "scan") return;
+   193→    const t = setInterval(() => {
+   194→      setSecondsLeft((s) => (s > 0 ? s - 1 : 0));
+   195→    }, 1000);
+   196→    return () => clearInterval(t);
+   197→  }, [phase]);
+   198→
+   199→  // Tutup dengan tombol Escape
+   200→  useEffect(() => {
+   201→    const onKey = (e: KeyboardEvent) => {
+   202→      if (e.key === "Escape") onClose();
+   203→    };
+   204→    window.addEventListener("keydown", onKey);
+   205→    return () => window.removeEventListener("keydown", onKey);
+   206→  }, [onClose]);
+   207→
+   208→  // ===== Pemantauan verifikasi otomatis =====
+   209→  // hasInfo (boolean) sebagai dependensi — bukan objek info — agar interval
+   210→  // polling TIDAK dibongkar-pasang setiap data baru masuk.
+   211→  const hasInfo = info !== null;
+   212→  useEffect(() => {
+   213→    if (phase !== "scan" || !hasInfo) return;
+   214→    let alive = true;
+   215→    const poll = async (force = false) => {
+   216→      try {
+   217→        const res = await apiFetch(
+   218→          `/api/orders/${order.id}/qris/status${force ? "?force=1" : ""}`,
+   219→          { cache: "no-store" }
+   220→        );
+   221→        if (!res.ok || !alive) return;
+   222→        const data = await res.json();
+   223→        if (data.paymentStatus === "PAID") {
+   224→          setPhase("paid");
+   225→          notifyPaid();
+   226→          return;
+   227→        }
+   228→        // Pesanan batal otomatis (lewat batas 30 menit / dana telat)
+   229→        if (data.cancelled === true || data.status === "CANCELLED") {
+   230→          setMonitorNote((data.notice as string) ?? null);
+   231→          setPhase("cancelled");
+   232→          return;
+   233→        }
+   234→        if (data.cancelAt) setOrderDeadline(new Date(data.cancelAt as string).getTime());
+   235→        setGatewayStatus((data.gatewayStatus as string) ?? null);
+   236→        setMonitorNote((data.gatewayError as string) ?? null);
+   237→      } catch {
+   238→        // koneksi tersendat — coba lagi pada tick berikutnya
+   239→      }
+   240→    };
+   241→    void poll();
+   242→    const t = setInterval(() => void poll(), POLL_MS);
+   243→    return () => {
+   244→      alive = false;
+   245→      clearInterval(t);
+   246→    };
+   247→  }, [phase, hasInfo, order.id, notifyPaid]);
+   248→
+   249→  /** POS: paksa sistem memeriksa penyedia sekarang (tetap otomatis, bukan menandai lunas) */
+   250→  const checkNow = async () => {
+   251→    if (checkingNow) return;
+   252→    setCheckingNow(true);
+   253→    try {
+   254→      const res = await apiFetch(`/api/orders/${order.id}/qris/status?force=1`, {
+   255→        cache: "no-store",
+   256→      });
+   257→      const data = await res.json();
+   258→      if (res.ok && data.paymentStatus === "PAID") {
+   259→        setPhase("paid");
+   260→        notifyPaid();
+   261→      }
+   262→    } catch {
+   263→      /* abaikan — polling reguler akan menyusul */
+   264→    } finally {
+   265→      setCheckingNow(false);
+   266→    }
+   267→  };
+   268→
+   269→  /** Buat ulang kode bayar (transaksi lama kedaluwarsa) — soft: QR lama
+   270→   *  tetap tampil sampai kode baru siap, tanpa kedipan spinner. */
+   271→  const regenerate = async () => {
+   272→    if (regenerating) return;
+   273→    setRegenerating(true);
+   274→    await fetchPayload(true);
+   275→    setRegenerating(false);
+   276→  };
+   277→
+   278→  /** SANDBOX: tiru notifikasi "dana masuk" dari dompet digital ke gateway
+   279→   *  bawaan. Pesanan tetap dilunaskan OLEH SISTEM di server (jalur yang sama
+   280→   *  dengan verifikasi otomatis) — ini bukan tombol "tandai lunas" manual. */
+   281→  const simulatePay = async () => {
+   282→    if (simulating) return;
+   283→    setSimulating(true);
+   284→    setSimulateError(null);
+   285→    try {
+   286→      const res = await apiFetch(`/api/orders/${order.id}/qris/simulate-pay`, {
+   287→        method: "POST",
+   288→      });
+   289→      const data = await res.json();
+   290→      if (res.ok && data.paymentStatus === "PAID") {
+   291→        setPhase("paid");
+   292→        notifyPaid();
+   293→        return;
+   294→      }
+   295→      if (data.cancelled === true) {
+   296→        setMonitorNote(
+   297→          typeof data.error === "string" ? data.error : null
+   298→        );
+   299→        setPhase("cancelled");
+   300→        return;
+   301→      }
+   302→      setSimulateError(
+   303→        typeof data.error === "string" ? data.error : "Simulasi gagal — coba lagi."
+   304→      );
+   305→    } catch {
+   306→      setSimulateError("Tidak dapat menghubungi server. Periksa koneksi lalu coba lagi.");
+   307→    } finally {
+   308→      setSimulating(false);
+   309→    }
+   310→  };
+   311→
+   312→  const expired = secondsLeft <= 0;
+   313→  const codeStale = expired || gatewayStatus === "EXPIRED";
+   314→  const autoVerify = info?.autoVerify ?? false;
+   315→  /** Batas pesanan (30 menit) sudah terlewat — pesanan mati, jangan tawarkan buat ulang kode */
+   316→  const pastDeadline = orderDeadline !== null && Date.now() >= orderDeadline;
+   317→
+   318→  // Portal ke <body> agar modal tidak terjebak stacking context `main` (z-10)
+   319→  // — selalu tampil DI ATAS navigasi bawah liquid glass (z-50) & header (z-40).
+   320→  return createPortal(
+   321→    <AnimatePresence>
+   322→      <motion.div
+   323→        key="qris-overlay"
+   324→        initial={prefersReduced ? false : { opacity: 0 }}
+   325→        animate={{ opacity: 1 }}
+   326→        exit={prefersReduced ? undefined : { opacity: 0 }}
+   327→        className="fixed inset-0 z-[95] flex items-end justify-center bg-neutral-900/70 backdrop-blur-sm sm:items-center sm:p-4"
+   328→        role="dialog"
+   329→        aria-modal="true"
+   330→        aria-label="Pembayaran QRIS"
+   331→      >
+   332→        <motion.div
+   333→          initial={prefersReduced ? false : { y: 48, scale: 0.97 }}
+   334→          animate={{ y: 0, scale: 1 }}
+   335→          exit={prefersReduced ? undefined : { y: 48, opacity: 0 }}
+   336→          transition={{ type: "spring", stiffness: 380, damping: 34 }}
+   337→          className="flex max-h-[94dvh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+   338→        >
+   339→          {/* ===== KEPALA ===== */}
+   340→          <header className="relative shrink-0 bg-gradient-to-r from-orange-700 via-orange-600 to-orange-500 px-5 py-4 text-white">
+   341→            <div className="flex items-center gap-3">
+   342→              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/20 ring-1 ring-white/30">
+   343→                <ScanLine className="h-5 w-5" />
+   344→              </span>
+   345→              <div className="min-w-0 flex-1">
+   346→                <p className="text-sm font-black tracking-wide">Pembayaran QRIS</p>
+   347→                <p className="truncate text-[11px] font-semibold text-orange-100">
+   348→                  {order.code} • {isPos ? "Kasir" : "Aplikasi"}
+   349→                </p>
+   350→              </div>
+   351→              <button
+   352→                onClick={onClose}
+   353→                aria-label="Tutup"
+   354→                className="press-effect flex h-9 w-9 items-center justify-center rounded-full bg-white/15 hover:bg-white/30"
+   355→              >
+   356→                <X className="h-4.5 w-4.5" />
+   357→              </button>
+   358→            </div>
+   359→          </header>
+   360→
+   361→          {/* ===== ISI ===== */}
+   362→          <div className="scrollbar-slim overflow-y-auto px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4">
+   363→            {phase === "paid" ? (
+   364→              /* --------- BERHASIL (verifikasi otomatis) --------- */
+   365→              <div className="flex flex-col items-center gap-3 py-8 text-center">
+   366→                <motion.span
+   367→                  initial={prefersReduced ? false : { scale: 0.5, opacity: 0 }}
+   368→                  animate={{ scale: 1, opacity: 1 }}
+   369→                  transition={{ type: "spring", stiffness: 300, damping: 18 }}
+   370→                  className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 ring-4 ring-emerald-100"
+   371→                >
+   372→                  <BadgeCheck className="h-11 w-11 text-emerald-600" />
+   373→                </motion.span>
+   374→                <h2 className="text-lg font-black text-neutral-900">Pembayaran Diterima! 🎉</h2>
+   375→                <p className="max-w-[300px] text-xs leading-relaxed text-neutral-500">
+   376→                  {formatIDR(order.total)} untuk pesanan {order.code} sudah lunas —
+   377→                  terverifikasi <strong className="font-bold text-emerald-600">otomatis oleh sistem</strong>{" "}
+   378→                  saat dana masuk. Geprekmu segera dimasak ya!
+   379→                </p>
+   380→                {isPos && onPrintReceipt ? (
+   381→                  <div className="mt-2 flex w-full items-center gap-2">
+   382→                    <button
+   383→                      onClick={onClose}
+   384→                      className="press-effect h-11 flex-1 rounded-xl border border-neutral-200 bg-white text-sm font-extrabold text-neutral-600 hover:bg-neutral-50"
+   385→                    >
+   386→                      Selesai
+   387→                    </button>
+   388→                    <button
+   389→                      onClick={() => void onPrintReceipt()}
+   390→                      className="press-effect flex h-11 flex-[1.6] items-center justify-center gap-2 rounded-xl bg-orange-600 text-sm font-extrabold text-white shadow-lg shadow-orange-500/30 hover:bg-orange-700"
+   391→                    >
+   392→                      <Printer className="h-4 w-4" /> Cetak Struk
+   393→                    </button>
+   394→                  </div>
+   395→                ) : (
+   396→                  <button
+   397→                    onClick={onClose}
+   398→                    className="press-effect mt-2 w-full rounded-xl bg-orange-600 py-3 text-sm font-extrabold text-white shadow-lg shadow-orange-500/30 hover:bg-orange-700"
+   399→                  >
+   400→                    Selesai
+   401→                  </button>
+   402→                )}
+   403→              </div>
+   404→            ) : phase === "cancelled" ? (
+   405→              /* --------- DIBATALKAN OTOMATIS (belum bayar 30 menit) --------- */
+   406→              <div className="flex flex-col items-center gap-3 py-8 text-center">
+   407→                <motion.span
+   408→                  initial={prefersReduced ? false : { scale: 0.5, opacity: 0 }}
+   409→                  animate={{ scale: 1, opacity: 1 }}
+   410→                  transition={{ type: "spring", stiffness: 300, damping: 18 }}
+   411→                  className="flex h-20 w-20 items-center justify-center rounded-full bg-red-50 ring-4 ring-red-100"
+   412→                >
+   413→                  <XCircle className="h-11 w-11 text-red-500" />
+   414→                </motion.span>
+   415→                <h2 className="text-lg font-black text-neutral-900">Pesanan Dibatalkan Otomatis</h2>
+   416→                <p className="max-w-[320px] text-xs leading-relaxed text-neutral-500">
+   417→                  Pembayaran QRIS untuk pesanan <strong className="font-bold text-neutral-700">{order.code}</strong>{" "}
+   418→                  tidak diterima dalam <strong className="font-bold text-red-500">30 menit</strong>, jadi
+   419→                  pesanan dibatalkan. Voucher yang terpakai sudah dikembalikan ke akunmu.
+   420→                </p>
+   421→                {monitorNote && (
+   422→                  <p className="max-w-[320px] rounded-xl bg-amber-50 p-2.5 text-[11px] font-semibold leading-snug text-amber-700 ring-1 ring-amber-200">
+   423→                    {monitorNote}
+   424→                  </p>
+   425→                )}
+   426→                <p className="text-[11px] text-neutral-400">
+   427→                  Masih pengin? Buat pesanan baru — dapur selalu siap menggeprek 😊
+   428→                </p>
+   429→                <button
+   430→                  onClick={onClose}
+   431→                  className="press-effect mt-2 w-full rounded-xl bg-orange-600 py-3 text-sm font-extrabold text-white shadow-lg shadow-orange-500/30 hover:bg-orange-700"
+   432→                >
+   433→                  Tutup
+   434→                </button>
+   435→              </div>
+   436→            ) : (
+   437→              /* --------- PINDAI QR --------- */
+   438→              <>
+   439→                <div className="flex items-end justify-between gap-3">
+   440→                  <div>
+   441→                    <p className="text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+   442→                      Total Bayar
+   443→                    </p>
+   444→                    <p className="text-2xl font-black text-orange-600">{formatIDR(order.total)}</p>
+   445→                  </div>
+   446→                  <span
+   447→                    className={cn(
+   448→                      "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-black tabular-nums ring-1",
+   449→                      codeStale
+   450→                        ? "bg-red-50 text-red-600 ring-red-200"
+   451→                        : secondsLeft < 60
+   452→                          ? "bg-amber-50 text-amber-700 ring-amber-200"
+   453→                          : "bg-orange-50 text-orange-700 ring-orange-200"
+   454→                    )}
+   455→                  >
+   456→                    <Timer className="h-3.5 w-3.5" />
+   457→                    {codeStale && autoVerify ? "Kode Hangus" : expired ? "Lewat waktu" : mmss(secondsLeft)}
+   458→                  </span>
+   459→                </div>
+   460→
+   461→                {/* Kartu QR */}
+   462→                <div className="mt-3.5 flex flex-col items-center rounded-2xl border-2 border-orange-200 bg-white p-4 shadow-inner">
+   463→                  {loadError ? (
+   464→                    <div className="flex min-h-[216px] w-[216px] flex-col items-center justify-center gap-2 text-center">
+   465→                      <p className="text-xs font-semibold leading-relaxed text-red-500">{loadError}</p>
+   466→                      <button
+   467→                        onClick={() => void fetchPayload()}
+   468→                        className="press-effect rounded-full bg-orange-600 px-4 py-2 text-[11px] font-extrabold text-white hover:bg-orange-700"
+   469→                      >
+   470→                        Coba Lagi
+   471→                      </button>
+   472→                    </div>
+   473→                  ) : info?.imageUrl ? (
+   474→                    <img
+   475→                      src={info.imageUrl}
+   476→                      alt={`Kode QRIS pesanan ${order.code}`}
+   477→                      className="h-[208px] w-[208px] object-contain"
+   478→                    />
+   479→                  ) : info?.payload ? (
+   480→                    <motion.div
+   481→                      initial={prefersReduced ? false : { opacity: 0, scale: 0.94 }}
+   482→                      animate={{ opacity: 1, scale: 1 }}
+   483→                      className="flex flex-col items-center"
+   484→                    >
+   485→                      <QRCodeSVG
+   486→                        value={info.payload}
+   487→                        size={208}
+   488→                        level="M"
+   489→                        marginSize={1}
+   490→                        bgColor="#FFFFFF"
+   491→                        fgColor="#1C1917"
+   492→                        title={`QRIS ${order.code}`}
+   493→                      />
+   494→                      <span className="mt-2.5 flex items-center gap-1.5 rounded-full bg-neutral-900 px-3 py-1 text-[10px] font-black tracking-[0.2em] text-white">
+   495→                        QRIS
+   496→                      </span>
+   497→                    </motion.div>
+   498→                  ) : (
+   499→                    <div className="flex min-h-[216px] w-[216px] items-center justify-center">
+   500→                      <Loader2 className="h-8 w-8 animate-spin text-orange-400" />
+   501→                    </div>
+   502→                  )}
+   503→                </div>
+   504→
+   505→                <p className="mt-3 text-center text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+   506→                  AYAM GEPREK SAMBAL IJO
+   507→                </p>
+   508→                <p className="mt-1 text-center text-[11px] leading-relaxed text-neutral-500">
+   509→                  Buka aplikasi{" "}
+   510→                  <strong className="font-bold text-neutral-700">
+   511→                    GoPay, OVO, DANA, ShopeePay, atau m-Banking
+   512→                  </strong>{" "}
+   513→                  apa pun, lalu pindai kode di atas. Nominal sudah terisi otomatis.
+   514→                </p>
+   515→                <p className="mt-2 rounded-xl bg-orange-50 px-3 py-2 text-center text-[10px] font-bold leading-snug text-orange-700 ring-1 ring-orange-100">
+   516→                  ⏳ Selesaikan sebelum waktu habis — pesanan yang belum dibayar
+   517→                  30 menit sejak dibuat batal otomatis & voucher kembali.
+   518→                </p>
+   519→
+   520→                {/* ===== KARTU STATUS VERIFIKASI OTOMATIS ===== */}
+   521→                {autoVerify && (
+   522→                  <div className="mt-3.5 flex items-start gap-2.5 rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-200">
+   523→                    <span className="relative mt-1 flex h-2.5 w-2.5 shrink-0">
+   524→                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+   525→                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+   526→                    </span>
+   527→                    <div className="min-w-0">
+   528→                      <p className="text-[11px] font-black text-emerald-700">
+   529→                        Verifikasi Otomatis Aktif
+   530→                      </p>
+   531→                      <p className="mt-0.5 text-[11px] leading-snug text-emerald-700/80">
+   532→                        Sistem memeriksa penyedia QRIS setiap beberapa detik. Pesanan lunas
+   533→                        sendiri begitu dana masuk — tanpa konfirmasi kasir. Layar ini
+   534→                        memperbarui otomatis.
+   535→                      </p>
+   536→                      {monitorNote && (
+   537→                        <p className="mt-1 text-[10px] leading-snug text-amber-600">
+   538→                          Catatan: {monitorNote}
+   539→                        </p>
+   540→                      )}
+   541→                      {info?.provider?.startsWith("midtrans") && (
+   542→                        <p className="mt-1 text-[10px] font-bold text-emerald-600">
+   543→                          Penyedia: Midtrans ({info.provider === "midtrans" ? "Produksi" : "Sandbox"})
+   544→                        </p>
+   545→                      )}
+   546→                    </div>
+   547→                  </div>
+   548→                )}
+   549→
+   550→                {/* ===== TRANSPARANSI FALLBACK — QR uji lokal karena Midtrans ditolak =====
+   551→                    Bila Midtrans (penyedia nyata) menolak/mati, QR yang tampil
+   552→                    berasal dari gateway bawaan (uji lokal, belum tersambung
+   553→                    dompet digital). Alasannya ditampilkan jujur agar pemilik
+   554→                    tahu persis kenapa koneksi nyata belum aktif. */}
+   555→                {info?.fallbackReason && info.mode === "GATEWAY" && (
+   556→                  <div className="mt-3.5 flex items-start gap-2 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+   557→                    <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+   558→                    <div className="min-w-0">
+   559→                      <p className="text-[11px] font-black text-amber-700">
+   560→                        QR uji lokal — Midtrans belum terhubung dari server ini
+   561→                      </p>
+   562→                      <p className="mt-0.5 break-words text-[10px] leading-snug text-amber-700/85">
+   563→                        Alasan: {info.fallbackReason} — Admin dapat mengetes koneksi Midtrans
+   564→                        lewat <strong className="font-bold">Pengaturan Toko ▸ Gateway QRIS</strong>.
+   565→                      </p>
+   566→                    </div>
+   567→                  </div>
+   568→                )}
+   569→
+   570→                {/* ===== TRANSPARANSI MODE LOKAL — verifikasi otomatis BELUM berjalan =====
+   571→                    Tanpa gateway aktif (Midtrans ditolak & fallback nonaktif —
+   572→                    mis. mode produksi), QR statis toko ditampilkan TANPA
+   573→                    pelunasan otomatis. Harus dijelaskan jujur: pesanan tidak
+   574→                    akan lunas sendiri sampai penyedia terhubung. */}
+   575→                {info && info.mode === "LOCAL" && !autoVerify && (
+   576→                  <div className="mt-3.5 flex items-start gap-2 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+   577→                    <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+   578→                    <div className="min-w-0">
+   579→                      <p className="text-[11px] font-black text-amber-700">
+   580→                        Verifikasi otomatis belum berjalan
+   581→                      </p>
+   582→                      <p className="mt-0.5 break-words text-[10px] leading-snug text-amber-700/85">
+   583→                        Gateway QRIS belum terhubung{info.gatewayError ? ` — ${info.gatewayError}` : ""}.
+   584→                        Pesanan belum bisa lunas sendiri — hubungi kasir/staff untuk bantuan,
+   585→                        atau coba lagi nanti setelah penyedia pembayaran aktif.
+   586→                      </p>
+   587→                    </div>
+   588→                  </div>
+   589→                )}
+   590→
+   591→                {/* ===== SIMULASI DANA MASUK (khusus gateway bawaan/sandbox) =====
+   592→                    Gateway bawaan tidak terhubung ke jaringan pembayaran nyata,
+   593→                    jadi tidak ada dompet digital yang bisa mengirim notifikasi
+   594→                    dana. Tombol ini meniru notifikasi tersebut agar transaksi
+   595→                    bisa diselesaikan — otomatis hilang saat penyedia QRIS
+   596→                    sungguhan terhubung.
+   597→
+   598→                    POS KASIR: kartu ini SENGAJA disembunyikan (permintaan
+   599→                    pemilik) agar layar kasir tampil bersih seperti produksi —
+   600→                    kasir cukup menampilkan QR dan sistem memantau otomatis.
+   601→                    Simulasi dana tetap tersedia di aplikasi pelanggan. */}
+   602→                {!isPos && info?.sandbox && info.mode === "GATEWAY" && !codeStale && (
+   603→                  <div className="mt-3.5 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50/70 p-3">
+   604→                    <div className="flex items-center gap-2">
+   605→                      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-100 ring-1 ring-amber-300">
+   606→                        <FlaskConical className="h-3.5 w-3.5 text-amber-600" />
+   607→                      </span>
+   608→                      <p className="text-[11px] font-black uppercase tracking-wide text-amber-700">
+   609→                        Mode Sandbox — Gateway Bawaan
+   610→                      </p>
+   611→                    </div>
+   612→                    <p className="mt-1.5 text-[11px] leading-snug text-amber-700/90">
+   613→                      Gateway QRIS bawaan belum terhubung ke dompet digital nyata.
+   614→                      Tombol di bawah <strong className="font-bold">meniru dana masuk</strong> dari
+   615→                      pelanggan — pesanan tetap dilunasi otomatis oleh sistem,
+   616→                      lewat jalur verifikasi yang sama.
+   617→                    </p>
+   618→                    <button
+   619→                      onClick={() => void simulatePay()}
+   620→                      disabled={simulating}
+   621→                      className="press-effect mt-2.5 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-amber-500 text-xs font-extrabold text-white shadow-md shadow-amber-500/30 hover:bg-amber-600 disabled:opacity-60"
+   622→                    >
+   623→                      {simulating ? (
+   624→                        <>
+   625→                          <Loader2 className="h-4 w-4 animate-spin" /> Memproses dana…
+   626→                        </>
+   627→                      ) : (
+   628→                        <>
+   629→                          <FlaskConical className="h-4 w-4" /> Simulasi Dana Masuk (Sandbox)
+   630→                        </>
+   631→                      )}
+   632→                    </button>
+   633→                    {simulateError && (
+   634→                      <p className="mt-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-[10px] font-semibold leading-snug text-red-600 ring-1 ring-red-100">
+   635→                        {simulateError}
+   636→                      </p>
+   637→                    )}
+   638→                  </div>
+   639→                )}
+   640→
+   641→                {/* ===== SIMULATOR BAYAR (khusus Midtrans SANDBOX) =====
+   642→                    QR uji Midtrans sandbox berisi tautan ke simulator resmi
+   643→                    Midtrans — dompet digital sungguhan belum bisa membayar.
+   644→                    Tautan ini meniru pelanggan membayar; setelah simulator
+   645→                    menyatakan sukses, polling status otomatis melunaskan
+   646→                    pesanan lewat jalur verifikasi yang sama dengan produksi.
+   647→                    Hilang sendiri saat MIDTRANS_IS_PRODUCTION=true. */}
+   648→                {!isPos && info?.sandboxSimulatorUrl && info.mode === "GATEWAY" && !codeStale && (
+   649→                  <div className="mt-3.5 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50/70 p-3">
+   650→                    <div className="flex items-center gap-2">
+   651→                      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-100 ring-1 ring-amber-300">
+   652→                        <FlaskConical className="h-3.5 w-3.5 text-amber-600" />
+   653→                      </span>
+   654→                      <p className="text-[11px] font-black uppercase tracking-wide text-amber-700">
+   655→                        Mode Uji — Midtrans Sandbox
+   656→                      </p>
+   657→                    </div>
+   658→                    <p className="mt-1.5 text-[11px] leading-snug text-amber-700/90">
+   659→                      QR uji belum terhubung ke dompet digital sungguhan. Buka
+   660→                      simulator pembayaran Midtrans untuk meniru pelanggan
+   661→                      membayar — pesanan tetap dilunasi otomatis oleh sistem.
+   662→                    </p>
+   663→                    <a
+   664→                      href={info.sandboxSimulatorUrl}
+   665→                      target="_blank"
+   666→                      rel="noreferrer"
+   667→                      className="press-effect mt-2.5 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-amber-500 text-xs font-extrabold text-white shadow-md shadow-amber-500/30 hover:bg-amber-600"
+   668→                    >
+   669→                      <FlaskConical className="h-4 w-4" /> Buka Simulator Bayar
+   670→                    </a>
+   671→                  </div>
+   672→                )}
+   673→
+   674→                {/* Kode kedaluwarsa di gateway (pesanan masih hidup) -> buat ulang */}
+   675→                {codeStale && autoVerify && !pastDeadline && (
+   676→                  <button
+   677→                    onClick={() => void regenerate()}
+   678→                    disabled={regenerating}
+   679→                    className="press-effect mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-orange-600 text-sm font-extrabold text-white shadow-lg shadow-orange-500/30 hover:bg-orange-700 disabled:opacity-60"
+   680→                  >
+   681→                    {regenerating ? (
+   682→                      <>
+   683→                        <Loader2 className="h-4 w-4 animate-spin" /> Membuat ulang…
+   684→                      </>
+   685→                    ) : (
+   686→                      <>
+   687→                        <RefreshCw className="h-4 w-4" /> Buat Ulang Kode Bayar
+   688→                      </>
+   689→                    )}
+   690→                  </button>
+   691→                )}
+   692→                {expired && !autoVerify && !pastDeadline && (
+   693→                  <p className="mt-2 rounded-xl bg-amber-50 p-2.5 text-center text-[11px] font-semibold leading-snug text-amber-700 ring-1 ring-amber-200">
+   694→                    Waktu pembayaran ideal sudah lewat. Kamu masih bisa membayar —
+   695→                    kode tetap berlaku.
+   696→                  </p>
+   697→                )}
+   698→
+   699→                {/* Tombol sesuai varian */}
+   700→                {isPos ? (
+   701→                  <div className="mt-4 space-y-2">
+   702→                    <button
+   703→                      onClick={() => void checkNow()}
+   704→                      disabled={checkingNow || !info}
+   705→                      className="press-effect flex h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-orange-200 bg-white text-sm font-extrabold text-orange-700 hover:bg-orange-50 disabled:opacity-60"
+   706→                    >
+   707→                      {checkingNow ? (
+   708→                        <>
+   709→                          <Loader2 className="h-4 w-4 animate-spin" /> Memeriksa…
+   710→                        </>
+   711→                      ) : (
+   712→                        <>
+   713→                          <ShieldCheck className="h-4 w-4" /> Periksa Pembayaran Sekarang
+   714→                        </>
+   715→                      )}
+   716→                    </button>
+   717→                    <p className="text-center text-[10px] leading-snug text-neutral-400">
+   718→                      Minta pelanggan memindai QR di layar ini. Kasir{" "}
+   719→                      <strong className="font-bold text-neutral-500">tidak dapat menandai lunas</strong>{" "}
+   720→                      — pesanan lunas otomatis saat dana masuk.
+   721→                    </p>
+   722→                  </div>
+   723→                ) : (
+   724→                  <div className="mt-4 space-y-2">
+   725→                    <button
+   726→                      onClick={onClose}
+   727→                      className="press-effect w-full rounded-xl bg-neutral-100 py-3 text-sm font-extrabold text-neutral-600 hover:bg-neutral-200"
+   728→                    >
+   729→                      Tutup Dulu
+   730→                    </button>
+   731→                    <p className="text-center text-[10px] leading-snug text-neutral-400">
+   732→                      {autoVerify
+   733→                        ? "Pembayaran diverifikasi otomatis — begitu dana masuk, status"
+   734→                        : "Gateway QRIS belum terhubung — verifikasi otomatis belum"}
+   735→                      {autoVerify
+   736→                        ? " pesananmu ikut lunas tanpa perlu konfirmasi siapa pun."
+   737→                        : " bisa berjalan. Pesanan menunggu aktivasi penyedia pembayaran."}
+   738→                    </p>
+   739→                  </div>
+   740→                )}
+   741→              </>
+   742→            )}
+   743→          </div>
+   744→        </motion.div>
+   745→      </motion.div>
+   746→    </AnimatePresence>,
+   747→    document.body
+   748→  );
+   749→}
+   750→

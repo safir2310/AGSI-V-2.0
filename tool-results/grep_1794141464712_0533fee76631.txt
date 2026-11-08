@@ -1,0 +1,252 @@
+/home/z/my-project/bun.lock:76:        "z-ai-web-dev-sdk": "^0.0.18",
+/home/z/my-project/bun.lock:2086:    "z-ai-web-dev-sdk": ["z-ai-web-dev-sdk@0.0.18", "", { "bin": { "z-ai": "dist/cli.js", "z-ai-generate": "dist/cli.js" } }, "sha512-xVoZIEME2F+/Z06orHCgUKzOMuFPhoHuzN4ZFZqcD71g11nzbzq2jKSP53igi3lJFE8ZbMB4WKb4gp6lCGrMXQ=="],
+/home/z/my-project/package.json:84:    "z-ai-web-dev-sdk": "^0.0.18",
+/home/z/my-project/next.config.ts:13:  // *.space-z.ai (iframe lintas-origin). Tanpa ini Next 16 menolak koneksi
+/home/z/my-project/next.config.ts:16:  allowedDevOrigins: ["space-z.ai", "*.space-z.ai"],
+/home/z/my-project/tests/python-runtime-container.sh:5:RUNNER_IMAGE="${RUNNER_IMAGE:-z-ai-python-deploy-runner:test}"
+/home/z/my-project/package-lock.json:76:        "z-ai-web-dev-sdk": "^0.0.18",
+/home/z/my-project/package-lock.json:12299:    "node_modules/z-ai-web-dev-sdk": {
+/home/z/my-project/package-lock.json:12303:        "z-ai": "dist/cli.js",
+/home/z/my-project/package-lock.json:12304:        "z-ai-generate": "dist/cli.js"
+/home/z/my-project/skills/skill-creator/scripts/improve_description.py:5:by calling `z-ai chat -p` as a subprocess.
+/home/z/my-project/skills/skill-creator/scripts/improve_description.py:20:    """Run `z-ai chat -p` with the prompt and return the text response."""
+/home/z/my-project/skills/skill-creator/scripts/improve_description.py:21:    cmd = ["z-ai", "chat", "-p", prompt]
+/home/z/my-project/skills/skill-creator/scripts/improve_description.py:34:            f"z-ai chat exited {result.returncode}\nstderr: {result.stderr}"
+/home/z/my-project/skills/skill-creator/scripts/improve_description.py:50:    """Call z-ai to improve the description based on eval results."""
+/home/z/my-project/skills/docx/setup.sh:4:# author: Z.AI
+/home/z/my-project/skills/docx/LICENSE.txt:1:Copyright (c) 2026 Z.ai All rights reserved.
+/home/z/my-project/skills/docx/references/ooxml.md:120:doc = Document('unpacked', author="Z.ai", initials="Z")
+/home/z/my-project/skills/docx/scripts/document.py:99:        self, xml_path, rsid: str, author: str = "Z.AI", initials: str = "Z"
+/home/z/my-project/skills/docx/scripts/document.py:106:            author: Author name for tracked changes and comments (default: "Z.AI")
+/home/z/my-project/skills/docx/scripts/document.py:659:        author="Z.AI",
+/home/z/my-project/skills/docx/scripts/document.py:670:            author: Default author name for comments (default: "Z.AI")
+/home/z/my-project/skills/docx/SKILL.md:4:  author: Z.AI
+/home/z/my-project/skills/image-search/SKILL.md:5:  ZAI in-house image search service, exposed through the z-ai-web-dev-sdk CLI.
+/home/z/my-project/skills/image-search/SKILL.md:14:# image-search (ZAI in-house, via z-ai SDK)
+/home/z/my-project/skills/image-search/SKILL.md:21:HTTP API directly**. Always go through the `z-ai image-search` subcommand
+/home/z/my-project/skills/image-search/SKILL.md:22:from the `z-ai-web-dev-sdk` CLI — that's the only supported entry point.
+/home/z/my-project/skills/image-search/SKILL.md:35:- Generating new images from scratch — use `z-ai image` (image generation).
+/home/z/my-project/skills/image-search/SKILL.md:41:**`z-ai-web-dev-sdk` installed**, providing the `z-ai` binary:
+/home/z/my-project/skills/image-search/SKILL.md:44:npm install -g z-ai-web-dev-sdk
+/home/z/my-project/skills/image-search/SKILL.md:45:# or:  bun add -g z-ai-web-dev-sdk
+/home/z/my-project/skills/image-search/SKILL.md:51:z-ai image-search --query "<natural-language sentence>" [flags]
+/home/z/my-project/skills/image-search/SKILL.md:72:z-ai image-search -q "a cute orange tabby kitten playing with yarn" --count 5
+/home/z/my-project/skills/image-search/SKILL.md:75:z-ai image-search -q "vintage red sports car on a mountain road" --count 5 --gl us --no-rank
+/home/z/my-project/skills/image-search/SKILL.md:78:z-ai image-search -q "中国传统水墨山水画" --count 5 -o results.json
+/home/z/my-project/skills/image-search/SKILL.md:160:| `Unknown command "image-search"` | SDK too old | Upgrade: `npm install -g z-ai-web-dev-sdk@latest`. |
+/home/z/my-project/skills/xlsx/setup.sh:4:# author: Z.AI
+/home/z/my-project/skills/xlsx/LICENSE.txt:1:Copyright (c) 2026 Z.ai All rights reserved.
+/home/z/my-project/skills/xlsx/scenes/finance.md:71:    "Z.ai"
+/home/z/my-project/skills/xlsx/scenes/vba.md:55:' Author: Z.ai
+/home/z/my-project/skills/xlsx/engines/design.md:543:wb.properties.creator = "Z.ai"
+/home/z/my-project/skills/xlsx/SKILL.md:4:  author: Z.AI
+/home/z/my-project/skills/xlsx/SKILL.md:191:Workbook metadata: `wb.properties.creator = "Z.ai"`
+/home/z/my-project/skills/fullstack-dev/SKILL.md:41:IMPORTANT: `z-ai-web-dev-sdk` MUST be used in the backend only! Do NOT use it on the client side.
+/home/z/my-project/skills/TTS/tts.ts:1:import ZAI from "z-ai-web-dev-sdk";
+/home/z/my-project/skills/TTS/LICENSE.txt:3:Copyright (c) 2025 z-ai-web-dev-sdk Skills
+/home/z/my-project/skills/TTS/SKILL.md:3:description: Implement text-to-speech (TTS) capabilities using the z-ai-web-dev-sdk. Use this skill when the user needs to convert text into natural-sounding speech, create audio content, build voice-enabled applications, or generate spoken audio files. Supports multiple voices, adjustable speed, and various audio formats.
+/home/z/my-project/skills/TTS/SKILL.md:9:This skill guides the implementation of text-to-speech (TTS) functionality using the z-ai-web-dev-sdk package, enabling conversion of text into natural-sounding speech audio.
+/home/z/my-project/skills/TTS/SKILL.md:23:**IMPORTANT**: z-ai-web-dev-sdk MUST be used in backend code only. Never use it in client-side code.
+/home/z/my-project/skills/TTS/SKILL.md:70:The z-ai-web-dev-sdk package is already installed. Import it as shown in the examples below.
+/home/z/my-project/skills/TTS/SKILL.md:74:For simple text-to-speech conversions, you can use the z-ai CLI instead of writing code. This is ideal for quick audio generation, testing voices, or simple automation.
+/home/z/my-project/skills/TTS/SKILL.md:80:z-ai tts --input "Hello, world" --output ./hello.wav
+/home/z/my-project/skills/TTS/SKILL.md:83:z-ai tts -i "Hello, world" -o ./hello.wav
+/home/z/my-project/skills/TTS/SKILL.md:90:z-ai tts -i "Welcome to our service" -o ./welcome.wav --voice tongtong
+/home/z/my-project/skills/TTS/SKILL.md:93:z-ai tts -i "This is faster speech" -o ./fast.wav --speed 1.5
+/home/z/my-project/skills/TTS/SKILL.md:96:z-ai tts -i "This is slower speech" -o ./slow.wav --speed 0.8
+/home/z/my-project/skills/TTS/SKILL.md:103:z-ai tts -i "Hello World" -o ./hello.mp3 --format mp3
+/home/z/my-project/skills/TTS/SKILL.md:106:z-ai tts -i "Hello World" -o ./hello.wav --format wav
+/home/z/my-project/skills/TTS/SKILL.md:109:z-ai tts -i "Hello World" -o ./hello.pcm --format pcm
+/home/z/my-project/skills/TTS/SKILL.md:116:z-ai tts -i "This is a longer text that will be streamed" -o ./stream.wav --stream
+/home/z/my-project/skills/TTS/SKILL.md:147:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/TTS/SKILL.md:177:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/TTS/SKILL.md:206:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/TTS/SKILL.md:244:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/TTS/SKILL.md:283:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/TTS/SKILL.md:345:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/TTS/SKILL.md:408:    const ZAI = (await import('z-ai-web-dev-sdk')).default;
+/home/z/my-project/skills/TTS/SKILL.md:474:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/TTS/SKILL.md:522:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/TTS/SKILL.md:555:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/TTS/SKILL.md:631:- **Solution**: Ensure z-ai-web-dev-sdk is only imported in server-side code
+/home/z/my-project/skills/TTS/SKILL.md:725:- Always use z-ai-web-dev-sdk in backend code only
+/home/z/my-project/skills/image-edit/LICENSE.txt:3:Copyright (c) 2025 z-ai-web-dev-sdk Skills
+/home/z/my-project/skills/image-edit/scripts/image-edit.ts:1:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-edit/SKILL.md:3:description: Implement AI image editing and modification capabilities using the z-ai-web-dev-sdk. Use this skill when the user needs to edit existing images, create variations, modify visual content, redesign assets, or transform images based on text descriptions. Supports multiple image sizes and returns base64 encoded results. Also includes CLI tool for quick image editing.
+/home/z/my-project/skills/image-edit/SKILL.md:9:This skill guides the implementation of image editing and modification functionality using the z-ai-web-dev-sdk package and CLI tool, enabling intelligent transformation and editing of images based on text descriptions.
+/home/z/my-project/skills/image-edit/SKILL.md:23:**IMPORTANT**: z-ai-web-dev-sdk MUST be used in backend code only. Never use it in client-side code.
+/home/z/my-project/skills/image-edit/SKILL.md:46:The z-ai-web-dev-sdk package is already installed. Import it as shown in the examples below.
+/home/z/my-project/skills/image-edit/SKILL.md:53:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-edit/SKILL.md:98:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-edit/SKILL.md:143:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-edit/SKILL.md:199:The z-ai CLI tool provides a convenient way to edit images directly from the command line.
+/home/z/my-project/skills/image-edit/SKILL.md:205:z-ai image-edit --prompt "Change the background to sunset colors" --image "./photo.png" --output "./edited.png"
+/home/z/my-project/skills/image-edit/SKILL.md:208:z-ai image-edit -p "Make it darker and moodier" -i "./original.jpg" -o "./moody.png"
+/home/z/my-project/skills/image-edit/SKILL.md:211:z-ai image-edit -p "Redesign in modern style" -i "./design.png" -o "./modern.png" -s 1344x768
+/home/z/my-project/skills/image-edit/SKILL.md:214:z-ai image-edit -p "Convert to landscape orientation" -i "https://example.com/photo.png" -o "./landscape.png" -s 1344x768
+/home/z/my-project/skills/image-edit/SKILL.md:233:z-ai image-edit -p "Redesign the logo with gradients and modern styling" -i "./logo.png" -o "./logo_v2.png" -s 1024x1024
+/home/z/my-project/skills/image-edit/SKILL.md:236:z-ai image-edit -p "Change color scheme to blue and white, professional style" -i "./original.png" -o "./recolored.png" -s 1440x720
+/home/z/my-project/skills/image-edit/SKILL.md:239:z-ai image-edit -p "Transform to oil painting style, vibrant colors" -i "./photo.jpg" -o "./oil_painting.png" -s 1152x864
+/home/z/my-project/skills/image-edit/SKILL.md:242:z-ai image-edit -p "Replace background with modern office setting" -i "./portrait.png" -o "./new_background.png" -s 1344x768
+/home/z/my-project/skills/image-edit/SKILL.md:245:z-ai image-edit -p "Adjust to golden hour lighting, warm tones" -i "./landscape.jpg" -o "./golden_hour.png" -s 1024x1024
+/home/z/my-project/skills/image-edit/SKILL.md:248:z-ai image-edit -p "Replace the red car with a blue motorcycle" -i "./scene.png" -o "./modified.png" -s 1344x768
+/home/z/my-project/skills/image-edit/SKILL.md:251:z-ai image-edit -p "Transform to dark moody atmosphere with dramatic lighting" -i "./bright.jpg" -o "./moody.png" -s 1440x720
+/home/z/my-project/skills/image-edit/SKILL.md:254:z-ai image-edit -p "Add a hat to the person" -i "https://example.com/photo.png" -o "./result.png" -s 1024x1024
+/home/z/my-project/skills/image-edit/SKILL.md:262:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-edit/SKILL.md:337:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-edit/SKILL.md:456:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-edit/SKILL.md:507:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-edit/SKILL.md:604:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-edit/SKILL.md:671:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-edit/SKILL.md:807:z-ai image-edit -p "$BASE, modern minimalist style, white background" -i "$ORIGINAL_IMAGE" -o "./variations/minimal.png" -s 1024x1024
+/home/z/my-project/skills/image-edit/SKILL.md:808:z-ai image-edit -p "$BASE, dramatic lighting, dark background" -i "$ORIGINAL_IMAGE" -o "./variations/dramatic.png" -s 1024x1024
+/home/z/my-project/skills/image-edit/SKILL.md:809:z-ai image-edit -p "$BASE, on wooden desk, natural lighting" -i "$ORIGINAL_IMAGE" -o "./variations/natural.png" -s 1024x1024
+/home/z/my-project/skills/image-edit/SKILL.md:817:- **Solution**: Ensure z-ai-web-dev-sdk is only used in server-side code
+/home/z/my-project/skills/image-edit/SKILL.md:826:- **Solution**: Ensure z-ai CLI is properly installed and in PATH
+/home/z/my-project/skills/image-edit/SKILL.md:887:- Always use z-ai-web-dev-sdk in backend code only
+/home/z/my-project/skills/video-understand/LICENSE.txt:3:Copyright (c) 2025 z-ai-web-dev-sdk Skills
+/home/z/my-project/skills/video-understand/scripts/video-understand.ts:1:import ZAI, { VisionMessage } from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:3:description: Implement specialized video understanding capabilities using the z-ai-web-dev-sdk. Use this skill when the user needs to analyze video content, understand motion and temporal sequences, extract information from video frames, describe video scenes, or perform video-based AI analysis. Optimized for MP4, AVI, MOV, and other common video formats.
+/home/z/my-project/skills/video-understand/SKILL.md:9:This skill provides specialized video understanding functionality using the z-ai-web-dev-sdk package, enabling AI models to analyze, describe, and extract information from video content including motion, temporal sequences, and scene changes.
+/home/z/my-project/skills/video-understand/SKILL.md:31:**IMPORTANT**: z-ai-web-dev-sdk MUST be used in backend code only. Never use it in client-side code.
+/home/z/my-project/skills/video-understand/SKILL.md:35:The z-ai-web-dev-sdk package is already installed. Import it as shown in the examples below.
+/home/z/my-project/skills/video-understand/SKILL.md:39:For quick video analysis tasks, you can use the z-ai CLI instead of writing code. This is ideal for simple video descriptions, testing, or automation.
+/home/z/my-project/skills/video-understand/SKILL.md:45:z-ai vision --prompt "Summarize what happens in this video" --image "https://example.com/video.mp4"
+/home/z/my-project/skills/video-understand/SKILL.md:48:z-ai vision -p "Describe the key events" -i "https://example.com/presentation.mp4"
+/home/z/my-project/skills/video-understand/SKILL.md:55:z-ai vision -p "What activities are shown in this video?" -i "./recording.mp4"
+/home/z/my-project/skills/video-understand/SKILL.md:58:z-ai vision -p "Provide a detailed summary" -i "./meeting.mp4" -o summary.json
+/home/z/my-project/skills/video-understand/SKILL.md:65:z-ai vision \
+/home/z/my-project/skills/video-understand/SKILL.md:72:z-ai vision \
+/home/z/my-project/skills/video-understand/SKILL.md:82:z-ai vision -p "Describe this video content" -i "./video.mp4" --stream
+/home/z/my-project/skills/video-understand/SKILL.md:130:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:174:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:212:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:251:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:284:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:327:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:399:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:437:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:472:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:506:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:546:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:584:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:736:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:830:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/video-understand/SKILL.md:887:- **Solution**: Ensure z-ai-web-dev-sdk is only imported and used in server-side code, never in client/browser code
+/home/z/my-project/skills/video-understand/SKILL.md:906:- Always use z-ai-web-dev-sdk in backend code only
+/home/z/my-project/skills/VLM/LICENSE.txt:3:Copyright (c) 2025 z-ai-web-dev-sdk Skills
+/home/z/my-project/skills/VLM/scripts/vlm.ts:1:import ZAI, { VisionMessage } from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/VLM/SKILL.md:3:description: Implement vision-based AI chat capabilities using the z-ai-web-dev-sdk. Use this skill when the user needs to analyze images, describe visual content, or create applications that combine image understanding with conversational AI. Supports image URLs and base64 encoded images for multimodal interactions.
+/home/z/my-project/skills/VLM/SKILL.md:9:This skill guides the implementation of vision chat functionality using the z-ai-web-dev-sdk package, enabling AI models to understand and respond to images combined with text prompts.
+/home/z/my-project/skills/VLM/SKILL.md:23:**IMPORTANT**: z-ai-web-dev-sdk MUST be used in backend code only. Never use it in client-side code.
+/home/z/my-project/skills/VLM/SKILL.md:27:The z-ai-web-dev-sdk package is already installed. Import it as shown in the examples below.
+/home/z/my-project/skills/VLM/SKILL.md:31:For simple image analysis tasks, you can use the z-ai CLI instead of writing code. This is ideal for quick image descriptions, testing vision capabilities, or simple automation.
+/home/z/my-project/skills/VLM/SKILL.md:37:z-ai vision --prompt "What's in this image?" --image "https://example.com/photo.jpg"
+/home/z/my-project/skills/VLM/SKILL.md:40:z-ai vision -p "Describe this image" -i "https://example.com/image.png"
+/home/z/my-project/skills/VLM/SKILL.md:47:z-ai vision -p "What objects are in this photo?" -i "./photo.jpg"
+/home/z/my-project/skills/VLM/SKILL.md:50:z-ai vision -p "Describe the scene" -i "./landscape.png" -o description.json
+/home/z/my-project/skills/VLM/SKILL.md:57:z-ai vision \
+/home/z/my-project/skills/VLM/SKILL.md:64:z-ai vision \
+/home/z/my-project/skills/VLM/SKILL.md:74:z-ai vision \
+/home/z/my-project/skills/VLM/SKILL.md:85:z-ai vision -p "Describe this image in detail" -i "./photo.jpg" --stream
+/home/z/my-project/skills/VLM/SKILL.md:169:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/VLM/SKILL.md:209:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/VLM/SKILL.md:251:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/VLM/SKILL.md:292:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/VLM/SKILL.md:369:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/VLM/SKILL.md:414:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/VLM/SKILL.md:514:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/VLM/SKILL.md:571:- **Solution**: Ensure z-ai-web-dev-sdk is only imported and used in server-side code
+/home/z/my-project/skills/VLM/SKILL.md:584:- Always use z-ai-web-dev-sdk in backend code only
+/home/z/my-project/skills/charts/setup.sh:4:# author: Z.AI
+/home/z/my-project/skills/charts/LICENSE.txt:1:Copyright (c) 2026 Z.ai All rights reserved.
+/home/z/my-project/skills/charts/SKILL.md:4:  author: Z.AI
+/home/z/my-project/skills/ASR/LICENSE.txt:3:Copyright (c) 2025 z-ai-web-dev-sdk Skills
+/home/z/my-project/skills/ASR/scripts/asr.ts:1:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/ASR/SKILL.md:3:description: Implement speech-to-text (ASR/automatic speech recognition) capabilities using the z-ai-web-dev-sdk. Use this skill when the user needs to transcribe audio files, convert speech to text, build voice input features, or process audio recordings. Supports base64 encoded audio files and returns accurate text transcriptions.
+/home/z/my-project/skills/ASR/SKILL.md:9:This skill guides the implementation of speech-to-text (ASR) functionality using the z-ai-web-dev-sdk package, enabling accurate transcription of spoken audio into text.
+/home/z/my-project/skills/ASR/SKILL.md:23:**IMPORTANT**: z-ai-web-dev-sdk MUST be used in backend code only. Never use it in client-side code.
+/home/z/my-project/skills/ASR/SKILL.md:27:The z-ai-web-dev-sdk package is already installed. Import it as shown in the examples below.
+/home/z/my-project/skills/ASR/SKILL.md:31:For simple audio transcription tasks, you can use the z-ai CLI instead of writing code. This is ideal for quick transcriptions, testing audio files, or batch processing.
+/home/z/my-project/skills/ASR/SKILL.md:37:z-ai asr --file ./audio.wav
+/home/z/my-project/skills/ASR/SKILL.md:40:z-ai asr -f ./recording.mp3 -o transcript.json
+/home/z/my-project/skills/ASR/SKILL.md:43:z-ai asr --file ./interview.wav --output result.json
+/home/z/my-project/skills/ASR/SKILL.md:50:z-ai asr --base64 "UklGRiQAAABXQVZFZm10..." -o result.json
+/home/z/my-project/skills/ASR/SKILL.md:53:z-ai asr -b "base64_encoded_audio_data" -o transcript.json
+/home/z/my-project/skills/ASR/SKILL.md:60:z-ai asr -f ./audio.wav --stream
+/home/z/my-project/skills/ASR/SKILL.md:96:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/ASR/SKILL.md:121:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/ASR/SKILL.md:172:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/ASR/SKILL.md:211:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/ASR/SKILL.md:282:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/ASR/SKILL.md:357:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/ASR/SKILL.md:384:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/ASR/SKILL.md:485:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/ASR/SKILL.md:541:- **Solution**: Ensure z-ai-web-dev-sdk is only imported in server-side code
+/home/z/my-project/skills/ASR/SKILL.md:574:- Always use z-ai-web-dev-sdk in backend code only
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:30:        # First, check if there are any tracked changes by Z.AI to validate
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:37:            # Check for w:del or w:ins tags authored by Z.AI
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:41:            # Filter to only include changes by Z.AI
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:45:                if elem.get(f"{{{self.namespaces['w']}}}author") == "Z.AI"
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:50:                if elem.get(f"{{{self.namespaces['w']}}}author") == "Z.AI"
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:53:            # Redlining validation is only needed if tracked changes by Z.AI have been used.
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:56:                    print("PASSED - No tracked changes by Z.AI found.")
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:94:            # Remove Z.AI's tracked changes from both documents
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:111:                print("PASSED - All changes by Z.AI are properly tracked")
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:117:            "FAILED - Document text doesn't match after removing Z.AI's tracked changes",
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:218:        """Remove tracked changes authored by Z.AI from the XML root."""
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:227:                if child.tag == ins_tag and child.get(author_attr) == "Z.AI":
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:232:        # Unwrap content in w:del elements where author is "Z.AI"
+/home/z/my-project/skills/pptx/ooxml/scripts/validation/redlining.py:239:                if child.tag == del_tag and child.get(author_attr) == "Z.AI":
+/home/z/my-project/skills/pptx/SKILL.md:4:  author: Z.AI
+/home/z/my-project/skills/pptx/SKILL.md:168:    z-ai function --name "web_search" --args '{"query": "artificial intelligence","num": 3}'
+/home/z/my-project/skills/pptx/SKILL.md:171:    z-ai function -n web_search -a '{"query": "cryptocurrency news", "num": 3, "recency_days": 7}'
+/home/z/my-project/skills/pptx/SKILL.md:176:  • For EVERY slide that needs a photo or illustration, run the `z-ai image-search` CLI (provided by `z-ai-web-dev-sdk`). Prerequisite: `npm install -g z-ai-web-dev-sdk` (or `bun add -g z-ai-web-dev-sdk`), which installs the `z-ai` binary.
+/home/z/my-project/skills/pptx/SKILL.md:178:        z-ai image-search --query "<natural-language sentence>" --count 3
+/home/z/my-project/skills/pptx/SKILL.md:256:       – Resolve every "Hero photo of …" / "icon of …" reference into the FULL image URL (https://…) from your `z-ai image-search` results. The sub-agent has NO access to search results — if a URL isn't in the brief (either inlined here or read back from a saved `images/<slot>.json` manifest), the slide can't display the image.
+/home/z/my-project/skills/pptx/SKILL.md:367:  • Never fabricate image URLs. Only use URLs that came back from the `z-ai image-search` CLI.
+/home/z/my-project/skills/image-generation/LICENSE.txt:3:Copyright (c) 2025 z-ai-web-dev-sdk Skills
+/home/z/my-project/skills/image-generation/scripts/image-generation.ts:1:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-generation/SKILL.md:3:description: Implement AI image generation capabilities using the z-ai-web-dev-sdk. Use this skill when the user needs to create images from text descriptions, generate visual content, create artwork, design assets, or build applications with AI-powered image creation. Supports multiple image sizes and returns base64 encoded images. Also includes CLI tool for quick image generation.
+/home/z/my-project/skills/image-generation/SKILL.md:9:This skill guides the implementation of image generation functionality using the z-ai-web-dev-sdk package and CLI tool, enabling creation of high-quality images from text descriptions.
+/home/z/my-project/skills/image-generation/SKILL.md:23:**IMPORTANT**: z-ai-web-dev-sdk MUST be used in backend code only. Never use it in client-side code.
+/home/z/my-project/skills/image-generation/SKILL.md:27:The z-ai-web-dev-sdk package is already installed. Import it as shown in the examples below.
+/home/z/my-project/skills/image-generation/SKILL.md:34:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-generation/SKILL.md:65:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-generation/SKILL.md:118:The z-ai CLI tool provides a convenient way to generate images directly from the command line.
+/home/z/my-project/skills/image-generation/SKILL.md:124:z-ai image --prompt "A beautiful landscape" --output "./image.png"
+/home/z/my-project/skills/image-generation/SKILL.md:127:z-ai image -p "A cute cat" -o "./cat.png"
+/home/z/my-project/skills/image-generation/SKILL.md:130:z-ai image -p "A sunset" -o "./sunset.png" -s 1344x768
+/home/z/my-project/skills/image-generation/SKILL.md:133:z-ai image -p "A portrait" -o "./portrait.png" -s 768x1344
+/home/z/my-project/skills/image-generation/SKILL.md:140:z-ai image -p "Modern tech office with diverse team collaborating" -o "./hero.png" -s 1440x720
+/home/z/my-project/skills/image-generation/SKILL.md:143:z-ai image -p "Sleek smartphone on minimalist desk, professional product photography" -o "./product.png" -s 1024x1024
+/home/z/my-project/skills/image-generation/SKILL.md:146:z-ai image -p "Abstract visualization of data flowing through networks" -o "./blog_header.png" -s 1344x768
+/home/z/my-project/skills/image-generation/SKILL.md:149:z-ai image -p "Vibrant illustration of community connection" -o "./social.png" -s 1024x1024
+/home/z/my-project/skills/image-generation/SKILL.md:152:z-ai image -p "Simple geometric logo with blue gradient, minimal design" -o "./logo.png" -s 1024x1024
+/home/z/my-project/skills/image-generation/SKILL.md:155:z-ai image -p "Subtle geometric pattern, pastel colors, website background" -o "./bg_pattern.png" -s 1440x720
+/home/z/my-project/skills/image-generation/SKILL.md:163:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-generation/SKILL.md:228:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-generation/SKILL.md:331:z-ai image -p "Modern tech hero banner, blue gradient" -o "./assets/hero.png" -s 1440x720
+/home/z/my-project/skills/image-generation/SKILL.md:332:z-ai image -p "Team collaboration illustration" -o "./assets/team.png" -s 1344x768
+/home/z/my-project/skills/image-generation/SKILL.md:333:z-ai image -p "Simple geometric logo" -o "./assets/logo.png" -s 1024x1024
+/home/z/my-project/skills/image-generation/SKILL.md:389:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-generation/SKILL.md:453:import ZAI from 'z-ai-web-dev-sdk';
+/home/z/my-project/skills/image-generation/SKILL.md:522:z-ai image -p "Modern tech hero banner, blue gradient" -o "./assets/hero.png" -s 1440x720
+/home/z/my-project/skills/image-generation/SKILL.md:523:z-ai image -p "Team collaboration illustration" -o "./assets/team.png" -s 1344x768
+/home/z/my-project/skills/image-generation/SKILL.md:524:z-ai image -p "Simple geometric logo" -o "./assets/logo.png" -s 1024x1024
+/home/z/my-project/skills/image-generation/SKILL.md:532:- **Solution**: Ensure z-ai-web-dev-sdk is only used in server-side code
+/home/z/my-project/skills/image-generation/SKILL.md:541:- **Solution**: Ensure z-ai CLI is properly installed and in PATH
+/home/z/my-project/skills/image-generation/SKILL.md:576:- Always use z-ai-web-dev-sdk in backend code only
+/home/z/my-project/skills/LLM/LICENSE.txt:3:Copyright (c) 2025 z-ai-web-dev-sdk Skills
+/home/z/my-project/skills/LLM/scripts/chat.ts:1:import ZAI, { ChatMessage } from "z-ai-web-dev-sdk";
+/home/z/my-project/skills/LLM/SKILL.md:3:description: Implement large language model (LLM) chat completions using the z-ai-web-dev-sdk. Use this skill when the user needs to build conversational AI applications, chatbots, AI assistants, or any text generation features. Supports multi-turn conversations, system prompts, and context management.
+/home/z/my-project/skills/LLM/SKILL.md:9:This skill guides the implementation of chat completions functionality using the z-ai-web-dev-sdk package, enabling powerful conversational AI and text generation capabilities.
+/home/z/my-project/skills/LLM/SKILL.md:23:**IMPORTANT**: z-ai-web-dev-sdk MUST be used in backend code only. Never use it in client-side code.
+/home/z/my-project/skills/LLM/SKILL.md:27:The z-ai-web-dev-sdk package is already installed. Import it as shown in the examples below.
+/home/z/my-project/skills/LLM/SKILL.md:31:For simple, one-off chat completions, you can use the z-ai CLI instead of writing code. This is ideal for quick tests, simple queries, or automation scripts.
+/home/z/my-project/skills/LLM/SKILL.md:37:z-ai chat --prompt "What is the capital of France?"
+/home/z/my-project/skills/LLM/SKILL.md:40:z-ai chat -p "Explain quantum computing" -o response.json
+/home/z/my-project/skills/LLM/SKILL.md:43:z-ai chat -p "Write a short poem" --stream
+/home/z/my-project/skills/LLM/SKILL.md:50:z-ai chat \
+
+[Showing results with pagination = limit: 250]

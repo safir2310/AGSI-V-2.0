@@ -1,0 +1,46 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.google.gms.google-services'
+}
+
+// URL web dari gradle.properties → BuildConfig.WEB_APP_URL
+def webAppUrl = (project.findProperty("WEB_APP_URL") ?: "http://10.0.2.2:3000").toString()
+
+android {
+    namespace 'com.agsi.pos'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.agsi.pos"
+        minSdk 26          // Android 8.0+ — channel notifikasi native (heads-up)
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+        buildConfigField "String", "WEB_APP_URL", "\"$webAppUrl\""
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    buildFeatures { buildConfig true }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+}
+
+dependencies {
+    // Firebase Cloud Messaging (BoM menyamakan versi semua lib Firebase)
+    implementation platform('com.google.firebase:firebase-bom:33.1.2')
+    implementation 'com.google.firebase:firebase-messaging'
+
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.activity:activity-ktx:1.9.0'
+    implementation 'com.google.android.material:material:1.12.0'
+}

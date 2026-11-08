@@ -1,0 +1,349 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String             @id @default(cuid())
+  email        String             @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         String             @default("CUSTOMER") // CUSTOMER | ADMIN | OWNER | CASHIER
+  points       Int                @default(0)
+  // Kode member 8 digit — di-scan lewat barcode di kartu member
+  memberCode   String?            @unique
+  // ===== PERSETUJUAN KEBIJAKAN PENGGUNAAN DATA (privasi) =====
+  // Null = belum pernah menyetujui → popup persetujuan tampil saat aplikasi
+  // dibuka. Versi kebijakan baru → semua pengguna diminta menyetujui ulang.
+  dataConsentAt      DateTime?
+  dataConsentVersion String?
+  // ===== PERSETUJUAN SYARAT & KETENTUAN PENGGUNAAN APLIKASI =====
+  // Mekanisme sama dengan di atas — dua dokumen legal yang berdiri sendiri.
+  appTermsAt      DateTime?
+  appTermsVersion String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  orders       Order[]
+  sessions     Session[]
+  pointTransactions PointTransaction[]
+  chatThread   ChatThread?
+  pushTokens   PushToken[]
+  biometricCredentials BiometricCredential[]
+}
+
+// ===== TOKEN NOTIFIKASI PUSH (FCM) =====
+// Satu baris per PERANGKAT (Chrome web push atau aplikasi Android native).
+// userId/role = pemilik saat token didaftarkan (target push per peran).
+// Token kedaluwarsa (aplikasi dihapus, browser dibersihkan) dihapus otomatis
+// saat pengiriman ditolak FCM dengan status UNREGISTERED.
+model PushToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String?
+  platform  String   @default("web") // web | android
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([role])
+}
+
+// ================= CHAT CS (PELANGGAN ↔ ADMIN) =================
+// Satu pelanggan = satu utas chat (thread) dengan tim CS (admin/owner).
+// unreadAdmin: jumlah pesan pelanggan yang belum dibaca admin.
+// unreadCustomer: jumlah balasan CS yang belum dibaca pelanggan.
+model ChatThread {
+  id              String        @id @default(cuid())
+  userId          String        @unique
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastMessageAt   DateTime      @default(now())
+  lastMessageBody String?
+  lastSenderRole  String?
+  unreadAdmin     Int           @default(0)
+  unreadCustomer  Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  messages        ChatMessage[]
+
+  @@index([lastMessageAt])
+}
+
+// Satu pesan dalam utas chat CS.
+// senderRole: CUSTOMER | CASHIER (klien) atau ADMIN | OWNER (petugas CS).
+model ChatMessage {
+  id         String     @id @default(cuid())
+  threadId   String
+  thread     ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  senderId   String
+  senderName String // snapshot nama pengirim saat itu
+  senderRole String
+  body       String
+  createdAt  DateTime   @default(now())
+
+  @@index([threadId, createdAt])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// Kode verifikasi untuk fitur "Lupa Password"
+model PasswordReset {
+  id        String    @id @default(cuid())
+  email     String
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  @@index([email])
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  name        String
+  description String
+  price       Int
+  category    String
+  emoji       String      @default("\uD83C\uDF57")
+  imageColor  String      @default("#F97316")
+  // Foto menu hasil upload (disimpan base64 agar portabel di semua lingkungan deploy)
+  imageData   String?
+  imageMime   String?
+  spicy       Int         @default(0)
+  available   Boolean     @default(true)
+  popular     Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  orderItems  OrderItem[]
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  code          String      @unique
+  userId        String?
+  user          User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customerName  String
+  type          String      @default("DINE_IN") // DINE_IN | TAKEAWAY | DELIVERY
+  tableNo       String?
+  address       String?
+  phone         String?
+  note          String?
+  status        String      @default("PENDING") // PENDING | PREPARING | READY | COMPLETED | CANCELLED
+  paymentMethod String      @default("CASH") // CASH | QRIS
+  // Status pembayaran: UNPAID (belum bayar) | PAID (lunas).
+  // QRIS LUNAS hanya lewat verifikasi OTOMATIS sistem (gateway/webhook) — kasir tidak bisa menandai.
+  paymentStatus String      @default("UNPAID")
+  // ===== Transaksi QRIS di penyedia gateway =====
+  qrisTrxId     String? // ID transaksi gateway (dipakai cek status & webhook)
+  qrisPayload   String? // String QRIS ter-cache agar tidak dibuat ulang
+  qrisMode      String? // GATEWAY (verifikasi otomatis aktif) | LOCAL (fallback tampilan QR)
+  qrisExpiresAt DateTime? // Kedaluwarsa transaksi gateway
+  // Nominal FINAL yang harus dibayar pelanggan (total + kode unik Casaku
+  // bila aktif) — pelanggan wajib membayar nominal ini PERSIS.
+  qrisAmount    Int?
+  // Penyedia yang benar-benar melayani transaksi ini ("casaku" | "midtrans" | "internal" | "external")
+  // — penting bila penyedia utama ditolak lalu fallback ke penyedia lain.
+  qrisProvider       String?
+  // Alasan penyedia utama ditolak (mis. "Access denied") — jejak transparansi
+  // agar pemilik tahu QR tampilan berasal dari fallback uji, bukan penyedia nyata.
+  qrisFallbackReason String?
+  // ===== Jejak pelunasan =====
+  paidAt        DateTime? // Waktu uang benar-benar masuk / tunai diterima
+  paidVia       String? // AUTO (sistem QRIS) | CASH (kasir menerima tunai)
+  subtotal      Int
+  serviceFee    Int         @default(0)
+  // ===== Pengantaran (type DELIVERY) =====
+  deliveryArea  String? // gampong tujuan (snapshot dari daftar area Pidie 24151)
+  distanceKm    Float? // perkiraan jarak toko→alamat (km)
+  deliveryFee   Int         @default(0) // ongkir Rp1.000/km — kelipatan jarak (dihitung server)
+  // Voucher yang dipakai (snapshot kode + besaran potongan)
+  voucherCode   String?
+  voucherDiscount Int       @default(0)
+  total         Int
+  source        String      @default("APP") // APP | POS
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  items         OrderItem[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name      String
+  emoji     String   @default("\uD83C\uDF57")
+  price     Int
+  qty       Int
+  note      String?
+}
+
+// Voucher diskon — dibuat admin, ditukar pelanggan lewat keranjang.
+// Aturan "sekali pakai": satu akun hanya boleh menukar kode yang sama SEKALI
+// (unik voucherId+userId), plus kuota total pemakaian (default 1).
+// ownerId terisi = voucher PRIBADI hasil tukar poin member (hanya pemilik
+// kodenya yang bisa melihat & memakainya); null = voucher promo publik.
+model Voucher {
+  id          String              @id @default(cuid())
+  code        String              @unique
+  title       String
+  description String?
+  type        String              @default("PERCENT") // PERCENT | FIXED
+  value       Int // PERCENT: 1-100 (%), FIXED: nominal Rp
+  minPurchase Int                 @default(0) // minimal subtotal agar bisa dipakai
+  maxDiscount Int? // khusus PERCENT: batas potongan Rp
+  quota       Int                 @default(1) // total pemakaian yang diizinkan
+  usedCount   Int                 @default(0)
+  expiresAt   DateTime?
+  isActive    Boolean             @default(true)
+  ownerId     String? // id User pemilik (voucher pribadi dari tukar poin)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  redemptions VoucherRedemption[]
+
+  @@index([isActive])
+  @@index([ownerId])
+}
+
+// Catatan pemakaian voucher (siapa memakai voucher mana untuk pesanan apa)
+model VoucherRedemption {
+  id        String   @id @default(cuid())
+  voucherId String
+  voucher   Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  userId    String
+  orderId   String   @unique
+  createdAt DateTime @default(now())
+
+  @@unique([voucherId, userId])
+  @@index([userId])
+}
+
+// Mutasi poin member — EARN (pesanan selesai) & REDEEM (tukar jadi voucher).
+// orderId unik menjamin poin satu pesanan hanya dicatat SEKALI (idempoten).
+model PointTransaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String // EARN | REDEEM
+  points      Int // EARN: positif, REDEEM: negatif
+  orderId     String?  @unique
+  voucherId   String? // voucher hasil tukar (REDEEM)
+  description String
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// ===== KREDENSIAL LOGIN BIOMETRIK (WEBAUTHN / PASSKEY) =====
+// Satu baris = satu kredensial sidik jari/Face ID/PIN layar kunci yang
+// didaftarkan pengguna dari perangkat tertentu (WebAuthn platform
+// authenticator). Kunci privat TIDAK PERNAH menyentuh server — hanya
+// kunci publik yang disimpan; verifikasi tanda tangan Challenge dilakukan
+// lewat @simplewebauthn/server saat login biometrik.
+model BiometricCredential {
+  id         String   @id // credential ID (base64url) dari authenticator
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  publicKey  String // kunci publik COSE (base64) untuk verifikasi tanda tangan
+  counter    Int      @default(0) // signature counter anti-replay
+  deviceType String?  // singleDevice | multiDevice
+  backedUp   Boolean  @default(false)
+  transports String?  // internal | hybrid | ble | nfc | usb (dipisah koma)
+  rpId       String?  // hostname saat mendaftar (debug/informasi)
+  label      String?  // nama perangkat yang tampil di daftar kelola
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
+}
+
+// ===== CHALLENGE WEBAUTHN SEKALI PAKAI (TTL 5 menit) =====
+// Disimpan di DB (bukan memori proses): tiap route handler Next dapat berjalan
+// di modul/worker terisolasi, jadi Map memori tidak dijamin berbagi antar route.
+// DB juga membuat challenge selamat dari restart server di tengah proses pindai.
+model BiometricChallenge {
+  key       String   @id // "reg:<userId>" | "auth:<userId>" | "auth:discover"
+  challenge String
+  rpId      String?  // rpID persis yang dilihat BROWSER saat challenge dibuat (dari origin halaman)
+  origin    String?  // origin penuh persis yang dilihat browser (untuk expectedOrigin)
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
+// ===== PENGATURAN TOKO (satu baris, id tetap "main") =====
+// Saklar layanan yang dikendalikan admin/owner dari halaman Profil:
+//  - deliveryEnabled: layanan ANTAR PESANAN (pelanggan & POS bisa pilih "Antar")
+//  - qrisEnabled    : pembayaran QRIS (aplikasi pelanggan & POS)
+// Dinonaktifkan → opsi tersembunyi di UI DAN ditolak server-side saat checkout.
+model StoreSetting {
+  id              String   @id @default("main")
+  deliveryEnabled Boolean  @default(true)
+  qrisEnabled     Boolean  @default(true)
+  // ===== POPUP BANNER BERANDA =====
+  // Diatur dari Profil Admin → "Popup Banner Beranda".
+  // Aktif + ada gambar → popup muncul otomatis saat pelanggan membuka Beranda.
+  bannerEnabled   Boolean  @default(false)
+  bannerTitle     String? // judul popup (opsional)
+  bannerText      String? // pesan singkat popup (opsional)
+  bannerImageData String? // gambar banner (base64, portabel di semua lingkungan)
+  bannerImageMime String?
+  bannerUpdatedAt DateTime? // versi konten banner — dipakai agar popup tampil lagi utk banner baru
+  // ===== STRIP PROMO HARI INI (strip oranye di Beranda) =====
+  // Diatur dari Profil Admin → "Banner & Promo Beranda" (bagian Strip Promo).
+  // Nilai default = konten awal yang sebelumnya hardcoded di HomeView.
+  // String kosong pada salah satu baris = baris itu disembunyikan.
+  promoStripEnabled Boolean @default(true)
+  promoStripBadge   String  @default("Promo Hari Ini")
+  promoStripTitle   String  @default("Paket Komplit mulai Rp 27.000")
+  promoStripText    String  @default("Geprek + nasi + es teh manis jumbo")
+  // ===== HERO BANNER PROMO HALAMAN MENU =====
+  // Banner besar di atas halaman Menu pelanggan. Diatur dari Profil Admin →
+  // "Banner & Promo Beranda" (bagian Hero Banner Menu). Ada gambar latar
+  // (opsional) + badge + judul + baris penjelas; tanpa gambar → gradien orange.
+  menuHeroEnabled   Boolean  @default(true)
+  menuHeroBadge     String   @default("Promo Spesial")
+  menuHeroTitle     String   @default("Paket Komplit mulai Rp 27.000")
+  menuHeroText      String   @default("Geprek + nasi + es teh manis jumbo")
+  menuHeroImageData String? // gambar latar hero (base64, portabel)
+  menuHeroImageMime String?
+  menuHeroUpdatedAt DateTime? // versi konten — cache-buster URL gambar
+  updatedAt       DateTime @updatedAt
+}
+
+// Transaksi QRIS di gateway SANDBOX lokal (gaya API qriskuu).
+// Disimpan di database (bukan memori) agar state-nya konsisten untuk semua
+// route dan tetap ada walau server restart. Tidak dipakai saat mode produksi.
+model QrisSandboxTrx {
+  id        String    @id @default(cuid())
+  trxid     String    @unique
+  amount    Int
+  reference String
+  qrString  String
+  status    String    @default("PENDING") // PENDING | PAID | EXPIRED | CANCELLED
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  paidAt    DateTime?
+  updatedAt DateTime  @updatedAt
+
+  @@index([expiresAt])
+}

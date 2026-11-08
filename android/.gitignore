@@ -1,0 +1,12 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+app/build/
+captures/
+.externalNativeBuild/
+.cxx/
+# Konfigurasi Firebase milik proyekmu — jangan di-commit
+app/google-services.json

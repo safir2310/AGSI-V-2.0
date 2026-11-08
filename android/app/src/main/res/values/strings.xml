@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">AGSI POS</string>
+    <string name="channel_orders_name">Pesanan &amp; Notifikasi AGSI</string>
+    <string name="channel_orders_desc">Banner heads-up untuk pesanan baru, pembayaran QRIS, status pesanan, dan chat CS</string>
+</resources>

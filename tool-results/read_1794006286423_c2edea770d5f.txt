@@ -1,0 +1,921 @@
+     1→"use client";
+     2→
+     3→import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+     4→import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+     5→import {
+     6→  Bike,
+     7→  BadgeCheck,
+     8→  ClipboardList,
+     9→  Clock,
+    10→  Coins,
+    11→  Loader2,
+    12→  LogOut,
+    13→  Minus,
+    14→  MonitorSmartphone,
+    15→  Plus,
+    16→  Receipt,
+    17→  RefreshCw,
+    18→  ScanLine,
+    19→  Search,
+    20→  ShoppingBag,
+    21→  Trash2,
+    22→  Utensils,
+    23→  Wifi,
+    24→  X,
+    25→} from "lucide-react";
+    26→import { Input } from "@/components/ui/input";
+    27→import { ChickenBadge } from "@/components/logo/ChickenLogo";
+    28→import { ProductThumb } from "@/components/shared/ProductThumb";
+    29→import { QrisPaySheet, type QrisPayOrder } from "@/components/shared/QrisPaySheet";
+    30→import { refreshOrders, useProductsStore, useSettingsStore } from "@/lib/hooks";
+    31→import { useNoticeStore, type AppView } from "@/lib/store";
+    32→import { apiFetch } from "@/lib/api";
+    33→import { formatIDR, type AppUser, type Product } from "@/lib/types";
+    34→import { cn } from "@/lib/utils";
+    35→
+    36→type PosItem = { product: Product; qty: number };
+    37→
+    38→export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView) => void; onLogout: () => void }) {
+    39→  const prefersReduced = useReducedMotion();
+    40→  const showNotice = useNoticeStore((s) => s.show);
+    41→  const { products, load } = useProductsStore();
+    42→  const [query, setQuery] = useState("");
+    43→  /** Popup hasil pencarian menu di bawah input cari (autocompletion) */
+    44→  const [searchOpen, setSearchOpen] = useState(false);
+    45→  const searchBoxRef = useRef<HTMLDivElement | null>(null);
+    46→  const [category, setCategory] = useState("Semua");
+    47→  /** Mode bar pencarian di bawah header: scan barcode member ATAU cari nama produk */
+    48→  const [scanMode, setScanMode] = useState<"member" | "product">("product");
+    49→  const [items, setItems] = useState<PosItem[]>([]);
+    50→  const [customerName, setCustomerName] = useState("");
+    51→  const [tableNo, setTableNo] = useState("");
+    52→  /** Kode member (hasil scan barcode kartu member / ketikan kasir) */
+    53→  const [memberCode, setMemberCode] = useState("");
+    54→  const [memberInfo, setMemberInfo] = useState<{ name: string; memberCode: string; points: number } | null>(null);
+    55→  const [memberChecking, setMemberChecking] = useState(false);
+    56→  const [orderType, setOrderType] = useState<"DINE_IN" | "TAKEAWAY" | "DELIVERY">("DINE_IN");
+    57→  const [payment, setPayment] = useState<"CASH" | "QRIS">("CASH");
+    58→  // Saklar layanan toko (Profil Admin → Pengaturan Toko):
+    59→  // nonaktif → tombol "Antar" / "QRIS" disembunyikan & pilihan lama di-reset
+    60→  const deliveryEnabled = useSettingsStore((s) => s.deliveryEnabled);
+    61→  const qrisEnabled = useSettingsStore((s) => s.qrisEnabled);
+    62→
+    63→  // Layanan dimatikan admin → pilihan lama otomatis dikembalikan
+    64→  useEffect(() => {
+    65→    if (!deliveryEnabled) {
+    66→      setOrderType((t) => (t === "DELIVERY" ? "DINE_IN" : t));
+    67→    }
+    68→    if (!qrisEnabled) {
+    69→      setPayment((p) => (p === "QRIS" ? "CASH" : p));
+    70→    }
+    71→  }, [deliveryEnabled, qrisEnabled]);
+    72→  const [submitting, setSubmitting] = useState(false);
+    73→  const [clock, setClock] = useState("");
+    74→  const [lastOrder, setLastOrder] = useState<{
+    75→    id: string;
+    76→    code: string;
+    77→    total: number;
+    78→    name: string;
+    79→    paymentMethod: string;
+    80→    paymentStatus: string;
+    81→  } | null>(null);
+    82→  /** Transaksi QRIS yang sedang dibayar (QR tampil di layar kasir) */
+    83→  const [payOrder, setPayOrder] = useState<QrisPayOrder | null>(null);
+    84→
+    85→  // Jam operasional live
+    86→  useEffect(() => {
+    87→    const tick = () =>
+    88→      setClock(
+    89→        new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    90→      );
+    91→    tick();
+    92→    const t = setInterval(tick, 1000);
+    93→    return () => clearInterval(t);
+    94→  }, []);
+    95→
+    96→  useEffect(() => {
+    97→    load(true);
+    98→  }, [load]);
+    99→
+   100→  const categories = useMemo(
+   101→    () => ["Semua", ...Array.from(new Set(products.map((p) => p.category)))],
+   102→    [products]
+   103→  );
+   104→
+   105→  const q = query.trim().toLowerCase();
+   106→  const filtered = products.filter((p) => {
+   107→    if (!p.available) return false;
+   108→    // Sedang mencari → hasil dari SEMUA kategori (saringan kategori dilewati),
+   109→    // cocokkan nama produk ATAU nama kategorinya
+   110→    if (q) {
+   111→      return (
+   112→        p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
+   113→      );
+   114→    }
+   115→    return category === "Semua" || p.category === category;
+   116→  });
+   117→
+   118→  /** Menu yang tampil di popup pencarian (maks. 6 supaya ringkas) */
+   119→  const POPUP_MAX = 6;
+   120→  const popupMatches = q ? filtered.slice(0, POPUP_MAX) : [];
+   121→
+   122→  /** Tutup popup saat klik di luar kotak pencarian atau tekan Escape */
+   123→  useEffect(() => {
+   124→    if (!searchOpen) return;
+   125→    const onPointerDown = (e: PointerEvent) => {
+   126→      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) {
+   127→        setSearchOpen(false);
+   128→      }
+   129→    };
+   130→    const onKey = (e: KeyboardEvent) => {
+   131→      if (e.key === "Escape") setSearchOpen(false);
+   132→    };
+   133→    window.addEventListener("pointerdown", onPointerDown);
+   134→    window.addEventListener("keydown", onKey);
+   135→    return () => {
+   136→      window.removeEventListener("pointerdown", onPointerDown);
+   137→      window.removeEventListener("keydown", onKey);
+   138→    };
+   139→  }, [searchOpen]);
+   140→
+   141→  const addItem = (p: Product) =>
+   142→    setItems((cur) => {
+   143→      const found = cur.find((i) => i.product.id === p.id);
+   144→      if (found) return cur.map((i) => (i.product.id === p.id ? { ...i, qty: i.qty + 1 } : i));
+   145→      return [...cur, { product: p, qty: 1 }];
+   146→    });
+   147→
+   148→  /** Pilih menu dari popup: masuk keranjang, bersihkan pencarian, tutup popup */
+   149→  const pickFromPopup = (p: Product) => {
+   150→    addItem(p);
+   151→    setQuery("");
+   152→    setSearchOpen(false);
+   153→  };
+   154→
+   155→  const changeQty = (id: string, delta: number) =>
+   156→    setItems((cur) =>
+   157→      cur
+   158→        .map((i) => (i.product.id === id ? { ...i, qty: i.qty + delta } : i))
+   159→        .filter((i) => i.qty > 0)
+   160→    );
+   161→
+   162→  const subtotal = items.reduce((s, i) => s + i.product.price * i.qty, 0);
+   163→  const totalItems = items.reduce((s, i) => s + i.qty, 0);
+   164→
+   165→  /** Banyak jenis menu di keranjang (≥7) → baris keranjang otomatis jadi
+   166→   *  RINGKAS & TRANSPARAN (kaca) supaya daftar tetap ringan digulir dan
+   167→   *  kasir tetap fokus ke total & tombol bayar saat transaksi ramai */
+   168→  const compactCart = items.length > 6;
+   169→
+   170→  /** Mode scroll daftar keranjang: gradasi atas/bawah menandai daftar bisa
+   171→   *  digulir + item yang BARU ditambahkan langsung digulirkan ke layar */
+   172→  const listRef = useRef<HTMLDivElement | null>(null);
+   173→  const [fade, setFade] = useState({ top: false, bottom: false });
+   174→  const updateFades = useCallback(() => {
+   175→    const el = listRef.current;
+   176→    if (!el) return;
+   177→    setFade({
+   178→      top: el.scrollTop > 4,
+   179→      bottom: el.scrollTop + el.clientHeight < el.scrollHeight - 4,
+   180→    });
+   181→  }, []);
+   182→  const prevRows = useRef(0);
+   183→  useEffect(() => {
+   184→    const el = listRef.current;
+   185→    // Jenis menu BARU masuk keranjang → gulir ke bawah agar langsung terlihat
+   186→    if (items.length > prevRows.current && el) {
+   187→      el.scrollTo({
+   188→        top: el.scrollHeight,
+   189→        behavior: prefersReduced ? "auto" : "smooth",
+   190→      });
+   191→    }
+   192→    prevRows.current = items.length;
+   193→    updateFades();
+   194→  }, [items, prefersReduced, updateFades]);
+   195→
+   196→  /** Cari member dari kode (dipakai saat scan barcode / ketik lalu Enter) */
+   197→  const lookupMember = async (raw?: string) => {
+   198→    const code = (raw ?? memberCode).replace(/\D/g, "");
+   199→    if (!code) {
+   200→      setMemberInfo(null);
+   201→      return;
+   202→    }
+   203→    setMemberChecking(true);
+   204→    try {
+   205→      const res = await apiFetch(`/api/member/lookup?code=${encodeURIComponent(code)}`, {
+   206→        cache: "no-store",
+   207→      });
+   208→      const data = await res.json();
+   209→      if (!res.ok) {
+   210→        setMemberInfo(null);
+   211→        showNotice({ type: "error", title: "Member Tidak Ditemukan", message: data.error ?? "Periksa kode member." });
+   212→        return;
+   213→      }
+   214→      setMemberInfo(data.member);
+   215→    } catch {
+   216→      setMemberInfo(null);
+   217→      showNotice({ type: "error", title: "Gagal Memeriksa", message: "Tidak dapat menghubungi server." });
+   218→    } finally {
+   219→      setMemberChecking(false);
+   220→    }
+   221→  };
+   222→
+   223→  const clearMember = () => {
+   224→    setMemberCode("");
+   225→    setMemberInfo(null);
+   226→  };
+   227→
+   228→  const submit = async () => {
+   229→    if (items.length === 0) return;
+   230→    setSubmitting(true);
+   231→    try {
+   232→      const res = await apiFetch("/api/orders", {
+   233→        method: "POST",
+   234→        headers: { "Content-Type": "application/json" },
+   235→        body: JSON.stringify({
+   236→          items: items.map((i) => ({ productId: i.product.id, qty: i.qty })),
+   237→          customerName: customerName.trim() || `Walk-in${tableNo ? ` Meja ${tableNo}` : ""}`,
+   238→          memberCode: memberInfo ? memberInfo.memberCode : undefined,
+   239→          type: orderType,
+   240→          tableNo: orderType === "DINE_IN" ? tableNo : undefined,
+   241→          paymentMethod: payment,
+   242→          source: "POS",
+   243→        }),
+   244→      });
+   245→      const data = await res.json();
+   246→      if (!res.ok) {
+   247→        showNotice({ type: "error", title: "Transaksi Gagal", message: data.error ?? "Coba lagi." });
+   248→        return;
+   249→      }
+   250→      setLastOrder({
+   251→        id: data.order.id,
+   252→        code: data.order.code,
+   253→        total: data.order.total,
+   254→        name: data.order.customerName,
+   255→        paymentMethod: data.order.paymentMethod,
+   256→        paymentStatus: data.order.paymentStatus,
+   257→      });
+   258→      setItems([]);
+   259→      setCustomerName("");
+   260→      setTableNo("");
+   261→      clearMember();
+   262→      refreshOrders("all");
+   263→
+   264→      // QRIS: tampilkan QR di layar kasir agar pelanggan bisa memindai.
+   265→      // Sistem yang melunaskan otomatis saat dana masuk (webhook/polling) —
+   266→      // kasir TIDAK menandai lunas.
+   267→      if (
+   268→        data.order.paymentMethod === "QRIS" &&
+   269→        data.order.paymentStatus !== "PAID" &&
+   270→        data.order.total > 0
+   271→      ) {
+   272→        setPayOrder({ id: data.order.id, code: data.order.code, total: data.order.total });
+   273→        return;
+   274→      }
+   275→
+   276→      showNotice({
+   277→        type: "success",
+   278→        title: "Transaksi Berhasil ✓",
+   279→        message: `Pesanan ${data.order.code} (${formatIDR(data.order.total)}) telah dicatat dan masuk antrean dapur.`,
+   280→      });
+   281→    } catch {
+   282→      showNotice({ type: "error", title: "Koneksi Bermasalah", message: "Periksa jaringan lalu ulangi." });
+   283→    } finally {
+   284→      setSubmitting(false);
+   285→    }
+   286→  };
+   287→
+   288→  return (
+   289→    <div className="flex h-dvh flex-col bg-orange-50/40 pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]">
+   290→      {/* ===== TOOLBAR OPERASIONAL POS ===== */}
+   291→      <header className="z-30 shrink-0 bg-gradient-to-r from-orange-700 via-orange-600 to-orange-500 text-white shadow-xl">
+   292→        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 lg:px-6">
+   293→          <div className="flex items-center gap-2.5">
+   294→            <ChickenBadge size={38} />
+   295→            <div className="leading-tight">
+   296→              <p className="text-sm font-black uppercase tracking-wide">POS Kasir</p>
+   297→              <p className="text-[10px] font-semibold text-orange-100">Ayam Geprek Sambal Ijo</p>
+   298→            </div>
+   299→          </div>
+   300→
+   301→          <div className="hidden items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold md:flex">
+   302→            <Clock className="h-3.5 w-3.5" /> <span className="tabular-nums">{clock}</span>
+   303→          </div>
+   304→          <div className="hidden items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold md:flex">
+   305→            <Wifi className="h-3.5 w-3.5" /> Online
+   306→          </div>
+   307→          <div className="flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold">
+   308→            👤 {user.name}
+   309→          </div>
+   310→
+   311→          <div className="ml-auto flex items-center gap-2">
+   312→            {lastOrder && (
+   313→              <button
+   314→                onClick={() => {
+   315→                  // Pesanan QRIS belum lunas -> buka lagi layar QR (pantau otomatis)
+   316→                  if (
+   317→                    lastOrder.paymentMethod === "QRIS" &&
+   318→                    lastOrder.paymentStatus !== "PAID" &&
+   319→                    lastOrder.total > 0
+   320→                  ) {
+   321→                    setPayOrder({
+   322→                      id: lastOrder.id,
+   323→                      code: lastOrder.code,
+   324→                      total: lastOrder.total,
+   325→                    });
+   326→                    return;
+   327→                  }
+   328→                  showNotice({
+   329→                    type: "info",
+   330→                    title: `Struk Terakhir — ${lastOrder.code}`,
+   331→                    message: `${lastOrder.name} • Total ${formatIDR(lastOrder.total)}. Terima kasih!`,
+   332→                  });
+   333→                }}
+   334→                className="press-effect flex items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 text-xs font-bold hover:bg-white/25"
+   335→                title={
+   336→                  lastOrder.paymentMethod === "QRIS" && lastOrder.paymentStatus !== "PAID"
+   337→                    ? "Buka lagi layar QRIS (memantau otomatis)"
+   338→                    : "Lihat struk terakhir"
+   339→                }
+   340→              >
+   341→                <Receipt className="h-4 w-4" /> {lastOrder.code}
+   342→              </button>
+   343→            )}
+   344→            {(user.role === "ADMIN" || user.role === "OWNER") && (
+   345→              <button
+   346→                onClick={() => go("dashboard")}
+   347→                className="press-effect flex items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 text-xs font-bold hover:bg-white/25"
+   348→              >
+   349→                <MonitorSmartphone className="h-4 w-4" /> Mode Admin
+   350→              </button>
+   351→            )}
+   352→            <button
+   353→              onClick={() => load(true)}
+   354→              aria-label="Muat ulang produk"
+   355→              className="press-effect flex h-8 w-8 items-center justify-center rounded-full bg-white/15 hover:bg-white/25"
+   356→            >
+   357→              <RefreshCw className="h-4 w-4" />
+   358→            </button>
+   359→            <button
+   360→              onClick={onLogout}
+   361→              className="press-effect flex items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 text-xs font-bold hover:bg-white/25"
+   362→            >
+   363→              <LogOut className="h-4 w-4" /> Keluar
+   364→            </button>
+   365→          </div>
+   366→        </div>
+   367→      </header>
+   368→
+   369→      {/* ===== BAR SCAN BARCODE & PENCARIAN (di bawah header) =====
+   370→          Mode 1: Scan Member — scan/ketik kode member (8 digit) → member terpasang
+   371→          Mode 2: Nama Produk — saring katalog menu berdasarkan nama produk */}
+   372→      <div className="z-20 shrink-0 border-b border-orange-100 bg-white px-4 py-2.5 shadow-sm lg:px-5">
+   373→        <div className="flex flex-wrap items-center gap-2">
+   374→          {/* Pemilih mode */}
+   375→          <div
+   376→            role="tablist"
+   377→            aria-label="Mode pencarian"
+   378→            className="flex shrink-0 items-center gap-0.5 rounded-xl bg-orange-50 p-1 ring-1 ring-orange-200"
+   379→          >
+   380→            <button
+   381→              role="tab"
+   382→              aria-selected={scanMode === "member"}
+   383→              onClick={() => setScanMode("member")}
+   384→              className={cn(
+   385→                "press-effect flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-extrabold transition",
+   386→                scanMode === "member"
+   387→                  ? "bg-orange-600 text-white shadow-md"
+   388→                  : "text-orange-700 hover:bg-orange-100"
+   389→              )}
+   390→            >
+   391→              <ScanLine className="h-3.5 w-3.5" /> Scan Member
+   392→            </button>
+   393→            <button
+   394→              role="tab"
+   395→              aria-selected={scanMode === "product"}
+   396→              onClick={() => setScanMode("product")}
+   397→              className={cn(
+   398→                "press-effect flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-extrabold transition",
+   399→                scanMode === "product"
+   400→                  ? "bg-orange-600 text-white shadow-md"
+   401→                  : "text-orange-700 hover:bg-orange-100"
+   402→              )}
+   403→            >
+   404→              <Search className="h-3.5 w-3.5" /> Nama Produk
+   405→            </button>
+   406→          </div>
+   407→
+   408→          {/* Input sesuai mode */}
+   409→          {scanMode === "member" ? (
+   410→            <form
+   411→              className="relative min-w-[220px] flex-1"
+   412→              onSubmit={(e) => {
+   413→                e.preventDefault();
+   414→                void lookupMember();
+   415→              }}
+   416→            >
+   417→              <ScanLine className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-orange-400" />
+   418→              <Input
+   419→                inputMode="numeric"
+   420→                autoFocus
+   421→                placeholder="Scan / ketik kode member (8 digit), Enter…"
+   422→                className="border-orange-200 pl-9 pr-24 focus-visible:ring-orange-400"
+   423→                value={memberCode}
+   424→                disabled={memberChecking}
+   425→                onChange={(e) => {
+   426→                  const v = e.target.value.replace(/\D/g, "").slice(0, 12);
+   427→                  setMemberCode(v);
+   428→                  // Kode member selalu 8 digit → cari otomatis begitu genap 8 angka
+   429→                  if (v.length === 8 && !memberInfo) void lookupMember(v);
+   430→                }}
+   431→              />
+   432→              <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
+   433→                {memberChecking && <Loader2 className="h-3.5 w-3.5 animate-spin text-orange-500" />}
+   434→                {memberCode && !memberInfo && (
+   435→                  <button
+   436→                    type="button"
+   437→                    onClick={() => setMemberCode("")}
+   438→                    aria-label="Bersihkan kode"
+   439→                    className="press-effect flex h-6 w-6 items-center justify-center rounded-full text-neutral-400 hover:bg-orange-50 hover:text-neutral-600"
+   440→                  >
+   441→                    <X className="h-3.5 w-3.5" />
+   442→                  </button>
+   443→                )}
+   444→              </div>
+   445→            </form>
+   446→          ) : (
+   447→            <div ref={searchBoxRef} className="relative min-w-[220px] flex-1">
+   448→              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-orange-400" />
+   449→              <Input
+   450→                autoFocus
+   451→                placeholder="Cari menu dengan nama produk… (cth: geprek, mozarella)"
+   452→                className="border-orange-200 pl-9 pr-9 focus-visible:ring-orange-400"
+   453→                value={query}
+   454→                onChange={(e) => {
+   455→                  setQuery(e.target.value);
+   456→                  setSearchOpen(true);
+   457→                }}
+   458→                onFocus={() => {
+   459→                  if (query.trim()) setSearchOpen(true);
+   460→                }}
+   461→                onKeyDown={(e) => {
+   462→                  // Enter = langsung masukkan hasil teratas ke keranjang
+   463→                  if (e.key === "Enter" && popupMatches.length > 0) {
+   464→                    e.preventDefault();
+   465→                    pickFromPopup(popupMatches[0]);
+   466→                  }
+   467→                }}
+   468→              />
+   469→              {query && (
+   470→                <button
+   471→                  onClick={() => {
+   472→                    setQuery("");
+   473→                    setSearchOpen(false);
+   474→                  }}
+   475→                  aria-label="Bersihkan pencarian"
+   476→                  className="press-effect absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-neutral-400 hover:bg-orange-50 hover:text-neutral-600"
+   477→                >
+   478→                  <X className="h-3.5 w-3.5" />
+   479→                </button>
+   480→              )}
+   481→
+   482→              {/* ===== POPUP HASIL PENCARIAN ===== */}
+   483→              <AnimatePresence>
+   484→                {searchOpen && q && (
+   485→                  <motion.div
+   486→                    initial={prefersReduced ? false : { opacity: 0, y: -6, scale: 0.98 }}
+   487→                    animate={{ opacity: 1, y: 0, scale: 1 }}
+   488→                    exit={prefersReduced ? undefined : { opacity: 0, y: -6, scale: 0.98 }}
+   489→                    transition={{ duration: 0.16, ease: "easeOut" }}
+   490→                    role="listbox"
+   491→                    aria-label="Hasil pencarian menu"
+   492→                    className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-orange-200 bg-white shadow-2xl shadow-orange-900/10"
+   493→                  >
+   494→                    {popupMatches.length === 0 ? (
+   495→                      <div className="px-4 py-5 text-center">
+   496→                        <p className="text-xl">🔍</p>
+   497→                        <p className="mt-1 text-xs font-bold text-neutral-500">
+   498→                          Tidak ada menu “{query.trim()}”
+   499→                        </p>
+   500→                        <p className="text-[10px] text-neutral-400">Coba kata kunci lain, cth: geprek, es teh</p>
+   501→                      </div>
+   502→                    ) : (
+   503→                      <>
+   504→                        <p className="border-b border-orange-100 bg-orange-50/70 px-3.5 py-1.5 text-[10px] font-black uppercase tracking-wide text-orange-700">
+   505→                          {filtered.length} menu ditemukan — ketuk untuk masukkan keranjang
+   506→                        </p>
+   507→                        {popupMatches.map((p) => {
+   508→                          const inCart = items.find((i) => i.product.id === p.id)?.qty ?? 0;
+   509→                          return (
+   510→                            <button
+   511→                              key={p.id}
+   512→                              role="option"
+   513→                              aria-selected={false}
+   514→                              onClick={() => pickFromPopup(p)}
+   515→                              className="flex w-full items-center gap-2.5 border-b border-orange-50 px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-orange-50"
+   516→                            >
+   517→                              <ProductThumb
+   518→                                product={p}
+   519→                                className="h-10 w-10 shrink-0 text-xl"
+   520→                              />
+   521→                              <span className="min-w-0 flex-1">
+   522→                                <span className="block truncate text-xs font-bold text-neutral-800">
+   523→                                  {p.name}
+   524→                                  {inCart > 0 && (
+   525→                                    <span className="ml-1.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[9px] font-black text-orange-700">
+   526→                                      di keranjang ×{inCart}
+   527→                                    </span>
+   528→                                  )}
+   529→                                </span>
+   530→                                <span className="block truncate text-[10px] text-neutral-400">
+   531→                                  {p.category}
+   532→                                </span>
+   533→                              </span>
+   534→                              <span className="shrink-0 text-xs font-black text-orange-600">
+   535→                                {formatIDR(p.price)}
+   536→                              </span>
+   537→                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-orange-600 text-white">
+   538→                                <Plus className="h-3.5 w-3.5" />
+   539→                              </span>
+   540→                            </button>
+   541→                          );
+   542→                        })}
+   543→                        {filtered.length > POPUP_MAX && (
+   544→                          <button
+   545→                            onClick={() => setSearchOpen(false)}
+   546→                            className="w-full bg-orange-50/70 px-3 py-2 text-[11px] font-extrabold text-orange-700 transition-colors hover:bg-orange-100"
+   547→                          >
+   548→                            Lihat semua {filtered.length} hasil di katalog ↓
+   549→                          </button>
+   550→                        )}
+   551→                      </>
+   552→                    )}
+   553→                  </motion.div>
+   554→                )}
+   555→              </AnimatePresence>
+   556→            </div>
+   557→          )}
+   558→        </div>
+   559→
+   560→        {/* Chip member yang sedang terpasang (hasil scan) */}
+   561→        {memberInfo && (
+   562→          <div className="mt-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+   563→            <BadgeCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+   564→            <div className="min-w-0 flex-1">
+   565→              <p className="truncate text-xs font-black text-emerald-800">
+   566→                {memberInfo.name} <span className="font-mono">({memberInfo.memberCode})</span>
+   567→              </p>
+   568→              <p className="flex items-center gap-1 text-[10px] font-bold text-emerald-700">
+   569→                <Coins className="h-3 w-3" /> Saldo {memberInfo.points.toLocaleString("id-ID")} poin — masuk
+   570→                saat pesanan selesai
+   571→              </p>
+   572→            </div>
+   573→            <button
+   574→              onClick={clearMember}
+   575→              aria-label="Lepas member"
+   576→              className="press-effect flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-emerald-600 hover:bg-emerald-100"
+   577→            >
+   578→              <X className="h-3.5 w-3.5" />
+   579→            </button>
+   580→          </div>
+   581→        )}
+   582→      </div>
+   583→
+   584→      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:flex-row lg:overflow-hidden lg:p-5">
+   585→        {/* ===== KATALOG PRODUK ===== */}
+   586→        <main className="flex min-h-[55dvh] flex-1 flex-col gap-3 overflow-hidden lg:min-h-0">
+   587→          <div className="scrollbar-slim flex gap-1.5 overflow-x-auto pb-0.5">
+   588→              {categories.map((c) => (
+   589→                <button
+   590→                  key={c}
+   591→                  onClick={() => {
+   592→                    setCategory(c);
+   593→                    // memilih kategori = berhenti mencari → tampilkan isi kategori itu
+   594→                    if (query) setQuery("");
+   595→                  }}
+   596→                  className={cn(
+   597→                    "shrink-0 rounded-full px-3.5 py-2 text-xs font-bold transition",
+   598→                    !q && category === c
+   599→                      ? "bg-orange-600 text-white shadow-md"
+   600→                      : "bg-white text-orange-700 ring-1 ring-orange-200 hover:bg-orange-50"
+   601→                  )}
+   602→                >
+   603→                  {c}
+   604→                </button>
+   605→              ))}
+   606→          </div>
+   607→
+   608→          {/* Status pencarian aktif: hasil diambil dari semua kategori */}
+   609→          {q && (
+   610→            <div className="flex shrink-0 items-center justify-between gap-2 rounded-xl border border-orange-200 bg-orange-50/70 px-3.5 py-2">
+   611→              <p className="min-w-0 truncate text-[11px] font-bold text-orange-800">
+   612→                🔍 {filtered.length} menu ditemukan untuk “{query.trim()}” — dari semua kategori
+   613→              </p>
+   614→              <button
+   615→                onClick={() => setQuery("")}
+   616→                className="press-effect shrink-0 rounded-full bg-orange-600 px-2.5 py-1 text-[10px] font-extrabold text-white hover:bg-orange-700"
+   617→              >
+   618→                Reset
+   619→              </button>
+   620→            </div>
+   621→          )}
+   622→
+   623→          <div className="scrollbar-slim grid min-h-0 flex-1 auto-rows-min grid-cols-2 content-start gap-3 overflow-y-auto pb-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+   624→            <AnimatePresence mode="popLayout">
+   625→              {filtered.map((p) => {
+   626→                const inCart = items.find((i) => i.product.id === p.id)?.qty ?? 0;
+   627→                return (
+   628→                  <motion.button
+   629→                    layout={!prefersReduced}
+   630→                    key={p.id}
+   631→                    initial={prefersReduced ? false : { opacity: 0, scale: 0.94 }}
+   632→                    animate={{ opacity: 1, scale: 1 }}
+   633→                    exit={prefersReduced ? undefined : { opacity: 0, scale: 0.94 }}
+   634→                    whileTap={{ scale: 0.96 }}
+   635→                    onClick={() => addItem(p)}
+   636→                    className={cn(
+   637→                      "card-lift group relative flex flex-col rounded-2xl border bg-white p-3 text-left shadow-sm",
+   638→                      inCart > 0 ? "border-orange-400 ring-2 ring-orange-200" : "border-orange-100"
+   639→                    )}
+   640→                  >
+   641→                    {inCart > 0 && (
+   642→                      <span className="absolute -right-1.5 -top-1.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-orange-600 px-1.5 text-xs font-black text-white shadow-lg">
+   643→                        {inCart}
+   644→                      </span>
+   645→                    )}
+   646→                    <ProductThumb
+   647→                      product={p}
+   648→                      className="mb-2 aspect-square w-full text-4xl"
+   649→                      imgClassName="aspect-square transition-transform group-hover:scale-110"
+   650→                      emojiClassName="transition-transform group-hover:scale-110"
+   651→                    />
+   652→                    <p className="line-clamp-1 text-sm font-bold text-neutral-800">{p.name}</p>
+   653→                    <p className="text-[10px] text-neutral-400">{p.category}</p>
+   654→                    <p className="mt-1 text-sm font-black text-orange-600">{formatIDR(p.price)}</p>
+   655→                  </motion.button>
+   656→                );
+   657→              })}
+   658→            </AnimatePresence>
+   659→            {filtered.length === 0 && (
+   660→              <div className="col-span-full flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-orange-200 bg-white/60 p-10 text-center">
+   661→                <span className="text-3xl">🔍</span>
+   662→                <p className="text-sm font-semibold text-neutral-400">
+   663→                  {q
+   664→                    ? `Tidak ada menu yang cocok untuk “${query.trim()}”`
+   665→                    : category === "Semua"
+   666→                      ? "Belum ada menu"
+   667→                      : `Belum ada menu di kategori ${category}`}
+   668→                </p>
+   669→                {(q || category !== "Semua") && (
+   670→                  <button
+   671→                    onClick={() => {
+   672→                      setQuery("");
+   673→                      setCategory("Semua");
+   674→                    }}
+   675→                    className="press-effect mt-1 rounded-full bg-orange-600 px-4 py-2 text-[11px] font-extrabold text-white shadow-md hover:bg-orange-700"
+   676→                  >
+   677→                    Lihat Semua Menu
+   678→                  </button>
+   679→                )}
+   680→              </div>
+   681→            )}
+   682→          </div>
+   683→        </main>
+   684→
+   685→        {/* ===== PANEL KERANJANG / PEMBAYARAN ===== */}
+   686→        <aside className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-xl lg:w-[360px]">
+   687→          <div className="flex items-center justify-between border-b border-orange-100 bg-gradient-to-r from-orange-600 to-orange-500 px-4 py-3 text-white">
+   688→            <div className="flex items-center gap-2">
+   689→              <ClipboardList className="h-5 w-5" />
+   690→              <div>
+   691→                <p className="text-sm font-black">Pesanan Saat Ini</p>
+   692→                <p className="text-[10px] text-orange-100">{totalItems} item di keranjang</p>
+   693→              </div>
+   694→            </div>
+   695→            {items.length > 0 && (
+   696→              <button
+   697→                onClick={() => setItems([])}
+   698→                className="press-effect flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-bold hover:bg-white/25"
+   699→              >
+   700→                <Trash2 className="h-3 w-3" /> Kosongkan
+   701→              </button>
+   702→            )}
+   703→          </div>
+   704→
+   705→          {/* Chip mode ringkas — muncul otomatis saat keranjang ramai */}
+   706→          {compactCart && (
+   707→            <p className="shrink-0 border-b border-orange-100/70 bg-orange-50/60 px-3 py-1.5 text-center text-[10px] font-bold text-orange-700">
+   708→              🧺 Mode ringkas: {items.length} jenis menu — baris transparan, gulir untuk melihat
+   709→              semua
+   710→            </p>
+   711→          )}
+   712→
+   713→          {/* Item list — MODE SCROLL: gradasi atas/bawah menandai daftar bisa
+   714→              digulir; tinggi dibatasi di layar kecil agar form transaksi
+   715→              selalu terjangkau tanpa menggulir jauh */}
+   716→          <div className="relative min-h-0 flex-1">
+   717→            <div
+   718→              aria-hidden
+   719→              className={cn(
+   720→                "pointer-events-none absolute inset-x-0 top-0 z-10 h-5 bg-gradient-to-b from-white to-transparent transition-opacity duration-200",
+   721→                fade.top ? "opacity-100" : "opacity-0"
+   722→              )}
+   723→            />
+   724→            <div
+   725→              aria-hidden
+   726→              className={cn(
+   727→                "pointer-events-none absolute inset-x-0 bottom-0 z-10 h-5 bg-gradient-to-t from-white to-transparent transition-opacity duration-200",
+   728→                fade.bottom ? "opacity-100" : "opacity-0"
+   729→              )}
+   730→            />
+   731→            <div
+   732→              ref={listRef}
+   733→              onScroll={updateFades}
+   734→              className="scrollbar-slim h-full max-h-[44dvh] min-h-[100px] space-y-2 overflow-y-auto p-3 lg:max-h-none"
+   735→            >
+   736→              {items.length === 0 ? (
+   737→                <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 p-6 text-center">
+   738→                  <span className="text-4xl">🧺</span>
+   739→                  <p className="text-xs font-semibold text-neutral-400">
+   740→                    Klik menu di sebelah kiri untuk menambah item
+   741→                  </p>
+   742→                </div>
+   743→              ) : (
+   744→                items.map((i) => (
+   745→                  <motion.div
+   746→                    layout={!prefersReduced}
+   747→                    key={i.product.id}
+   748→                    initial={prefersReduced ? false : { opacity: 0, x: 12 }}
+   749→                    animate={{ opacity: 1, x: 0 }}
+   750→                    className={cn(
+   751→                      "flex items-center gap-2.5 rounded-xl border",
+   752→                      compactCart
+   753→                        ? "border-orange-100/60 bg-white/50 p-2 backdrop-blur-sm"
+   754→                        : "border-orange-50 bg-orange-50/40 p-2.5"
+   755→                    )}
+   756→                  >
+   757→                    <ProductThumb
+   758→                      product={i.product}
+   759→                      className={compactCart ? "h-7 w-7 text-base" : "h-9 w-9 text-lg"}
+   760→                      rounded="rounded-lg"
+   761→                    />
+   762→                    <div className="min-w-0 flex-1">
+   763→                      <p className="line-clamp-1 text-xs font-bold text-neutral-800">{i.product.name}</p>
+   764→                      <p className="text-[11px] font-semibold text-orange-600">
+   765→                        {formatIDR(i.product.price * i.qty)}
+   766→                      </p>
+   767→                    </div>
+   768→                  <div className="flex items-center gap-1 rounded-full bg-white p-0.5 shadow-sm">
+   769→                    <button
+   770→                      aria-label="Kurangi"
+   771→                      onClick={() => changeQty(i.product.id, -1)}
+   772→                      className="press-effect flex h-6 w-6 items-center justify-center rounded-full text-orange-700 hover:bg-orange-100"
+   773→                    >
+   774→                      <Minus className="h-3 w-3" />
+   775→                    </button>
+   776→                    <span className="w-5 text-center text-xs font-black text-orange-800">{i.qty}</span>
+   777→                    <button
+   778→                      aria-label="Tambah"
+   779→                      onClick={() => changeQty(i.product.id, 1)}
+   780→                      className="press-effect flex h-6 w-6 items-center justify-center rounded-full bg-orange-600 text-white hover:bg-orange-700"
+   781→                    >
+   782→                      <Plus className="h-3 w-3" />
+   783→                    </button>
+   784→                  </div>
+   785→                    </motion.div>
+   786→              ))
+   787→            )}
+   788→            </div>
+   789→          </div>
+   790→
+   791→          {/* Form transaksi — bagian input/pilihan bisa digulir sendiri bila
+   792→              layar pendek, sehingga TOTAL & tombol bayar tidak terpotong */}
+   793→          <div className="scrollbar-slim max-h-[40dvh] shrink-0 space-y-2.5 overflow-y-auto border-t border-orange-100 p-3">
+   794→            <div className="grid grid-cols-2 gap-2">
+   795→              <Input
+   796→                placeholder="Nama pelanggan (opsional)"
+   797→                className="border-orange-200 text-base md:text-xs focus-visible:ring-orange-400"
+   798→                value={customerName}
+   799→                onChange={(e) => setCustomerName(e.target.value)}
+   800→              />
+   801→              {orderType === "DINE_IN" ? (
+   802→                <Input
+   803→                  placeholder="No. meja"
+   804→                  className="border-orange-200 text-base md:text-xs focus-visible:ring-orange-400"
+   805→                  value={tableNo}
+   806→                  onChange={(e) => setTableNo(e.target.value)}
+   807→                />
+   808→              ) : (
+   809→                <div className="flex items-center rounded-lg bg-orange-50 px-2 text-[10px] font-bold text-orange-700">
+   810→                  {orderType === "TAKEAWAY" ? "Bungkus oleh pelanggan" : "Diantar kurir toko"}
+   811→                </div>
+   812→              )}
+   813→            </div>
+   814→
+   815→            {/* Member dikelola lewat bar "Scan Member" di bawah header */}
+   816→
+   817→            {/* Jenis pesanan — "Antar" hilang bila layanan dimatikan admin */}
+   818→            <div className={cn("grid gap-1.5", deliveryEnabled ? "grid-cols-3" : "grid-cols-2")}>
+   819→              {[
+   820→                { id: "DINE_IN" as const, label: "Di Tempat", icon: Utensils },
+   821→                { id: "TAKEAWAY" as const, label: "Bungkus", icon: ShoppingBag },
+   822→                ...(deliveryEnabled
+   823→                  ? [{ id: "DELIVERY" as const, label: "Antar", icon: Bike }]
+   824→                  : []),
+   825→              ].map((t) => (
+   826→                <button
+   827→                  key={t.id}
+   828→                  onClick={() => setOrderType(t.id)}
+   829→                  className={cn(
+   830→                    "press-effect flex flex-col items-center gap-0.5 rounded-xl border py-2 text-[10px] font-bold transition",
+   831→                    orderType === t.id
+   832→                      ? "border-orange-500 bg-orange-50 text-orange-700 ring-1 ring-orange-300"
+   833→                      : "border-neutral-200 text-neutral-500"
+   834→                  )}
+   835→                >
+   836→                  <t.icon className="h-4 w-4" /> {t.label}
+   837→                </button>
+   838→              ))}
+   839→            </div>
+   840→
+   841→            {/* Metode bayar — QRIS hilang bila dimatikan admin */}
+   842→            <div className={cn("grid gap-1.5", qrisEnabled ? "grid-cols-2" : "grid-cols-1")}>
+   843→              {[
+   844→                { id: "CASH" as const, label: "💵 Tunai" },
+   845→                ...(qrisEnabled ? [{ id: "QRIS" as const, label: "📱 QRIS" }] : []),
+   846→              ].map((p) => (
+   847→                <button
+   848→                  key={p.id}
+   849→                  onClick={() => setPayment(p.id)}
+   850→                  className={cn(
+   851→                    "press-effect rounded-xl border py-2 text-xs font-bold transition",
+   852→                    payment === p.id
+   853→                      ? "border-orange-500 bg-orange-50 text-orange-700 ring-1 ring-orange-300"
+   854→                      : "border-neutral-200 text-neutral-500"
+   855→                  )}
+   856→                >
+   857→                  {p.label}
+   858→                </button>
+   859→              ))}
+   860→            </div>
+   861→
+   862→            {/* TOTAL + tombol bayar — SELALU terlihat, tidak ikut menggulir */}
+   863→          </div>
+   864→          <div className="shrink-0 space-y-2.5 border-t border-orange-100 bg-white p-3">
+   865→            <div className="rounded-xl bg-gradient-to-r from-orange-50 to-white p-3 ring-1 ring-orange-100">
+   866→              <div className="flex items-center justify-between text-xs text-neutral-500">
+   867→                <span>Subtotal ({totalItems} item)</span>
+   868→                <span className="font-bold text-neutral-700">{formatIDR(subtotal)}</span>
+   869→              </div>
+   870→              <div className="mt-1 flex items-center justify-between">
+   871→                <span className="text-sm font-black text-neutral-800">TOTAL</span>
+   872→                <span className="text-xl font-black text-orange-600">{formatIDR(subtotal)}</span>
+   873→              </div>
+   874→            </div>
+   875→
+   876→            <motion.button
+   877→              whileTap={prefersReduced ? undefined : { scale: 0.97 }}
+   878→              disabled={items.length === 0 || submitting}
+   879→              onClick={submit}
+   880→              className="press-effect flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-orange-500 text-sm font-extrabold text-white shadow-lg shadow-orange-500/40 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+   881→            >
+   882→              {submitting ? (
+   883→                "Menyimpan transaksi…"
+   884→              ) : (
+   885→                <>
+   886→                  <Receipt className="h-4 w-4" />{" "}
+   887→                  {payment === "QRIS" ? "Bayar QRIS" : "Bayar & Cetak"} — {formatIDR(subtotal)}
+   888→                </>
+   889→              )}
+   890→            </motion.button>
+   891→          </div>
+   892→        </aside>
+   893→      </div>
+   894→
+   895→      {/* ===== LAYAR QRIS UNTUK PELANGGAN DI KASIR ===== */}
+   896→      {payOrder && (
+   897→        <QrisPaySheet
+   898→          order={payOrder}
+   899→          variant="pos"
+   900→          onClose={() => {
+   901→            const closed = payOrder;
+   902→            setPayOrder(null);
+   903→            showNotice({
+   904→              type: "info",
+   905→              title: `Struk ${closed.code}`,
+   906→              message: `${formatIDR(closed.total)} • Pembayaran QRIS diverifikasi OTOMATIS oleh sistem saat dana masuk — kasir tidak perlu (dan tidak bisa) menandai lunas. Tekan kode pesanan di bar atas untuk membuka lagi layar QR dan memantau statusnya.`,
+   907→            });
+   908→          }}
+   909→          onPaid={() => {
+   910→            // Sinkronkan chip struk terakhir: QRIS sudah lunas lewat sistem
+   911→            setLastOrder((o) =>
+   912→              o && o.id === payOrder.id ? { ...o, paymentStatus: "PAID" } : o
+   913→            );
+   914→            void refreshOrders("all");
+   915→          }}
+   916→        />
+   917→      )}
+   918→    </div>
+   919→  );
+   920→}
+   921→
