@@ -1,15 +1,13 @@
 generator client {
-  provider        = "prisma-client-js"
-  // driverAdapters: PrismaClient berjalan lewat adapter libSQL (@libsql/client)
-  // sehingga bisa terhubung ke TURSO (libsql://) — lihat src/lib/db.ts.
-  previewFeatures = ["driverAdapters"]
+  // Koneksi standar Prisma Postgres / Postgres biasa — TANPA driver adapter
+  // (db.prisma.io memakai wire protocol Postgres standar + sslmode=require).
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  // Provider tetap "sqlite" (Turso/libSQL kompatibel SQLite). Variabel
-  // DATABASE_URL dipakai PRISMA CLI (db push/diff) menunjuk file SQLite lokal;
-  // saat runtime aplikasi memakai TURSO_DATABASE_URL bila tersedia.
-  provider = "sqlite"
+  // Prisma Postgres (Vercel-ready): postgres://…@db.prisma.io:5432/postgres?sslmode=require
+  // variabel DATABASE_URL dipakai CLI (db push) sekaligus runtime aplikasi.
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

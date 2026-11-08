@@ -63,3 +63,7 @@ server.log
 *firebase-adminsdk*.json
 *service-account*.json
 *serviceAccount*.json
+
+# file backup lokal
+*.bak
+*.backup-*
