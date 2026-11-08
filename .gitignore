@@ -72,3 +72,6 @@ server.log
 
 # berkas rahasia lokal — JANGAN pernah di-commit (cegah snapshot otomatis)
 download/vercel-env-copy-paste.txt
+
+# file upload user — berisi kredensial service account, JANGAN pernah di-commit
+upload/

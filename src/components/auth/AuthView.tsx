@@ -10,10 +10,7 @@ import {
   LogIn,
   Mail,
   RotateCcw,
-  ShieldCheck,
   UserPlus,
-  UserRound,
-  Utensils,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,12 +31,6 @@ type AuthViewProps = {
 };
 
 type Mode = "login" | "register" | "forgot";
-
-const DEMO_ACCOUNTS = [
-  { label: "Pelanggan", email: "budi@example.com", password: "user123", icon: UserRound },
-  { label: "Owner/Admin", email: "admin@agsi.test", password: "admin123", icon: ShieldCheck },
-  { label: "Kasir POS", email: "kasir@agsi.test", password: "kasir123", icon: Utensils },
-];
 
 export function AuthView({ onSuccess }: AuthViewProps) {
   const [mode, setMode] = useState<Mode>("login");
@@ -243,11 +234,6 @@ export function AuthView({ onSuccess }: AuthViewProps) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const fillDemo = (email: string, password: string) => {
-    setForm((f) => ({ ...f, email, password }));
-    setMode("login");
   };
 
   const backToLogin = () => {
@@ -590,25 +576,6 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                 </div>
               )}
 
-              {/* Akun demo */}
-              <div className="mt-6">
-                <p className="mb-2 text-center text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
-                  Coba cepat — akun demo
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  {DEMO_ACCOUNTS.map((d) => (
-                    <button
-                      key={d.email}
-                      type="button"
-                      onClick={() => fillDemo(d.email, d.password)}
-                      className="press-effect flex flex-col items-center gap-1 rounded-xl border border-orange-100 bg-orange-50/60 px-2 py-2.5 text-[10px] font-bold text-orange-800 transition-colors hover:bg-orange-100"
-                    >
-                      <d.icon className="h-4 w-4 text-orange-500" />
-                      {d.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </>
           )}
         </div>
