@@ -69,3 +69,6 @@ server.log
 *.bak
 *.backup-*
 .otp-dev.log
+
+# berkas rahasia lokal — JANGAN pernah di-commit (cegah snapshot otomatis)
+download/vercel-env-copy-paste.txt
