@@ -17,6 +17,7 @@ import {
   Fingerprint,
   Laptop,
   Loader2,
+  ScanFace,
   ShieldCheck,
   Smartphone,
   Trash2,
@@ -98,7 +99,8 @@ export function BiometricSheet({ open, onClose, user }: BiometricSheetProps) {
         type: "success",
         mascot: true,
         title: "Biometrik Aktif! 🔒",
-        message: "Selanjutnya kamu bisa masuk cukup dengan sidik jari / Face ID di perangkat ini.",
+        message:
+          "Selanjutnya kamu bisa masuk cukup dengan pemindaian wajah (Face ID) atau sidik jari di perangkat ini.",
       });
     } finally {
       setLoading(false);
@@ -187,12 +189,12 @@ export function BiometricSheet({ open, onClose, user }: BiometricSheetProps) {
             <header className="relative shrink-0 bg-gradient-to-r from-orange-700 via-orange-600 to-orange-500 px-5 py-4 text-white">
               <div className="flex items-center gap-3">
                 <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/20 ring-1 ring-white/30">
-                  <Fingerprint className="h-5 w-5" />
+                  <ScanFace className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-black tracking-wide">Login Biometrik 🔓</p>
                   <p className="truncate text-[11px] font-semibold text-orange-100">
-                    Masuk cepat pakai sidik jari / Face ID
+                    Masuk cepat pakai pemindaian wajah / sidik jari
                   </p>
                 </div>
               </div>
@@ -266,17 +268,24 @@ export function BiometricSheet({ open, onClose, user }: BiometricSheetProps) {
                 </div>
               ) : (
                 <>
-                  {/* Kartu aktivasi */}
+                  {/* Kartu aktivasi — dua metode: Face ID & Sidik Jari */}
                   <div className="rounded-2xl border border-orange-200 bg-gradient-to-b from-orange-50 to-white p-4 text-center">
-                    <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-100 text-orange-600 ring-1 ring-orange-200">
-                      <Fingerprint className="h-7 w-7" />
+                    <span className="mx-auto flex items-center justify-center -space-x-2">
+                      <span className="z-10 flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-100 text-orange-600 ring-2 ring-white">
+                        <ScanFace className="h-6 w-6" />
+                      </span>
+                      <span className="z-10 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-600 ring-2 ring-white">
+                        <Fingerprint className="h-6 w-6" />
+                      </span>
                     </span>
-                    <p className="mt-2 text-sm font-black text-neutral-800">
-                      Masuk tanpa ketik password
+                    <p className="mt-3 text-sm font-black text-neutral-800">
+                      Face ID &amp; Sidik Jari
                     </p>
                     <p className="mt-1 text-[11px] leading-relaxed text-neutral-500">
-                      Sentuh sensor sidik jari / tatap kamera saat diminta — kunci rahasianya
-                      tersimpan aman di perangkat ini, tidak pernah dikirim ke server.
+                      Satu aktivasi untuk dua metode: tatap kamera (pemindaian wajah)
+                      atau sentuh sensor sidik jari — perangkat otomatis memakai
+                      sensor yang tersedia. Kunci rahasianya tersimpan aman di
+                      perangkat ini, tidak pernah dikirim ke server.
                     </p>
                     <button
                       type="button"
@@ -288,7 +297,7 @@ export function BiometricSheet({ open, onClose, user }: BiometricSheetProps) {
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <>
-                          <Fingerprint className="h-5 w-5" /> Aktifkan di Perangkat Ini
+                          <ScanFace className="h-5 w-5" /> Aktifkan Face ID / Sidik Jari
                         </>
                       )}
                     </button>

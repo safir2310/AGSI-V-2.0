@@ -9,7 +9,6 @@ import {
   ClipboardList,
   Coins,
   FileText,
-  Fingerprint,
   HelpCircle,
   Info,
   LogOut,
@@ -18,6 +17,7 @@ import {
   Monitor,
   PenLine,
   QrCode,
+  ScanFace,
   Settings2,
   ShieldCheck,
   Store,
@@ -205,12 +205,12 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   }, [isAdmin, qrisOpen]);
 
   const bioMenu: MenuItem = {
-    icon: Fingerprint,
+    icon: ScanFace,
     label: "Login Biometrik",
     desc:
       bioCount > 0
         ? `Aktif ✓ — ${bioCount} perangkat terdaftar — kelola di sini`
-        : "Masuk cepat pakai sidik jari / Face ID — aktifkan",
+        : "Masuk pakai pemindaian wajah / sidik jari — aktifkan",
     onClick: () => setBioOpen(true),
   };
 

@@ -280,6 +280,47 @@ export async function startBiometricAutofill(
   }
 }
 
+// ===== DETEKSI JENIS BIOMETRIK PERANGKAT (wajah vs sidik jari) =====
+// WebAuthn TIDAK mengekspos sensor mana yang dipakai perangkat (wajah/sidik
+// jari) — dialog sistem yang memilih. Yang bisa dilakukan: tebakan heuristik
+// dari User-Agent untuk MENATA URUTAN tombol di halaman login, sehingga
+// opsi paling relevan tampil paling atas. Tebakan salah tetap aman: kedua
+// tombol menjalankan alur WebAuthn yang sama dan OS memakai sensor miliknya.
+export type BiometricModality = "face" | "fingerprint" | "both";
+
+/**
+ * Tebakan sensor biometrik perangkat ini:
+ *  - iOS  → "both"  (iPhone X+ memakai Face ID; iPhone SE/8 & sebagian iPad
+ *                    memakai Touch ID — tak bisa dibedakan via UA)
+ *  - Windows → "both" (Windows Hello mendukung kamera wajah & pembaca sidik jari)
+ *  - Android → "fingerprint" (praktis semua HP Android memakai sidik jari)
+ *  - macOS → "fingerprint" (Touch ID pada MacBook; desktop tidak punya sensor —
+ *                            ditangani biometricEnvironment() → "unsupported")
+ *  - lainnya → "both"
+ */
+export function detectBiometricModality(): BiometricModality {
+  try {
+    if (typeof navigator === "undefined") return "both";
+    const ua = navigator.userAgent;
+    if (/iPhone|iPad|iPod/i.test(ua)) return "both";
+    if (/Windows/i.test(ua)) return "both";
+    if (/Android/i.test(ua)) return "fingerprint";
+    if (/Mac OS X/i.test(ua)) return "fingerprint";
+    return "both";
+  } catch {
+    return "both";
+  }
+}
+
+/** Apakah perangkat ini kemungkinan memakai pemindaian WAJAH (Face ID)? */
+export function prefersFaceFirst(): boolean {
+  const m = detectBiometricModality();
+  if (m === "face") return true;
+  if (m === "fingerprint") return false;
+  // "both": iOS & Windows diprioritaskan Face ID dulu, sisanya sidik jari
+  return typeof navigator !== "undefined" && /iPhone|iPad|iPod|Windows/i.test(navigator.userAgent);
+}
+
 export type BiometricCredentialInfo = {
   id: string;
   label: string | null;
