@@ -62,7 +62,7 @@ export async function GET() {
 
   const qrisOrders = await db.order.findMany({
     where: {
-      paymentMethod: "QRIS",
+      paymentMethod: { in: ["QRIS", "EWALLET"] },
       createdAt: { gte: new Date(now.getTime() - RANGE_DAYS * 24 * 60 * 60 * 1000) },
     },
     select: {
@@ -189,8 +189,8 @@ export async function POST(req: NextRequest) {
   if (!order) {
     return NextResponse.json({ error: "Pesanan tidak ditemukan." }, { status: 404 });
   }
-  if (order.paymentMethod !== "QRIS") {
-    return NextResponse.json({ error: "Bukan pesanan QRIS." }, { status: 400 });
+  if (order.paymentMethod !== "QRIS" && order.paymentMethod !== "EWALLET") {
+    return NextResponse.json({ error: "Bukan pesanan pembayaran digital." }, { status: 400 });
   }
   if (order.paymentStatus === "PAID") {
     return NextResponse.json(

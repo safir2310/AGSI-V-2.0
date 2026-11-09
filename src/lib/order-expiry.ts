@@ -1,9 +1,10 @@
 import { db } from "@/lib/db";
+import { isDigitalPayment, PAYMENT_METHOD_DIGITAL_IN } from "@/lib/payments";
 
 /**
- * Batas waktu pembayaran QRIS (permintaan pemilik): 5 MENIT.
+ * Batas waktu pembayaran digital (QRIS / E-Wallet) — permintaan pemilik: 5 MENIT.
  *
- * Pesanan QRIS yang belum dibayar:
+ * Pesanan digital yang belum dibayar:
  *   1. TIDAK masuk ke daftar pesanan admin/kasir (belum "terjadi" —
  *      pesanan baru masuk dapur setelah dana terverifikasi masuk).
  *   2. Dibatalkan OTOMATIS bila lewat batas waktu ini sejak pesanan dibuat.
@@ -11,14 +12,15 @@ import { db } from "@/lib/db";
  */
 export const QRIS_PAYMENT_TIMEOUT_MINUTES = 5;
 
-/** Batas waktu (ms) sejak dibuat sebelum pesanan QRIS batal otomatis */
+/** Batas waktu (ms) sejak dibuat sebelum pesanan digital batal otomatis */
 export const QRIS_PAYMENT_TIMEOUT_MS = QRIS_PAYMENT_TIMEOUT_MINUTES * 60 * 1000;
 
 /**
- * Predikat: pesanan QRIS dari APLIKASI pelanggan yang belum dibayar —
- * pesanan seperti ini TIDAK PERNAH masuk ke daftar admin/kasir: saat menunggu
- * bayar maupun setelah dibatalkan otomatis (audit tetap ada di daftar pelanggan).
- * (Pesanan QRIS buatan POS tetap tampil: kasir memantau langsung di kasir.)
+ * Predikat: pesanan digital (QRIS/E-Wallet) dari APLIKASI pelanggan yang belum
+ * dibayar — pesanan seperti ini TIDAK PERNAH masuk ke daftar admin/kasir: saat
+ * menunggu bayar maupun setelah dibatalkan otomatis (audit tetap ada di daftar
+ * pelanggan). (Pesanan digital buatan POS tetap tampil: kasir memantau
+ * langsung di kasir.)
  */
 export function isHiddenUnpaidAppQris(o: {
   source: string;
@@ -27,15 +29,15 @@ export function isHiddenUnpaidAppQris(o: {
 }): boolean {
   return (
     o.source === "APP" &&
-    o.paymentMethod === "QRIS" &&
+    isDigitalPayment(o.paymentMethod) &&
     o.paymentStatus === "UNPAID"
   );
 }
 
-/** Kondisi Prisma: pesanan QRIS app yang belum dibayar (untuk filter NOT) */
+/** Kondisi Prisma: pesanan digital app yang belum dibayar (untuk filter NOT) */
 export const HIDDEN_UNPAID_APP_QRIS_WHERE = {
   source: "APP" as const,
-  paymentMethod: "QRIS" as const,
+  paymentMethod: PAYMENT_METHOD_DIGITAL_IN,
   paymentStatus: "UNPAID" as const,
 };
 
@@ -51,7 +53,7 @@ export async function cancelQrisOrderIfExpired(
   order: ExpiryInput
 ): Promise<{ cancelled: boolean }> {
   if (
-    order.paymentMethod !== "QRIS" ||
+    !isDigitalPayment(order.paymentMethod) ||
     order.paymentStatus !== "UNPAID" ||
     order.status !== "PENDING" ||
     order.createdAt.getTime() > Date.now() - QRIS_PAYMENT_TIMEOUT_MS
@@ -103,7 +105,7 @@ export async function cancelExpiredQrisOrders(): Promise<number> {
   const cutoff = new Date(Date.now() - QRIS_PAYMENT_TIMEOUT_MS);
   const expired = await db.order.findMany({
     where: {
-      paymentMethod: "QRIS",
+      paymentMethod: PAYMENT_METHOD_DIGITAL_IN,
       paymentStatus: "UNPAID",
       status: "PENDING",
       createdAt: { lt: cutoff },

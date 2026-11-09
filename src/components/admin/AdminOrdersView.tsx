@@ -197,7 +197,7 @@ export function AdminOrdersView() {
             {filtered.map((o) => {
               const nexts = ORDER_STATUS_FLOW[o.status] ?? [];
               const needsPayment = o.paymentStatus !== "PAID" && o.status !== "CANCELLED";
-              const isQris = o.paymentMethod === "QRIS";
+              const isQris = o.paymentMethod === "QRIS" || o.paymentMethod === "EWALLET";
               return (
                 <motion.article
                   layout={!prefersReduced}
@@ -276,7 +276,7 @@ export function AdminOrdersView() {
                         {typeIcon(o.type)} {o.type === "DINE_IN" ? "Di tempat" : o.type === "TAKEAWAY" ? "Bungkus" : "Diantar"}
                       </span>
                       <span className="rounded-full bg-neutral-100 px-2 py-1">
-                        {o.paymentMethod === "CASH" ? "💵 Tunai" : "📱 QRIS"}
+                        {o.paymentMethod === "CASH" ? "💵 Tunai" : o.paymentMethod === "EWALLET" ? "👛 E-Wallet" : "📱 QRIS"}
                       </span>
                       <PaymentBadge paymentMethod={o.paymentMethod} paymentStatus={o.paymentStatus} />
                       {o.voucherCode && o.voucherDiscount > 0 && (

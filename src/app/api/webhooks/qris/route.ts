@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { markOrderPaidBySystem, normalizeGatewayStatus } from "@/lib/qris-gateway";
+import { isDigitalPayment } from "@/lib/payments";
 import {
   DANA_CLIENT_ID,
   DANA_ENABLED,
@@ -143,7 +144,7 @@ export async function POST(req: NextRequest) {
       const bare = c.replace(/^DOKU-/, "");
       if (!bare) continue;
       order = await db.order.findFirst({
-        where: { code: bare, paymentMethod: "QRIS" },
+        where: { code: bare, paymentMethod: { in: ["QRIS", "EWALLET"] } },
         orderBy: { createdAt: "desc" },
       });
     }
@@ -156,12 +157,12 @@ export async function POST(req: NextRequest) {
         reason: "Pesanan tidak ditemukan.",
       });
     }
-    if (order.paymentMethod !== "QRIS") {
+    if (!isDigitalPayment(order.paymentMethod)) {
       return NextResponse.json({
         responseCode: "2005600",
         responseMessage: "Successful",
         ok: false,
-        reason: "Bukan pesanan QRIS.",
+        reason: "Bukan pesanan pembayaran digital.",
       });
     }
 
@@ -308,7 +309,7 @@ export async function POST(req: NextRequest) {
       const bare = c.replace(/^DOKU-/, "");
       if (!bare) continue;
       legacyOrderMatch = await db.order.findFirst({
-        where: { code: bare, paymentMethod: "QRIS" },
+        where: { code: bare, paymentMethod: { in: ["QRIS", "EWALLET"] } },
         orderBy: { createdAt: "desc" },
       });
     }
@@ -322,10 +323,10 @@ export async function POST(req: NextRequest) {
         reason: "Pesanan tidak ditemukan.",
       });
     }
-    if (legacyOrderMatch.paymentMethod !== "QRIS") {
+    if (!isDigitalPayment(legacyOrderMatch.paymentMethod)) {
       return NextResponse.json({
         ok: false,
-        reason: "Bukan pesanan QRIS.",
+        reason: "Bukan pesanan pembayaran digital.",
       });
     }
 
@@ -432,11 +433,11 @@ export async function POST(req: NextRequest) {
       if (!bare) continue;
       order =
         (await db.order.findFirst({
-          where: { code: bare, paymentMethod: "QRIS" },
+          where: { code: bare, paymentMethod: { in: ["QRIS", "EWALLET"] } },
           orderBy: { createdAt: "desc" },
         })) ??
         (await db.order.findFirst({
-          where: { code: `AGSI-${bare}`, paymentMethod: "QRIS" },
+          where: { code: `AGSI-${bare}`, paymentMethod: { in: ["QRIS", "EWALLET"] } },
           orderBy: { createdAt: "desc" },
         }));
     }
@@ -451,12 +452,12 @@ export async function POST(req: NextRequest) {
         reason: "Pesanan tidak ditemukan.",
       });
     }
-    if (order.paymentMethod !== "QRIS") {
+    if (!isDigitalPayment(order.paymentMethod)) {
       return NextResponse.json({
         responseCode: "2005600",
         responseMessage: "Successful",
         ok: false,
-        reason: "Bukan pesanan QRIS.",
+        reason: "Bukan pesanan pembayaran digital.",
       });
     }
     const result = await markOrderPaidBySystem(order.id);
@@ -521,15 +522,15 @@ export async function POST(req: NextRequest) {
     for (const code of candidates) {
       if (order) break;
       order = await db.order.findFirst({
-        where: { code, paymentMethod: "QRIS" },
+        where: { code, paymentMethod: { in: ["QRIS", "EWALLET"] } },
         orderBy: { createdAt: "desc" },
       });
     }
     if (!order) {
       return NextResponse.json({ ok: false, reason: "Pesanan tidak ditemukan." }, { status: 404 });
     }
-    if (order.paymentMethod !== "QRIS") {
-      return NextResponse.json({ ok: false, reason: "Bukan pesanan QRIS." }, { status: 400 });
+    if (!isDigitalPayment(order.paymentMethod)) {
+      return NextResponse.json({ ok: false, reason: "Bukan pesanan pembayaran digital." }, { status: 400 });
     }
     const result = await markOrderPaidBySystem(order.id);
     if (result.cancelled) {
@@ -590,7 +591,7 @@ export async function POST(req: NextRequest) {
   }
   if (!order && reference) {
     order = await db.order.findFirst({
-      where: { code: reference, paymentMethod: "QRIS" },
+      where: { code: reference, paymentMethod: { in: ["QRIS", "EWALLET"] } },
       orderBy: { createdAt: "desc" },
     });
   }
@@ -598,8 +599,8 @@ export async function POST(req: NextRequest) {
   if (!order) {
     return NextResponse.json({ ok: false, reason: "Pesanan tidak ditemukan." }, { status: 404 });
   }
-  if (order.paymentMethod !== "QRIS") {
-    return NextResponse.json({ ok: false, reason: "Bukan pesanan QRIS." }, { status: 400 });
+  if (!isDigitalPayment(order.paymentMethod)) {
+    return NextResponse.json({ ok: false, reason: "Bukan pesanan pembayaran digital." }, { status: 400 });
   }
 
   // ==== DANA MASUK -> sistem melunaskan (idempoten) ====

@@ -55,7 +55,7 @@ export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView
   const [memberInfo, setMemberInfo] = useState<{ name: string; memberCode: string; points: number } | null>(null);
   const [memberChecking, setMemberChecking] = useState(false);
   const [orderType, setOrderType] = useState<"DINE_IN" | "TAKEAWAY" | "DELIVERY">("DINE_IN");
-  const [payment, setPayment] = useState<"CASH" | "QRIS">("CASH");
+  const [payment, setPayment] = useState<"CASH" | "QRIS" | "EWALLET">("CASH");
   // Saklar layanan toko (Profil Admin → Pengaturan Toko):
   // nonaktif → tombol "Antar" / "QRIS" disembunyikan & pilihan lama di-reset
   const deliveryEnabled = useSettingsStore((s) => s.deliveryEnabled);
@@ -67,7 +67,7 @@ export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView
       setOrderType((t) => (t === "DELIVERY" ? "DINE_IN" : t));
     }
     if (!qrisEnabled) {
-      setPayment((p) => (p === "QRIS" ? "CASH" : p));
+      setPayment((p) => (p === "QRIS" || p === "EWALLET" ? "CASH" : p));
     }
   }, [deliveryEnabled, qrisEnabled]);
   const [submitting, setSubmitting] = useState(false);
@@ -312,15 +312,20 @@ export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView
       clearMember();
       refreshOrders("all");
 
-      // QRIS: tampilkan QR di layar kasir agar pelanggan bisa memindai.
-      // Sistem yang melunaskan otomatis saat dana masuk (webhook/polling) —
-      // kasir TIDAK menandai lunas.
+      // Pembayaran digital: tampilkan layar bayar di kasir agar pelanggan
+      // bisa menyelesaikannya. Sistem yang melunaskan otomatis saat dana
+      // masuk (webhook/polling) — kasir TIDAK menandai lunas.
       if (
-        data.order.paymentMethod === "QRIS" &&
+        (data.order.paymentMethod === "QRIS" || data.order.paymentMethod === "EWALLET") &&
         data.order.paymentStatus !== "PAID" &&
         data.order.total > 0
       ) {
-        setPayOrder({ id: data.order.id, code: data.order.code, total: data.order.total });
+        setPayOrder({
+          id: data.order.id,
+          code: data.order.code,
+          total: data.order.total,
+          method: data.order.paymentMethod === "EWALLET" ? "EWALLET" : "QRIS",
+        });
         return;
       }
 
@@ -369,9 +374,9 @@ export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView
             {lastOrder && (
               <button
                 onClick={() => {
-                  // Pesanan QRIS belum lunas -> buka lagi layar QR (pantau otomatis)
+                  // Pesanan digital belum lunas -> buka lagi layar bayar (pantau otomatis)
                   if (
-                    lastOrder.paymentMethod === "QRIS" &&
+                    (lastOrder.paymentMethod === "QRIS" || lastOrder.paymentMethod === "EWALLET") &&
                     lastOrder.paymentStatus !== "PAID" &&
                     lastOrder.total > 0
                   ) {
@@ -379,6 +384,7 @@ export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView
                       id: lastOrder.id,
                       code: lastOrder.code,
                       total: lastOrder.total,
+                      method: lastOrder.paymentMethod === "EWALLET" ? "EWALLET" : "QRIS",
                     });
                     return;
                   }
@@ -387,8 +393,8 @@ export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView
                 }}
                 className="press-effect flex items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 text-xs font-bold hover:bg-white/25"
                 title={
-                  lastOrder.paymentMethod === "QRIS" && lastOrder.paymentStatus !== "PAID"
-                    ? "Buka lagi layar QRIS (memantau otomatis)"
+                  (lastOrder.paymentMethod === "QRIS" || lastOrder.paymentMethod === "EWALLET") && lastOrder.paymentStatus !== "PAID"
+                    ? "Buka lagi layar pembayaran (memantau otomatis)"
                     : "Buka struk terakhir — cetak / simpan"
                 }
               >
@@ -892,11 +898,16 @@ export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView
               ))}
             </div>
 
-            {/* Metode bayar — QRIS hilang bila dimatikan admin */}
-            <div className={cn("grid gap-1.5", qrisEnabled ? "grid-cols-2" : "grid-cols-1")}>
+            {/* Metode bayar — QRIS/E-Wallet hilang bila dimatikan admin */}
+            <div className={cn("grid gap-1.5", qrisEnabled ? "grid-cols-3" : "grid-cols-1")}>
               {[
                 { id: "CASH" as const, label: "💵 Tunai" },
-                ...(qrisEnabled ? [{ id: "QRIS" as const, label: "📱 QRIS" }] : []),
+                ...(qrisEnabled
+                  ? [
+                      { id: "QRIS" as const, label: "📱 QRIS" },
+                      { id: "EWALLET" as const, label: "👛 E-Wallet" },
+                    ]
+                  : []),
               ].map((p) => (
                 <button
                   key={p.id}
@@ -938,7 +949,12 @@ export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView
               ) : (
                 <>
                   <Receipt className="h-4 w-4" />{" "}
-                  {payment === "QRIS" ? "Bayar QRIS" : "Bayar & Cetak"} — {formatIDR(subtotal)}
+                  {payment === "QRIS"
+                    ? "Bayar QRIS"
+                    : payment === "EWALLET"
+                      ? "Bayar E-Wallet"
+                      : "Bayar & Cetak"}{" "}
+                  — {formatIDR(subtotal)}
                 </>
               )}
             </motion.button>

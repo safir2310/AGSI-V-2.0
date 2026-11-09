@@ -165,12 +165,12 @@ export function OrdersView() {
                 <div className="flex items-center justify-between gap-2 border-t border-orange-50 bg-orange-50/30 px-4 py-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <PaymentBadge paymentMethod={o.paymentMethod} paymentStatus={o.paymentStatus} />
-                    {o.paymentMethod === "QRIS" && o.paymentStatus === "UNPAID" && (
+                    {(o.paymentMethod === "QRIS" || o.paymentMethod === "EWALLET") && o.paymentStatus === "UNPAID" && (
                       <span className="text-[10px] font-semibold text-amber-700">
                         Lunas otomatis saat dana masuk
                       </span>
                     )}
-                    {o.paymentMethod === "QRIS" && o.paymentStatus === "UNPAID" && (
+                    {(o.paymentMethod === "QRIS" || o.paymentMethod === "EWALLET") && o.paymentStatus === "UNPAID" && (
                       <QrisDeadlineChip createdAt={o.createdAt} />
                     )}
                   </div>
@@ -180,21 +180,28 @@ export function OrdersView() {
                       <Coins className="h-3 w-3" /> +{earnPointsForTotal(o.total).toLocaleString("id-ID")} Point
                     </span>
                   )}
-                  {o.paymentMethod === "QRIS" && o.paymentStatus === "UNPAID" && (
+                  {(o.paymentMethod === "QRIS" || o.paymentMethod === "EWALLET") && o.paymentStatus === "UNPAID" && (
                     <button
-                      onClick={() => setPayOrder({ id: o.id, code: o.code, total: o.total })}
+                      onClick={() =>
+                        setPayOrder({
+                          id: o.id,
+                          code: o.code,
+                          total: o.total,
+                          method: o.paymentMethod === "EWALLET" ? "EWALLET" : "QRIS",
+                        })
+                      }
                       className="press-effect flex items-center gap-1.5 rounded-full bg-orange-600 px-3.5 py-1.5 text-[11px] font-extrabold text-white shadow-md shadow-orange-500/30 hover:bg-orange-700"
                     >
-                      <QrCode className="h-3.5 w-3.5" /> Bayar QRIS
+                      <QrCode className="h-3.5 w-3.5" /> Bayar {o.paymentMethod === "EWALLET" ? "E-Wallet" : "QRIS"}
                     </button>
                   )}
                 </div>
               ) : (
-                o.paymentMethod === "QRIS" &&
+                (o.paymentMethod === "QRIS" || o.paymentMethod === "EWALLET") &&
                 o.paymentStatus === "UNPAID" && (
                   <div className="border-t border-orange-50 bg-red-50/40 px-4 py-2">
                     <p className="text-[11px] font-semibold leading-snug text-red-600">
-                      ⏰ Dibatalkan otomatis — pembayaran QRIS tidak diterima dalam 5 menit.
+                      ⏰ Dibatalkan otomatis — pembayaran tidak diterima dalam 5 menit.
                       Voucher yang terpakai sudah dikembalikan.
                     </p>
                   </div>

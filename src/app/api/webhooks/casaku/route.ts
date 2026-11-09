@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
 
   // ===== 3) Cari pesanan QRIS pemilik transaksi & lunaskan OLEH SISTEM =====
   const order = await db.order.findFirst({
-    where: { qrisTrxId: transactionId, paymentMethod: "QRIS" },
+    where: { qrisTrxId: transactionId, paymentMethod: { in: ["QRIS", "EWALLET"] } },
     orderBy: { createdAt: "desc" },
     select: { id: true, code: true, paymentStatus: true, status: true, total: true },
   });

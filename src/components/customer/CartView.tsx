@@ -58,6 +58,7 @@ const ORDER_TYPES = [
 const PAYMENTS = [
   { id: "CASH", label: "Tunai", emoji: "💵" },
   { id: "QRIS", label: "QRIS", emoji: "📱" },
+  { id: "EWALLET", label: "E-Wallet", emoji: "👛" },
 ] as const;
 
 export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void }) {
@@ -103,13 +104,15 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
       setForm((f) => (f.type === "DELIVERY" ? { ...f, type: "DINE_IN", areaId: "", address: "" } : f));
     }
     if (!qrisEnabled) {
-      setForm((f) => (f.payment === "QRIS" ? { ...f, payment: "CASH" } : f));
+      setForm((f) =>
+        f.payment === "QRIS" || f.payment === "EWALLET" ? { ...f, payment: "CASH" } : f
+      );
     }
   }, [deliveryEnabled, qrisEnabled]);
 
   /** Opsi jenis pesanan & pembayaran yang tampil — mengikuti saklar admin */
   const availableTypes = ORDER_TYPES.filter((t) => t.id !== "DELIVERY" || deliveryEnabled);
-  const availablePayments = PAYMENTS.filter((p) => p.id !== "QRIS" || qrisEnabled);
+  const availablePayments = PAYMENTS.filter((p) => p.id === "CASH" || qrisEnabled);
 
   /** Area pengantaran terpilih + ongkir — Rp1.000/km, kelipatan jarak
    *  (jarak dibulatkan KE ATAS per 1 km, dihitung ulang juga oleh server) */
@@ -306,14 +309,20 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
       const created = data.order;
       const finalTotal = created?.total ?? total;
 
-      // Pembayaran QRIS dan masih ada tagihan → tampilkan layar pindai QR
+      // Pembayaran digital (QRIS / E-Wallet) dan masih ada tagihan
+      // → tampilkan layar pembayaran gateway
       if (
         created &&
-        created.paymentMethod === "QRIS" &&
+        (created.paymentMethod === "QRIS" || created.paymentMethod === "EWALLET") &&
         created.paymentStatus !== "PAID" &&
         finalTotal > 0
       ) {
-        setPayOrder({ id: created.id, code: created.code, total: finalTotal });
+        setPayOrder({
+          id: created.id,
+          code: created.code,
+          total: finalTotal,
+          method: created.paymentMethod === "EWALLET" ? "EWALLET" : "QRIS",
+        });
         return;
       }
 
@@ -598,7 +607,7 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
         {/* Metode bayar — QRIS hilang bila dimatikan admin */}
         <div className="space-y-1.5">
           <Label>Metode Pembayaran</Label>
-          <div className={cn("grid gap-2", availablePayments.length === 2 ? "grid-cols-2" : "grid-cols-1")}>
+          <div className={cn("grid gap-2", availablePayments.length === 2 ? "grid-cols-2" : availablePayments.length === 3 ? "grid-cols-3" : "grid-cols-1")}>
             {availablePayments.map((p) => (
               <button
                 key={p.id}
@@ -617,7 +626,7 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
           </div>
           {!qrisEnabled && (
             <p className="text-[11px] font-semibold leading-snug text-amber-600">
-              📱 Pembayaran QRIS sedang tidak tersedia — silakan bayar tunai.
+              📱 Pembayaran digital (QRIS / E-Wallet) sedang tidak tersedia — silakan bayar tunai.
             </p>
           )}
         </div>
@@ -810,7 +819,12 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
           ) : (
             <>
               {appliedVoucher && voucherDiscount > 0 && <Ticket className="h-4 w-4" />}
-              {form.payment === "QRIS" ? "Pesan & Bayar QRIS" : "Pesan Sekarang"} — {formatIDR(total)}
+              {form.payment === "QRIS"
+                ? "Pesan & Bayar QRIS"
+                : form.payment === "EWALLET"
+                  ? "Pesan & Bayar E-Wallet"
+                  : "Pesan Sekarang"}{" "}
+              — {formatIDR(total)}
             </>
           )}
         </motion.button>

@@ -124,7 +124,11 @@ function statusNotif(o: OrderData): {
   mascot?: boolean;
 } {
   // Dana QRIS baru terverifikasi padahal status masih menunggu → kabari masuk dapur
-  if (o.paymentStatus === "PAID" && o.status === "PENDING" && o.paymentMethod === "QRIS") {
+  if (
+    o.paymentStatus === "PAID" &&
+    o.status === "PENDING" &&
+    (o.paymentMethod === "QRIS" || o.paymentMethod === "EWALLET")
+  ) {
     return {
       type: "success",
       title: "💳 Pembayaran Diterima!",
@@ -163,7 +167,8 @@ function statusNotif(o: OrderData): {
         type: "error",
         title: "Pesanan Dibatalkan",
         message: `Pesanan ${o.code} dibatalkan${
-          o.paymentMethod === "QRIS" && o.paymentStatus === "UNPAID"
+          (o.paymentMethod === "QRIS" || o.paymentMethod === "EWALLET") &&
+          o.paymentStatus === "UNPAID"
             ? " karena pembayaran tidak diterima dalam 5 menit. Voucher yang terpakai sudah dikembalikan."
             : ". Bila merasa keliru, hubungi CS lewat menu Chat ya."
         }`,

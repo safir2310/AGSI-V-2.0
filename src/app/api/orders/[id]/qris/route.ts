@@ -16,6 +16,7 @@ import {
   MIDTRANS_IS_PRODUCTION,
 } from "@/lib/qris-config";
 import { cancelQrisOrderIfExpired, QRIS_PAYMENT_TIMEOUT_MS } from "@/lib/order-expiry";
+import { isDigitalPayment } from "@/lib/payments";
 
 /** Penyedia aktif — untuk label layar pembayaran */
 const PROVIDER = DOKU_ENABLED
@@ -63,7 +64,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Tidak diizinkan." }, { status: 403 });
   }
 
-  if (order.paymentMethod !== "QRIS") {
+  if (!isDigitalPayment(order.paymentMethod)) {
     return NextResponse.json(
       { error: "Pesanan ini menggunakan pembayaran tunai." },
       { status: 400 }
@@ -115,6 +116,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     merchantName: QRIS_MERCHANT_NAME,
     merchantId: QRIS_MERCHANT_ID,
     orderCode: order.code,
+    paymentMethod: order.paymentMethod,
   };
 
   // ==== 1) Transaksi gateway yang masih hidup -> pakai cache ====
@@ -163,10 +165,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   // ==== 2) Buat transaksi baru di penyedia gateway ====
+  // Pesanan E-Wallet: halaman bayar DOKU difilter ke kanal e-wallet
+  // (DOKU Wallet, DANA, OVO, ShopeePay, LinkAja + VA DOKU cadangan —
+  // sesuai kanal yang aktif di akun DOKU merchant).
   try {
     const trx = await createQrisGatewayPayment({
       amount: order.total,
       reference: order.code,
+      ...(order.paymentMethod === "EWALLET" ? { channelMode: "EWALLET" } : {}),
     });
     // Jalur DOKU Checkout tidak mengembalikan QR string — URL halaman bayar
     // disimpan di qrisPayload (pola sama dengan simulator Midtrans sandbox).

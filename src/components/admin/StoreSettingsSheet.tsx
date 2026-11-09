@@ -213,11 +213,11 @@ export function StoreSettingsSheet({ open, onClose }: StoreSettingsSheetProps) {
     {
       key: "qris" as const,
       icon: QrCode,
-      title: "Pembayaran QRIS",
-      desc: "Pelanggan & kasir bisa membayar lewat QRIS (terverifikasi otomatis saat dana masuk).",
+      title: "Pembayaran Digital (QRIS & E-Wallet)",
+      desc: "Pelanggan & kasir bisa membayar lewat QRIS / E-Wallet DOKU (terverifikasi otomatis saat dana masuk).",
       active: qrisEnabled,
-      onBadge: "📱 QRIS aktif",
-      offBadge: "QRIS nonaktif",
+      onBadge: "📱 QRIS & E-Wallet aktif",
+      offBadge: "Nonaktif",
     },
   ];
 

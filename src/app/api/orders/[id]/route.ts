@@ -4,6 +4,7 @@ import { getCurrentUser, isAdminRole } from "@/lib/auth";
 import { ORDER_STATUS_FLOW } from "@/lib/types";
 import { awardPointsForOrderCompletion } from "@/lib/points";
 import { notifyOrderStatus } from "@/lib/push";
+import { isDigitalPayment } from "@/lib/payments";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -35,13 +36,14 @@ export async function PUT(req: NextRequest, { params }: Params) {
         const paid = await db.order.findUnique({ where: { id }, include: { items: true } });
         return NextResponse.json({ order: paid, already: true });
       }
-      // >>> KEBIJAKAN QRIS: pelunasan HANYA oleh sistem saat uang masuk <<<
-      // Kasir/admin tidak diizinkan menandai lunas pesanan QRIS secara manual.
-      if (order.paymentMethod === "QRIS") {
+      // >>> KEBIJAKAN PEMBAYARAN DIGITAL: pelunasan HANYA oleh sistem saat
+      // uang masuk <<< Kasir/admin tidak diizinkan menandai lunas pesanan
+      // digital (QRIS / E-Wallet) secara manual.
+      if (isDigitalPayment(order.paymentMethod)) {
         return NextResponse.json(
           {
             error:
-              "Pembayaran QRIS tidak bisa ditandai lunas manual. Sistem memverifikasi otomatis saat dana masuk dari penyedia QRIS.",
+              "Pembayaran digital (QRIS / E-Wallet) tidak bisa ditandai lunas manual. Sistem memverifikasi otomatis saat dana masuk dari penyedia pembayaran.",
           },
           { status: 403 }
         );

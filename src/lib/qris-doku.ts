@@ -56,6 +56,24 @@ import {
   type GatewayTransaction,
 } from "@/lib/qris-provider";
 
+/**
+ * Kanal checkout untuk pesanan E-WALLET.
+ * Semua e-wallet DOKU diminta; DOKU hanya menampilkan yang AKTIF untuk
+ * merchant (yang belum aktif di-drop diam-diam). VIRTUAL_ACCOUNT_DOKU
+ * disertakan sebagai kanal cadangan — filter yang hanya berisi kanal
+ * tidak-aktif ditolak 400 "PLEASE USE ANOTHER PAYMENT METHOD".
+ * Saat DANA/OVO/ShopeePay/LinkAja diaktifkan DOKU untuk akun ini, kanal
+ * tersebut OTOMATIS muncul di halaman bayar tanpa perubahan kode.
+ */
+export const DOKU_EWALLET_CHANNEL_TYPES = [
+  "EMONEY_DOKU",
+  "EMONEY_DANA",
+  "EMONEY_OVO",
+  "EMONEY_SHOPEE_PAY",
+  "EMONEY_LINKAJA",
+  "VIRTUAL_ACCOUNT_DOKU",
+];
+
 // ============================================================
 //  Utilitas bersama
 // ============================================================
@@ -756,12 +774,16 @@ function findPaymentUrl(value: unknown, depth = 0): string | undefined {
 /**
  * Buat pesanan DOKU Checkout (jalur legacy produksi).
  * Halaman bayar menampilkan semua kanal AKTIF merchant (QRIS, VA, retail,
- * e-money) — sesuai konfigurasi akun DOKU. Status tetap diverifikasi otomatis
- * (polling Check Status + webhook legacy).
+ * e-money, paylater) — sesuai konfigurasi akun DOKU. `channelTypes` bila
+ * diisi memfilter halaman bayar ke kanal tertentu (mis. pesanan e-wallet);
+ * bila filter ditolak DOKU (semua kanal diminta belum aktif), di-retry SEKALI
+ * tanpa filter supaya pelanggan tetap dapat halaman bayar.
+ * Status tetap diverifikasi otomatis (polling Check Status + webhook legacy).
  */
 async function checkoutCreateQris(opts: {
   partnerReferenceNo: string;
   amount: number;
+  channelTypes?: string[];
 }): Promise<GatewayTransaction> {
   const payload = {
     order: {
@@ -783,17 +805,32 @@ async function checkoutCreateQris(opts: {
       payment_due_date: DOKU_QRIS_EXPIRY_MINUTES,
       enable_saves: false,
       enable_paylater: false,
+      ...(opts.channelTypes && opts.channelTypes.length > 0
+        ? { payment_method_types: opts.channelTypes }
+        : {}),
     },
     customer: { name: "Pelanggan AGSI", email: "pos@agsi.co.id" },
   };
 
   let body: Record<string, unknown>;
+  let partnerRef = opts.partnerReferenceNo;
   try {
     body = await legacyPost("/checkout/v1/payment", payload);
   } catch (err) {
+    // Filter kanal ditolak (semua kanal yang diminta belum aktif di akun)
+    // -> sekali lagi TANPA filter: halaman bayar menampilkan semua kanal aktif.
+    const msg = (err instanceof Error ? err.message : "").toLowerCase();
+    if (opts.channelTypes && msg.includes("please use another payment method")) {
+      const unfiltered = {
+        ...payload,
+        payment: { ...payload.payment },
+      };
+      delete (unfiltered.payment as Record<string, unknown>).payment_method_types;
+      body = await legacyPost("/checkout/v1/payment", unfiltered);
+      return finishCheckoutCreate(body, opts.partnerReferenceNo);
+    }
     // Invoice duplikat (kode dibuat ulang setelah kedaluwarsa) -> sekali
     // coba lagi dengan suffix unik agar pelanggan tetap dapat halaman bayar.
-    const msg = (err instanceof Error ? err.message : "").toLowerCase();
     if (
       (err instanceof QrisGatewayError && err.status === 400) ||
       msg.includes("invoice") ||
@@ -807,8 +844,9 @@ async function checkoutCreateQris(opts: {
           invoice_number: `${opts.partnerReferenceNo}-${Date.now().toString(36)}`,
         },
       };
+      partnerRef = retryPayload.order.invoice_number;
       body = await legacyPost("/checkout/v1/payment", retryPayload);
-      return finishCheckoutCreate(body, retryPayload.order.invoice_number);
+      return finishCheckoutCreate(body, partnerRef);
     }
     throw err;
   }
@@ -917,6 +955,9 @@ async function checkoutQueryStatus(
  * trxId yang disimpan di Order.qrisTrxId = "DOKU-<kode pesanan>" — dipakai
  * juga sebagai partnerReferenceNo / invoice number di DOKU.
  *
+ * channelMode "EWALLET": halaman bayar DOKU difilter ke kanal e-wallet
+ * (lihat DOKU_EWALLET_CHANNEL_TYPES). Tanpa channelMode: semua kanal aktif.
+ *
  * Prioritas jalur:
  *   1) SNAP MPM (kalau MID terpasang) — QR string langsung
  *   2) CHECKOUT legacy (Client ID + Secret) — halaman bayar DOKU
@@ -925,6 +966,7 @@ async function checkoutQueryStatus(
 export async function createQrisDokuPayment(opts: {
   amount: number;
   reference: string;
+  channelMode?: "EWALLET";
 }): Promise<GatewayTransaction> {
   const amount = Math.round(Number(opts.amount));
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -949,7 +991,13 @@ export async function createQrisDokuPayment(opts: {
   }
 
   if (DOKU_CHECKOUT_READY) {
-    return checkoutCreateQris({ partnerReferenceNo, amount });
+    return checkoutCreateQris({
+      partnerReferenceNo,
+      amount,
+      ...(opts.channelMode === "EWALLET"
+        ? { channelTypes: DOKU_EWALLET_CHANNEL_TYPES }
+        : {}),
+    });
   }
 
   const validityPeriod = wibTimestamp(

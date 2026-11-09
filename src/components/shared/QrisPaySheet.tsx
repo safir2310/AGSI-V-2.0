@@ -23,8 +23,15 @@ import { toast } from "@/hooks/use-toast";
 import { formatIDR } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** Pesanan yang akan dibayar via QRIS */
-export type QrisPayOrder = { id: string; code: string; total: number };
+/** Pesanan yang akan dibayar lewat gateway (QRIS / E-Wallet) */
+export type QrisPayOrder = {
+  id: string;
+  code: string;
+  total: number;
+  /** Metode digital: "QRIS" (semua kanal) | "EWALLET" (halaman DOKU
+   *  difilter ke kanal e-wallet). Default "QRIS" bila tidak dikirim. */
+  method?: "QRIS" | "EWALLET";
+};
 
 type Phase = "scan" | "paid" | "cancelled";
 
@@ -329,7 +336,7 @@ export function QrisPaySheet({
         className="fixed inset-0 z-[95] flex items-end justify-center bg-neutral-900/70 backdrop-blur-sm sm:items-center sm:p-4"
         role="dialog"
         aria-modal="true"
-        aria-label="Pembayaran QRIS"
+        aria-label={order.method === "EWALLET" ? "Pembayaran E-Wallet" : "Pembayaran QRIS"}
       >
         <motion.div
           initial={prefersReduced ? false : { y: 48, scale: 0.97 }}
@@ -345,7 +352,9 @@ export function QrisPaySheet({
                 <ScanLine className="h-5 w-5" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-black tracking-wide">Pembayaran QRIS</p>
+                <p className="text-sm font-black tracking-wide">
+                  {order.method === "EWALLET" ? "Pembayaran E-Wallet" : "Pembayaran QRIS"}
+                </p>
                 <p className="truncate text-[11px] font-semibold text-orange-100">
                   {order.code} • {isPos ? "Kasir" : "Aplikasi"}
                 </p>
@@ -416,7 +425,7 @@ export function QrisPaySheet({
                 </motion.span>
                 <h2 className="text-lg font-black text-neutral-900">Pesanan Dibatalkan Otomatis</h2>
                 <p className="max-w-[320px] text-xs leading-relaxed text-neutral-500">
-                  Pembayaran QRIS untuk pesanan <strong className="font-bold text-neutral-700">{order.code}</strong>{" "}
+                  Pembayaran untuk pesanan <strong className="font-bold text-neutral-700">{order.code}</strong>{" "}
                   tidak diterima dalam <strong className="font-bold text-red-500">5 menit</strong>, jadi
                   pesanan dibatalkan. Voucher yang terpakai sudah dikembalikan ke akunmu.
                 </p>
@@ -587,9 +596,11 @@ export function QrisPaySheet({
                       ) : info?.provider?.startsWith("doku") ? (
                         <p className="mt-1 text-[10px] font-bold text-emerald-600">
                           Penyedia: DOKU ({info.provider === "doku" ? "Produksi" : "Sandbox"}) —{" "}
-                          {info.paymentUrl
-                            ? "selesaikan pembayaran di halaman DOKU (kanal aktif akun DOKU); status dicek otomatis"
-                            : "scan pakai DANA / GoPay / OVO / ShopeePay / m-Banking mana pun"}
+                          {order.method === "EWALLET"
+                            ? "pilih e-wallet di halaman DOKU (DOKU Wallet, DANA, OVO, ShopeePay — sesuai kanal aktif akun)"
+                            : info.paymentUrl
+                              ? "selesaikan pembayaran di halaman DOKU (kanal aktif akun DOKU); status dicek otomatis"
+                              : "scan pakai DANA / GoPay / OVO / ShopeePay / m-Banking mana pun"}
                         </p>
                       ) : info?.provider?.startsWith("dana") ? (
                         <p className="mt-1 text-[10px] font-bold text-emerald-600">
@@ -712,7 +723,8 @@ export function QrisPaySheet({
                     rel="noreferrer"
                     className="press-effect mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-red-600 text-sm font-extrabold text-white shadow-lg shadow-red-500/30 hover:bg-red-700"
                   >
-                    <ExternalLink className="h-4 w-4" /> Buka Halaman Pembayaran DOKU
+                    <ExternalLink className="h-4 w-4" />{" "}
+                    {order.method === "EWALLET" ? "Bayar dengan E-Wallet (DOKU)" : "Buka Halaman Pembayaran DOKU"}
                   </a>
                 )}
                 {isPos ? (

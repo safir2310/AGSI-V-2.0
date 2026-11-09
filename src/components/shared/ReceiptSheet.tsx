@@ -79,7 +79,7 @@ function receiptData(o: OrderData) {
     voucherCode: o.voucherCode,
     voucherDiscount: o.voucherDiscount,
     total: o.total,
-    bayar: o.paymentMethod === "QRIS" ? "QRIS" : "Tunai",
+    bayar: o.paymentMethod === "QRIS" ? "QRIS" : o.paymentMethod === "EWALLET" ? "E-Wallet" : "Tunai",
     lunas: o.paymentStatus === "PAID",
   };
 }

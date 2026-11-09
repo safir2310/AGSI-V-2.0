@@ -9,6 +9,7 @@ import {
 } from "@/lib/qris-config";
 import { createSandboxTrx, getSandboxTrx, paySandboxTrx } from "@/lib/qris-sandbox";
 import { markOrderPaidBySystem } from "@/lib/qris-gateway";
+import { isDigitalPayment } from "@/lib/payments";
 import { cancelQrisOrderIfExpired } from "@/lib/order-expiry";
 
 type Params = { params: Promise<{ id: string }> };
@@ -64,9 +65,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Tidak diizinkan." }, { status: 403 });
   }
 
-  if (order.paymentMethod !== "QRIS") {
+  if (!isDigitalPayment(order.paymentMethod)) {
     return NextResponse.json(
-      { error: "Pesanan ini bukan pembayaran QRIS." },
+      { error: "Pesanan ini bukan pembayaran digital (QRIS / E-Wallet)." },
       { status: 400 }
     );
   }

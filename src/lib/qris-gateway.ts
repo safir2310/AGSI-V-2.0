@@ -191,6 +191,10 @@ async function requestCreate(reference: string, amount: number): Promise<Gateway
 export async function createQrisGatewayPayment(opts: {
   amount: number;
   reference: string;
+  /** "EWALLET": halaman bayar DOKU difilter ke kanal e-wallet (DOKU Wallet,
+   *  DANA, OVO, ShopeePay, LinkAja + VA DOKU cadangan — sesuai kanal aktif).
+   *  Diabaikan penyedia non-DOKU (QRIS tetap QR string biasa). */
+  channelMode?: "EWALLET";
 }): Promise<GatewayTransaction> {
   // ==== -1) DOKU — penyedia utama (QRIS SNAP MPM resmi DOKU) ====
   // Dana masuk ke merchant DOKU pemilik toko. Bila DOKU sandbox menolak

@@ -93,7 +93,7 @@ export function PaymentBadge({
     );
   }
   // UNPAID
-  if (paymentMethod !== "QRIS") {
+  if (paymentMethod !== "QRIS" && paymentMethod !== "EWALLET") {
     return (
       <span
         className={cn(

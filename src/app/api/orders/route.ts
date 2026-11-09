@@ -108,9 +108,12 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (body.paymentMethod === "QRIS" && !storeSettings.qrisEnabled) {
+    if (
+      (body.paymentMethod === "QRIS" || body.paymentMethod === "EWALLET") &&
+      !storeSettings.qrisEnabled
+    ) {
       return NextResponse.json(
-        { error: "Pembayaran QRIS sedang dinonaktifkan. Silakan bayar tunai." },
+        { error: "Pembayaran digital (QRIS / E-Wallet) sedang dinonaktifkan. Silakan bayar tunai." },
         { status: 400 }
       );
     }
@@ -200,8 +203,11 @@ export async function POST(req: NextRequest) {
       // Status awal pembayaran:
       //  - total 0 (voucher menutup semua)      -> langsung LUNAS
       //  - POS tunai (uang diterima di kasir)    -> LUNAS
-      //  - QRIS / tunai aplikasi                 -> UNPAID (menunggu pelanggan)
-      const paymentMethod = body.paymentMethod === "QRIS" ? "QRIS" : "CASH";
+      //  - QRIS / E-Wallet / tunai aplikasi      -> UNPAID (menunggu pelanggan)
+      const paymentMethod =
+        body.paymentMethod === "QRIS" || body.paymentMethod === "EWALLET"
+          ? body.paymentMethod
+          : "CASH";
       const paymentStatus =
         total === 0 || (isPos && paymentMethod === "CASH") ? "PAID" : "UNPAID";
 
