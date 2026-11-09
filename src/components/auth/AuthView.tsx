@@ -10,7 +10,6 @@ import {
   LogIn,
   Mail,
   RotateCcw,
-  ScanFace,
   UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,7 +21,6 @@ import {
   biometricAvailable,
   getBiometricEmail,
   loginBiometric,
-  prefersFaceFirst,
   setBiometricEmail,
   startBiometricAutofill,
 } from "@/lib/biometric-client";
@@ -59,15 +57,11 @@ export function AuthView({ onSuccess }: AuthViewProps) {
   const showNotice = useNoticeStore((s) => s.show);
 
   /* ===== Login biometrik (WebAuthn — Face ID & sidik jari) =====
-     Dua tombol terpisah sesuai metode: PEMINDAIAN WAJAH (Face ID) dan
-     SIDIK JARI. Keduanya menjalankan alur WebAuthn yang sama — sistem
-     operasi otomatis memakai sensor yang tersedia di perangkat (kamera
-     wajah pada iPhone X+, sensor sidik jari pada Android/macOS/Windows).
-     Tombol paling relevan untuk perangkat ini tampil paling atas. */
+     Satu tombol sederhana: sistem operasi otomatis memakai sensor yang
+     tersedia di perangkat (kamera wajah / sensor sidik jari / PIN layar). */
   const [bioReady, setBioReady] = useState(false);
   const [bioEmail, setBioEmail] = useState<string | null>(null);
-  const [bioLoadingFace, setBioLoadingFace] = useState(false);
-  const [bioLoadingFinger, setBioLoadingFinger] = useState(false);
+  const [bioLoading, setBioLoading] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -90,13 +84,11 @@ export function AuthView({ onSuccess }: AuthViewProps) {
     onSuccessRef.current = onSuccess;
   });
 
-  /** Login via satu metode biometrik. Keduanya satu alur WebAuthn —
-   *  pemisahan hanya untuk label & loading tombol. */
-  const handleBiometricLogin = async (method: "face" | "fingerprint") => {
+  /** Login biometrik — satu alur untuk semua metode (wajah/sidik jari). */
+  const handleBiometricLogin = async () => {
     if (bioInFlight.current) return; // satu login biometrik saja dalam satu waktu
     bioInFlight.current = true;
-    if (method === "face") setBioLoadingFace(true);
-    else setBioLoadingFinger(true);
+    setBioLoading(true);
     try {
       const result = await loginBiometric(bioEmail);
       if (!result.ok) {
@@ -107,9 +99,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
               ? "Pindai Dibatalkan"
               : result.code === "environment"
                 ? "Tidak Bisa di Jendela Ini"
-                : method === "face"
-                  ? "Login Face ID Gagal"
-                  : "Login Sidik Jari Gagal",
+                : "Login Biometrik Gagal",
           message: result.message,
         });
         return;
@@ -119,8 +109,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
       onSuccess(result.user);
     } finally {
       bioInFlight.current = false;
-      setBioLoadingFace(false);
-      setBioLoadingFinger(false);
+      setBioLoading(false);
     }
   };
 
@@ -588,56 +577,33 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                 </Button>
               </form>
 
-              {/* ===== LOGIN BIOMETRIK: FACE ID + SIDIK JARI =====
-                  Dua metode terpisah. Tombol pertama = sensor paling mungkin
-                  dimiliki perangkat ini (iPhone/Windows → Face ID dulu;
-                  Android/macOS → sidik jari dulu). Alur keduanya identik:
-                  dialog sistem memakai sensor milik perangkat. */}
+              {/* ===== LOGIN BIOMETRIK (satu tombol sederhana) =====
+                  Face ID / pemindaian wajah & sidik jari memakai alur WebAuthn
+                  yang sama — dialog sistem otomatis memakai sensor milik
+                  perangkat, jadi cukup satu tombol untuk semua metode. */}
               {mode === "login" && bioReady && (
                 <div className="mt-4">
                   <div className="flex items-center gap-3">
                     <span className="h-px flex-1 bg-orange-100" />
                     <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-                      atau masuk cepat dengan
+                      atau
                     </span>
                     <span className="h-px flex-1 bg-orange-100" />
                   </div>
-                  {(prefersFaceFirst() ? ["face", "fingerprint"] : ["fingerprint", "face"]).map(
-                    (method) => {
-                      const isFace = method === "face";
-                      const isLoading = isFace ? bioLoadingFace : bioLoadingFinger;
-                      return (
-                        <button
-                          key={method}
-                          type="button"
-                          onClick={() => void handleBiometricLogin(isFace ? "face" : "fingerprint")}
-                          disabled={bioLoadingFace || bioLoadingFinger || loading}
-                          className={
-                            "press-effect flex h-11 w-full items-center justify-center gap-2 rounded-xl border-2 text-sm font-black transition disabled:opacity-60 " +
-                            (isFace
-                              ? "mt-3 border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50 text-orange-700 hover:from-orange-100 hover:to-amber-100"
-                              : "mt-2.5 border-orange-200 bg-orange-50/70 text-orange-700 hover:bg-orange-100")
-                          }
-                        >
-                          {isLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <>
-                              {isFace ? (
-                                <ScanFace className="h-5 w-5" />
-                              ) : (
-                                <Fingerprint className="h-5 w-5" />
-                              )}
-                              {isFace ? "Login dengan Face ID (Pindai Wajah)" : "Login dengan Sidik Jari"}
-                            </>
-                          )}
-                        </button>
-                      );
-                    })}
-                  <p className="mt-2 text-center text-[11px] leading-relaxed text-neutral-400">
-                    Perangkat otomatis memakai sensor yang tersedia — tatap kamera
-                    untuk pemindaian wajah atau sentuh sensor sidik jari saat diminta.
-                  </p>
+                  <button
+                    type="button"
+                    onClick={handleBiometricLogin}
+                    disabled={bioLoading || loading}
+                    className="press-effect mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-orange-200 bg-orange-50/70 text-sm font-black text-orange-700 transition hover:bg-orange-100 disabled:opacity-60"
+                  >
+                    {bioLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Fingerprint className="h-5 w-5" /> Masuk dengan Face ID / Sidik Jari
+                      </>
+                    )}
+                  </button>
                   {bioEmail && (
                     <p className="mt-1.5 text-center text-[11px] text-neutral-400">
                       Akun tersimpan di perangkat ini: <b>{bioEmail}</b>
