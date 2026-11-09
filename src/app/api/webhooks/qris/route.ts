@@ -9,6 +9,12 @@ import {
 import { verifyDanaWebhookSignature } from "@/lib/qris-dana";
 import { MIDTRANS_ENABLED } from "@/lib/qris-config";
 import { verifyMidtransSignature } from "@/lib/qris-midtrans";
+import {
+  DOKU_CLIENT_ID,
+  DOKU_CLIENT_SECRET,
+  DOKU_ENABLED,
+} from "@/lib/qris-config";
+import { getQrisDokuStatus, verifyDokuWebhookSignature } from "@/lib/qris-doku";
 
 /**
  * POST /api/webhooks/qris
@@ -51,6 +57,157 @@ export async function POST(req: NextRequest) {
     body = JSON.parse(rawBody) as Record<string, unknown>;
   } catch {
     return NextResponse.json({ ok: false, reason: "Body bukan JSON." }, { status: 400 });
+  }
+
+  // ===== DOKU QRIS SNAP — HTTP NOTIFICATION (webhook resmi DOKU) =====
+  // Format SNAP DOKU: header X-PARTNER-ID / X-TIMESTAMP / X-SIGNATURE
+  // (HMAC-SHA512 dengan clientSecret merchant) + body berisi
+  // originalPartnerReferenceNo (= partnerReferenceNo yang dikirim merchant,
+  // tersimpan di Order.qrisTrxId berawalan "DOKU-") dan latestTransactionStatus
+  // ("00" = dana masuk). Bentuknya MIRIP notifikasi DANA SNAP — cabang DOKU
+  // diuji pertama; notifikasi milik DANA disaring lewat X-PARTNER-ID.
+  // KEAMANAN fail-closed: bila DOKU_CLIENT_SECRET diset, signature WAJIB
+  // terverifikasi; tanpa itu notifikasi hanya dianggap HINT dan status SELALU
+  // dikonfirmasi ulang ke DOKU lewat query sebelum pesanan dilunaskan.
+  // Tautan webhook produksi: {DOMAIN}/api/webhooks/qris
+  // (dashboard DOKU ▸ Payment Settings ▸ QR Payment ▸ Notification URL).
+  const dokuPartner = req.headers.get("x-partner-id") ?? "";
+  const dokuSig = req.headers.get("x-signature") ?? "";
+  const dokuTs = req.headers.get("x-timestamp") ?? "";
+  const dokuNotifyRef =
+    typeof body.originalPartnerReferenceNo === "string"
+      ? body.originalPartnerReferenceNo
+      : null;
+  const dokuNotifyStatus =
+    typeof body.latestTransactionStatus === "string" ? body.latestTransactionStatus : null;
+  const isDanaClientNotify =
+    DANA_ENABLED && dokuPartner.length > 0 && dokuPartner === DANA_CLIENT_ID;
+  if (DOKU_ENABLED && dokuNotifyRef && dokuNotifyStatus !== null && !isDanaClientNotify) {
+    // X-PARTNER-ID (bila dikirim) harus milik merchant DOKU ini
+    if (dokuPartner && DOKU_CLIENT_ID && dokuPartner !== DOKU_CLIENT_ID) {
+      return NextResponse.json(
+        { ok: false, reason: "X-PARTNER-ID tidak cocok dengan merchant DOKU ini." },
+        { status: 403 }
+      );
+    }
+    // Signature diverifikasi bila client secret tersedia; tanpa itu notifikasi
+    // tetap diterima sebagai HINT — pelunasan tetap butuh konfirmasi query.
+    if (DOKU_CLIENT_SECRET) {
+      if (!dokuSig || !dokuTs) {
+        return NextResponse.json(
+          { ok: false, reason: "Header signature DOKU tidak lengkap." },
+          { status: 403 }
+        );
+      }
+      const pathname = new URL(req.url).pathname;
+      const valid = verifyDokuWebhookSignature({
+        signature: dokuSig,
+        timestamp: dokuTs,
+        rawBody,
+        paths: [pathname],
+      });
+      if (!valid) {
+        return NextResponse.json(
+          { ok: false, reason: "Signature DOKU tidak valid." },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Hanya status "00" (Success) yang melunaskan pesanan.
+    if (dokuNotifyStatus !== "00") {
+      return NextResponse.json({
+        responseCode: "2005600",
+        responseMessage: "Successful",
+      });
+    }
+
+    // Cari pesanan: qrisTrxId = partnerReferenceNo DOKU (bisa + suffix retry
+    // unik bila kode dibuat ulang); fallback: kode pesanan dari referensi.
+    const candidates = new Set<string>();
+    const addCandidate = (s: string) => {
+      if (!s) return;
+      candidates.add(s);
+      const noSuffix = s.replace(/-[0-9a-z]+$/i, "");
+      if (noSuffix !== s) candidates.add(noSuffix);
+    };
+    addCandidate(dokuNotifyRef);
+    addCandidate(dokuNotifyRef.replace(/^DOKU-/, ""));
+    let order: { id: string; paymentMethod: string } | null = null;
+    for (const c of candidates) {
+      if (order) break;
+      order = await db.order.findFirst({ where: { qrisTrxId: c } });
+    }
+    for (const c of candidates) {
+      if (order) break;
+      const bare = c.replace(/^DOKU-/, "");
+      if (!bare) continue;
+      order = await db.order.findFirst({
+        where: { code: bare, paymentMethod: "QRIS" },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+    if (!order) {
+      console.warn("[QRIS] Notifikasi DOKU: pesanan tidak ditemukan untuk", dokuNotifyRef);
+      return NextResponse.json({
+        responseCode: "2005600",
+        responseMessage: "Successful",
+        ok: false,
+        reason: "Pesanan tidak ditemukan.",
+      });
+    }
+    if (order.paymentMethod !== "QRIS") {
+      return NextResponse.json({
+        responseCode: "2005600",
+        responseMessage: "Successful",
+        ok: false,
+        reason: "Bukan pesanan QRIS.",
+      });
+    }
+
+    // KONFIRMASI ULANG ke DOKU sebelum melunaskan (fail-closed) — notifikasi
+    // saja tidak cukup bila signature tidak bisa diverifikasi (jalur API key).
+    try {
+      const confirmed = await getQrisDokuStatus(dokuNotifyRef);
+      if (confirmed !== "PAID") {
+        // Notifikasi datang lebih dulu dari sinkronisasi DOKU — polling
+        // reguler akan menyelesaikan pelunasan begitu query mengatakan PAID.
+        return NextResponse.json({
+          responseCode: "2005600",
+          responseMessage: "Successful",
+          ok: false,
+          reason: `Status di DOKU masih ${confirmed} — menunggu konfirmasi query.`,
+        });
+      }
+    } catch (err) {
+      console.warn(
+        "[QRIS] Notifikasi DOKU: gagal konfirmasi status, dilunaskan lewat polling:",
+        err instanceof Error ? err.message : err
+      );
+      return NextResponse.json({
+        responseCode: "2005600",
+        responseMessage: "Successful",
+        ok: false,
+        reason: "Konfirmasi status ke DOKU gagal — polling akan menyusul.",
+      });
+    }
+
+    const result = await markOrderPaidBySystem(order.id);
+    if (result.cancelled) {
+      // Dana masuk SETELAH pesanan dibatalkan otomatis (lewat 5 menit) —
+      // pesanan tidak dihidupkan kembali; dana dikembalikan ke pembayar.
+      return NextResponse.json({
+        responseCode: "2005600",
+        responseMessage: "Successful",
+        ok: false,
+        reason:
+          "Pesanan sudah dibatalkan otomatis karena melewati batas waktu pembayaran. Dana dikembalikan ke pembayar.",
+      });
+    }
+    return NextResponse.json({
+      responseCode: "2005600",
+      responseMessage: "Successful",
+    });
   }
 
   // ===== DANA QRIS ACQUIRER — FINISH NOTIFY (webhook resmi DANA) =====

@@ -10,13 +10,19 @@ import {
   CASAKU_ENABLED,
   DANA_ENABLED,
   DANA_IS_PRODUCTION,
+  DOKU_ENABLED,
+  DOKU_IS_PRODUCTION,
   MIDTRANS_ENABLED,
   MIDTRANS_IS_PRODUCTION,
 } from "@/lib/qris-config";
 import { cancelQrisOrderIfExpired, QRIS_PAYMENT_TIMEOUT_MS } from "@/lib/order-expiry";
 
 /** Penyedia aktif — untuk label layar pembayaran */
-const PROVIDER = DANA_ENABLED
+const PROVIDER = DOKU_ENABLED
+  ? DOKU_IS_PRODUCTION
+    ? "doku"
+    : "doku-sandbox"
+  : DANA_ENABLED
   ? DANA_IS_PRODUCTION
     ? "dana"
     : "dana-sandbox"

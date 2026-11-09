@@ -136,6 +136,8 @@ const STATE_META: Record<TxState, { label: string; cls: string; dot: string }> =
 };
 
 function providerLabel(p: string | null): string {
+  if (p === "doku") return "DOKU";
+  if (p?.startsWith("doku")) return "DOKU Sandbox";
   if (p === "dana") return "DANA";
   if (p === "casaku") return "Casaku";
   if (p === "internal") return "Bawaan";

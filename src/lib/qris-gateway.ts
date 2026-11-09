@@ -8,7 +8,12 @@
  *   lunas pesanan QRIS lewat API mana pun.
  *
  * Urutan penyedia (lihat qris-config.ts & qris-provider.ts):
- *   0. DANA ENTERPRISE (prioritas utama) — aktif otomatis bila DANA_CLIENT_ID
+ *   -1. DOKU (prioritas utama) — aktif otomatis bila DOKU_API_KEY (jalur MCP)
+ *      atau DOKU_CLIENT_ID + DOKU_CLIENT_SECRET + DOKU_MERCHANT_ID (jalur SNAP)
+ *      tersedia di .env. QRIS dinamis resmi DOKU (SNAP MPM) — dana masuk ke
+ *      merchant DOKU pemilik toko, verifikasi otomatis polling + webhook
+ *      (lihat qris-doku.ts).
+ *   0. DANA ENTERPRISE — aktif otomatis bila DANA_CLIENT_ID
  *      + DANA_MERCHANT_ID + DANA_PRIVATE_KEY tersedia di .env. QRIS dinamis
  *      resmi dari API DANA (Acquirer MPM) — dana masuk LANGSUNG ke saldo
  *      akun DANA merchant pemilik toko (lihat qris-dana.ts).
@@ -39,12 +44,20 @@ import {
   CASAKU_ENABLED,
   DANA_ENABLED,
   DANA_IS_PRODUCTION,
+  DOKU_ENABLED,
+  DOKU_IS_PRODUCTION,
   MIDTRANS_ENABLED,
   MIDTRANS_IS_PRODUCTION,
   QRIS_GATEWAY_API_KEY,
   QRIS_GATEWAY_URL,
   QRIS_SANDBOX_ENABLED,
 } from "@/lib/qris-config";
+import {
+  cancelQrisDokuPayment,
+  createQrisDokuPayment,
+  getQrisDokuStatus,
+  isDokuTrx,
+} from "@/lib/qris-doku";
 import {
   createCasakuQrisPayment,
   getCasakuStatus,
@@ -179,7 +192,23 @@ export async function createQrisGatewayPayment(opts: {
   amount: number;
   reference: string;
 }): Promise<GatewayTransaction> {
-  // ==== -1) DANA ENTERPRISE — penyedia utama (QRIS Acquirer resmi DANA) ====
+  // ==== -1) DOKU — penyedia utama (QRIS SNAP MPM resmi DOKU) ====
+  // Dana masuk ke merchant DOKU pemilik toko. Bila DOKU sandbox menolak
+  // (kanal QRIS belum aktif / API key terbatas), lanjut ke penyedia
+  // berikutnya dan tampilkan alasannya (fallbackReason). Di mode PRODUKSI
+  // tidak ada fallback senyap — galat DOKU diteruskan apa adanya.
+  let dokuFailure: string | null = null;
+  if (DOKU_ENABLED) {
+    try {
+      const trx = await createQrisDokuPayment(opts);
+      return { ...trx, provider: DOKU_IS_PRODUCTION ? "doku" : "doku-sandbox" };
+    } catch (err) {
+      dokuFailure = err instanceof Error ? err.message : "DOKU tidak dapat dihubungi.";
+      console.warn("[QRIS] DOKU menolak charge — lanjut penyedia berikutnya:", dokuFailure);
+      if (DOKU_IS_PRODUCTION) throw err;
+    }
+  }
+  // ==== 0) DANA ENTERPRISE — QRIS Acquirer resmi DANA ====
   // Dana masuk LANGSUNG ke saldo DANA merchant pemilik toko. Bila DANA
   // sandbox menolak (kredensial uji bermasalah), lanjut ke penyedia
   // berikutnya dan tampilkan alasannya (fallbackReason). Di mode PRODUKSI
@@ -212,6 +241,7 @@ export async function createQrisGatewayPayment(opts: {
   // ==== 1) MIDTRANS ====
   // Gabungan alasan penyedia utama yang ditolak (transparansi layar bayar)
   const upstreamFailures = [
+    dokuFailure ? `DOKU: ${dokuFailure}` : null,
     danaFailure ? `DANA: ${danaFailure}` : null,
     casakuFailure ? `Casaku: ${casakuFailure}` : null,
   ].filter(Boolean) as string[];
@@ -270,7 +300,11 @@ export async function createQrisGatewayPayment(opts: {
  * penyedia eksternal.
  */
 export async function getQrisGatewayStatus(trxId: string): Promise<GatewayStatus> {
-  // ==== -1) DANA (prefix DANA-) — QRIS Acquirer resmi DANA ====
+  // ==== -1) DOKU (prefix DOKU-) — QRIS SNAP MPM DOKU ====
+  if (isDokuTrx(trxId)) {
+    return getQrisDokuStatus(trxId);
+  }
+  // ==== 0) DANA (prefix DANA-) — QRIS Acquirer resmi DANA ====
   if (isDanaTrx(trxId)) {
     return getQrisDanaStatus(trxId);
   }

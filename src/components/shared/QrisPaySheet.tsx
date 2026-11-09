@@ -550,6 +550,11 @@ export function QrisPaySheet({
                         <p className="mt-1 text-[10px] font-bold text-emerald-600">
                           Penyedia: Casaku — dana masuk langsung ke rekening toko
                         </p>
+                      ) : info?.provider?.startsWith("doku") ? (
+                        <p className="mt-1 text-[10px] font-bold text-emerald-600">
+                          Penyedia: DOKU ({info.provider === "doku" ? "Produksi" : "Sandbox"}) —
+                          scan pakai DANA / GoPay / OVO / ShopeePay / m-Banking mana pun
+                        </p>
                       ) : info?.provider?.startsWith("dana") ? (
                         <p className="mt-1 text-[10px] font-bold text-emerald-600">
                           Penyedia: DANA ({info.provider === "dana" ? "Produksi" : "Sandbox"}) —

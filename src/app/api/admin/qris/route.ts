@@ -6,12 +6,15 @@ import { notifyOrderStatus } from "@/lib/push";
 import {
   DANA_ENABLED,
   DANA_IS_PRODUCTION,
+  DOKU_ENABLED,
+  DOKU_IS_PRODUCTION,
   MIDTRANS_ENABLED,
   MIDTRANS_IS_PRODUCTION,
   QRIS_SANDBOX_ENABLED,
 } from "@/lib/qris-config";
 import { cancelQrisDanaPayment } from "@/lib/qris-dana";
 import { cancelQrisMidtransPayment } from "@/lib/qris-midtrans";
+import { cancelQrisDokuPayment } from "@/lib/qris-doku";
 import { QrisGatewayError } from "@/lib/qris-provider";
 
 /**
@@ -121,7 +124,11 @@ export async function GET() {
       dana: { enabled: DANA_ENABLED, production: DANA_IS_PRODUCTION },
       midtrans: { enabled: MIDTRANS_ENABLED, production: MIDTRANS_IS_PRODUCTION },
       internal: { sandboxEnabled: QRIS_SANDBOX_ENABLED },
-      activeProvider: DANA_ENABLED
+      activeProvider: DOKU_ENABLED
+        ? DOKU_IS_PRODUCTION
+          ? "doku"
+          : "doku-sandbox"
+        : DANA_ENABLED
         ? "dana"
         : MIDTRANS_ENABLED
           ? "midtrans"
@@ -201,7 +208,21 @@ export async function POST(req: NextRequest) {
   // ===== 1) Batalkan transaksi di PENYEDIA supaya QR tidak bisa dibayar lagi =====
   let providerNote: string | null = null;
   try {
-    if (order.qrisProvider === "dana" && order.qrisTrxId && DANA_ENABLED) {
+    if (order.qrisProvider?.startsWith("doku") && order.qrisTrxId && DOKU_ENABLED) {
+      const r = await cancelQrisDokuPayment(order.qrisTrxId);
+      if (r.alreadyPaid) {
+        // Dana ternyata baru masuk di DOKU — JANGAN batalkan; biarkan
+        // polling/webhook melunaskan pesanan otomatis.
+        return NextResponse.json(
+          {
+            error:
+              "Dana baru saja terdeteksi masuk di DOKU. Pembatalan dibatalkan — pesanan akan dilunaskan otomatis oleh sistem.",
+          },
+          { status: 409 }
+        );
+      }
+      providerNote = r.providerStatus;
+    } else if (order.qrisProvider === "dana" && order.qrisTrxId && DANA_ENABLED) {
       const r = await cancelQrisDanaPayment(order.qrisTrxId);
       if (r.alreadyPaid) {
         // Dana ternyata baru masuk di DANA — JANGAN batalkan; biarkan

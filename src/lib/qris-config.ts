@@ -255,3 +255,95 @@ export const DANA_WEBHOOK_READY = DANA_ENABLED && DANA_PUBLIC_KEY.length > 0;
 
 /** Prefix ID transaksi DANA (trxId berawalan "DANA-") — untuk deteksi provider */
 export const DANA_TRX_PREFIX = "DANA";
+
+// ============================================================
+//  DOKU — penyedia QRIS prioritas utama (api.doku.com, SNAP MPM)
+//  https://api-sandbox.doku.com (sandbox) | https://api.doku.com (produksi)
+// ============================================================
+// DOKU mendukung DUA jalur kredensial (lihat docs/PANDUAN-QRIS-DOKU.md):
+//
+//  1) JALUR SNAP REST (paling lengkap — butuh 3 kredensial dashboard DOKU):
+//     DOKU_CLIENT_ID     -> Client ID (X-PARTNER-ID), berformat "BRN-…"
+//     DOKU_CLIENT_SECRET -> Client Secret (alias env DOKU_SECRET_KEY)
+//     DOKU_MERCHANT_ID   -> Merchant ID / MID (mall ID) dari registrasi QRIS
+//     DOKU_TERMINAL_ID   -> Terminal ID (opsional, default "A01")
+//     Alur: token B2B -> qr-mpm-generate -> qr-mpm-query (+ qr-expire).
+//
+//  2) JALUR API KEY AGENTIC (cukup 1 kredensial — dashboard sandbox.doku.com):
+//     DOKU_API_KEY       -> API key berawalan "doku_key_…" / "api_key_…"
+//     Alur via MCP DOKU (JSON-RPC /doku-mcp-server/mcp):
+//       tools/call create_qris_payment -> QRIS dinamis
+//       tools/call get_transaction_by_invoice_number -> cek status
+//
+// Webhook DOKU (dashboard ▸ Payment Settings ▸ QR Payment ▸ Notification URL):
+//   {DOMAIN}/api/webhooks/qris — diverifikasi signature HMAC-SHA512 bila
+//   DOKU_CLIENT_SECRET diset; tanpa itu notifikasi tetap diterima sebagai
+//   HINT dan status SELALU dikonfirmasi ulang ke DOKU (query) sebelum pesanan
+//   dilunaskan — fail-closed, tidak bisa dipalsukan.
+
+/** Client ID DOKU (X-PARTNER-ID) — berformat "BRN-…" */
+export const DOKU_CLIENT_ID = (process.env.DOKU_CLIENT_ID ?? "").trim();
+
+/** Client Secret DOKU — untuk signature HMAC-SHA512 (alias DOKU_SECRET_KEY) */
+export const DOKU_CLIENT_SECRET = (
+  process.env.DOKU_CLIENT_SECRET ??
+  process.env.DOKU_SECRET_KEY ??
+  ""
+).trim();
+
+/** Merchant ID / MID DOKU (mall ID) — alias DOKU_MID */
+export const DOKU_MERCHANT_ID = (
+  process.env.DOKU_MERCHANT_ID ??
+  process.env.DOKU_MID ??
+  ""
+).trim();
+
+/** Terminal ID QRIS (maks 16 karakter; contoh resmi: "A01" / "K45") */
+export const DOKU_TERMINAL_ID = (process.env.DOKU_TERMINAL_ID ?? "A01")
+  .trim()
+  .slice(0, 16);
+
+/** API key agentic DOKU (dashboard sandbox.doku.com) — jalur MCP */
+export const DOKU_API_KEY = (process.env.DOKU_API_KEY ?? "").trim();
+
+/** Private key PKCS#8 milik merchant (opsional) — signature token asimetris SHA256withRSA */
+export const DOKU_PRIVATE_KEY = (process.env.DOKU_PRIVATE_KEY ?? "").trim();
+
+/** Kode pos merchant untuk payload QRIS (5 digit) */
+export const DOKU_POSTAL_CODE = (process.env.DOKU_POSTAL_CODE ?? "13120")
+  .trim()
+  .replace(/\D/g, "")
+  .slice(0, 5);
+
+/** true = niat mode produksi (uang nyata) */
+export const DOKU_IS_PRODUCTION = process.env.DOKU_IS_PRODUCTION === "true";
+
+/** Basis URL API DOKU sesuai lingkungan */
+export const DOKU_API_BASE = (
+  process.env.DOKU_API_BASE ??
+  (DOKU_IS_PRODUCTION ? "https://api.doku.com" : "https://api-sandbox.doku.com")
+).replace(/\/+$/, "");
+
+/** Path endpoint MCP DOKU (API key agentic) */
+export const DOKU_MCP_PATH = (process.env.DOKU_MCP_PATH ?? "/doku-mcp-server/mcp").trim();
+
+/** Masa berlaku QRIS dinamis DOKU (menit) */
+export const DOKU_QRIS_EXPIRY_MINUTES = Math.max(
+  1,
+  Math.min(30, Number(process.env.DOKU_QRIS_EXPIRY_MINUTES ?? 5) || 5)
+);
+
+/** Jalur SNAP REST siap? (Client ID + Secret + Merchant ID lengkap) */
+export const DOKU_SNAP_READY =
+  DOKU_CLIENT_ID.length > 0 &&
+  DOKU_CLIENT_SECRET.length > 0 &&
+  DOKU_MERCHANT_ID.length > 0;
+
+/** Jalur API key agentic (MCP) siap? */
+export const DOKU_APIKEY_READY = DOKU_API_KEY.length > 0;
+
+/** DOKU aktif sebagai penyedia QRIS bila salah satu jalur kredensial lengkap */
+export const DOKU_ENABLED = DOKU_SNAP_READY || DOKU_APIKEY_READY;
+
+/** Prefix ID transaksi DOKU (trxId berawalan "DOKU-") — untuk deteksi provider */
+export const DOKU_TRX_PREFIX = "DOKU";

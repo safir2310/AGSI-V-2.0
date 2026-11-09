@@ -14,6 +14,14 @@ import {
   DANA_PRIVATE_KEY,
   DANA_PUBLIC_KEY,
   DANA_STORE_ID,
+  DOKU_API_KEY,
+  DOKU_API_BASE,
+  DOKU_CLIENT_ID,
+  DOKU_CLIENT_SECRET,
+  DOKU_ENABLED,
+  DOKU_IS_PRODUCTION,
+  DOKU_MERCHANT_ID,
+  DOKU_SNAP_READY,
   MIDTRANS_API_BASE,
   MIDTRANS_CLIENT_KEY,
   MIDTRANS_ENABLED,
@@ -108,11 +116,25 @@ export async function GET() {
           MIDTRANS_SERVER_KEY.trim().startsWith("Mid-server-"),
         clientKeyPresent: MIDTRANS_CLIENT_KEY.trim().length > 0,
       },
+      doku: {
+        enabled: DOKU_ENABLED,
+        production: DOKU_IS_PRODUCTION,
+        apiKeyPresent: DOKU_API_KEY.length > 0,
+        snapReady: DOKU_SNAP_READY,
+        clientIdPresent: DOKU_CLIENT_ID.length > 0,
+        clientSecretPresent: DOKU_CLIENT_SECRET.length > 0,
+        merchantIdPresent: DOKU_MERCHANT_ID.length > 0,
+        apiBase: DOKU_API_BASE,
+      },
       internal: { sandboxEnabled: QRIS_SANDBOX_ENABLED },
       external: { url: process.env.QRIS_GATEWAY_URL ?? null },
     },
     // Penyedia yang dipakai untuk pesanan QRIS baru
-    activeProvider: DANA_ENABLED
+    activeProvider: DOKU_ENABLED
+      ? DOKU_IS_PRODUCTION
+        ? "doku"
+        : "doku-sandbox"
+      : DANA_ENABLED
       ? "dana"
       : CASAKU_ENABLED
         ? "casaku"
