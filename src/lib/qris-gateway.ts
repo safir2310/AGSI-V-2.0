@@ -195,6 +195,9 @@ export async function createQrisGatewayPayment(opts: {
    *  DANA, OVO, ShopeePay, LinkAja + VA DOKU cadangan — sesuai kanal aktif).
    *  Diabaikan penyedia non-DOKU (QRIS tetap QR string biasa). */
   channelMode?: "EWALLET";
+  /** ID pesanan aplikasi — redirect setelah bayar diarahkan ke halaman
+   *  IN-APP /pay/<id> (bukan halaman lain). Dipakai jalur DOKU Checkout. */
+  callbackRef?: string;
 }): Promise<GatewayTransaction> {
   // ==== -1) DOKU — penyedia utama (QRIS SNAP MPM resmi DOKU) ====
   // Dana masuk ke merchant DOKU pemilik toko. Bila DOKU sandbox menolak

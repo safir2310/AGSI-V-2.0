@@ -5,8 +5,8 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { QRCodeSVG } from "qrcode.react";
 import {
+  ArrowLeft,
   BadgeCheck,
-  ExternalLink,
   FlaskConical,
   Loader2,
   Printer,
@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Timer,
   TriangleAlert,
+  Wallet,
   X,
   XCircle,
 } from "lucide-react";
@@ -111,6 +112,13 @@ export function QrisPaySheet({
   const [gatewayStatus, setGatewayStatus] = useState<string | null>(null);
   /** gangguan sementara saat memantau (diciutkan agar tidak bikin cemas) */
   const [monitorNote, setMonitorNote] = useState<string | null>(null);
+  /** ===== Halaman bayar DOKU DI DALAM APLIKASI (permintaan pemilik) =====
+   *  true -> halaman checkout.doku.com dirender via iframe pada lapisan
+   *  layar penuh DI DALAM aplikasi — TIDAK membuka tab/aplikasi lain. */
+  const [dokuView, setDokuView] = useState(false);
+  /** auto-buka cukup SEKALI per pesanan (pelanggan) — setelah pengguna
+   *  kembali ke tampilan QR, jangan dipaksa buka halaman lagi. */
+  const dokuAutoOpened = useRef(false);
   /** batas waktu pesanan (createdAt + 5 menit) dalam ms epoch */
   const [orderDeadline, setOrderDeadline] = useState<number | null>(null);
   const paidNotified = useRef(false);
@@ -205,6 +213,36 @@ export function QrisPaySheet({
   useEffect(() => {
     void fetchPayload();
   }, [fetchPayload]);
+
+  // Pelanggan: begitu tautan halaman bayar DOKU siap, halaman itu LANGSUNG
+  // terbuka di dalam aplikasi (iframe layar penuh) — tanpa pindah tab/
+  // aplikasi lain (permintaan pemilik). Kasir/POS tetap mulai dari QR agar
+  // pelanggan bisa memindai dari HP-nya sendiri.
+  useEffect(() => {
+    if (variant !== "customer") return;
+    if (!info?.paymentUrl || phase !== "scan") return;
+    if (dokuAutoOpened.current) return;
+    dokuAutoOpened.current = true;
+    setDokuView(true);
+  }, [variant, info?.paymentUrl, phase]);
+
+  // DOKU mengirim postMessage {func:"closeJokul"} ke jendela induk saat
+  // pengguna menutup halaman bayarnya (tombol X di halaman DOKU). Tanggapi:
+  // kembali ke tampilan QR — layar pembayaran TETAP terbuka dan status
+  // tetap dipantau otomatis (pengguna tidak ke mana-mana).
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { func?: unknown } | null | undefined;
+      if (d && typeof d === "object" && d.func === "closeJokul") {
+        setDokuView(false);
+        setMonitorNote(
+          "Halaman pembayaran DOKU ditutup — status pembayaran tetap dipantau otomatis."
+        );
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
 
   // Hitung waktu mundur (hanya saat fase scan)
   useEffect(() => {
@@ -323,6 +361,12 @@ export function QrisPaySheet({
   const autoVerify = info?.autoVerify ?? false;
   /** Batas pesanan (5 menit) sudah terlewat — pesanan mati, jangan tawarkan buat ulang kode */
   const pastDeadline = orderDeadline !== null && Date.now() >= orderDeadline;
+
+  // Kode bayar hangus saat halaman DOKU terbuka -> kembali ke tampilan QR
+  // (di sana ada tombol "Buat Ulang Kode Bayar").
+  useEffect(() => {
+    if (dokuView && phase === "scan" && codeStale) setDokuView(false);
+  }, [dokuView, phase, codeStale]);
 
   // Portal ke <body> agar modal tidak terjebak stacking context `main` (z-10)
   // — selalu tampil DI ATAS navigasi bawah liquid glass (z-50) & header (z-40).
@@ -551,9 +595,9 @@ export function QrisPaySheet({
                 </p>
                 {info?.paymentUrl ? (
                   <p className="mt-1 text-center text-[11px] leading-relaxed text-neutral-500">
-                    Pindai kode di atas dengan kamera HP untuk membuka{" "}
-                    <strong className="font-bold text-neutral-700">halaman pembayaran DOKU</strong>, lalu
-                    pilih QRIS / e-wallet / Virtual Account yang tersedia dan selesaikan pembayaran.
+                    Tekan tombol di bawah — <strong className="font-bold text-neutral-700">halaman pembayaran DOKU terbuka langsung di dalam aplikasi ini</strong>{" "}
+                    (tanpa pindah aplikasi/tab lain), lalu pilih QRIS / e-wallet / Virtual Account
+                    favoritmu. Kode QR di atas dipakai bila membayar dari HP lain.
                   </p>
                 ) : (
                   <p className="mt-1 text-center text-[11px] leading-relaxed text-neutral-500">
@@ -717,15 +761,20 @@ export function QrisPaySheet({
 
                 {/* Tombol sesuai varian */}
                 {info?.paymentUrl && (
-                  <a
-                    href={info.paymentUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="press-effect mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-red-600 text-sm font-extrabold text-white shadow-lg shadow-red-500/30 hover:bg-red-700"
+                  <button
+                    onClick={() => setDokuView(true)}
+                    className="press-effect mt-4 flex h-12 w-full flex-col items-center justify-center rounded-xl bg-red-600 text-sm font-extrabold text-white shadow-lg shadow-red-500/30 hover:bg-red-700"
                   >
-                    <ExternalLink className="h-4 w-4" />{" "}
-                    {order.method === "EWALLET" ? "Bayar dengan E-Wallet (DOKU)" : "Buka Halaman Pembayaran DOKU"}
-                  </a>
+                    <span className="flex items-center gap-2">
+                      <Wallet className="h-4 w-4" />
+                      {order.method === "EWALLET"
+                        ? "Bayar dengan E-Wallet (DOKU)"
+                        : "Buka Halaman Pembayaran DOKU"}
+                    </span>
+                    <span className="text-[9px] font-bold tracking-wide text-red-100">
+                      terbuka di dalam aplikasi — tanpa pindah halaman lain
+                    </span>
+                  </button>
                 )}
                 {isPos ? (
                   <div className="mt-4 space-y-2">
@@ -773,6 +822,88 @@ export function QrisPaySheet({
           </div>
         </motion.div>
       </motion.div>
+
+      {/* ===== HALAMAN PEMBAYARAN DOKU DI DALAM APLIKASI (permintaan pemilik:
+          "buka halaman pembayaran DOKU tetap berada dalam satu aplikasi,
+          jangan alihkan buka halaman lain") =====
+          checkout.doku.com dirender via iframe layar penuh DI ATAS sheet —
+          pengguna memilih kanal & membayar tanpa keluar dari aplikasi.
+          Status tetap dipolling: begitu LUNAS, lapisan ini menutup sendiri
+          dan layar sukses in-app mengambil alih. */}
+      {dokuView && phase === "scan" && info?.paymentUrl && (
+        <motion.div
+          key="doku-inapp"
+          initial={prefersReduced ? false : { opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={prefersReduced ? undefined : { opacity: 0, y: 24 }}
+          transition={{ type: "spring", stiffness: 380, damping: 34 }}
+          className="fixed inset-0 z-[97] flex flex-col bg-white"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Halaman Pembayaran DOKU di dalam aplikasi"
+        >
+          {/* Kepala: kembali ke QR + kode pesanan + hitung mundur + status */}
+          <header className="shrink-0 bg-gradient-to-r from-orange-700 via-orange-600 to-orange-500 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setDokuView(false)}
+                aria-label="Kembali ke tampilan QR"
+                className="press-effect flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15 hover:bg-white/30"
+              >
+                <ArrowLeft className="h-4.5 w-4.5" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black tracking-wide">
+                  {order.method === "EWALLET" ? "Pembayaran E-Wallet" : "Pembayaran QRIS"}
+                  {" • "}
+                  <span className="text-orange-100">DOKU</span>
+                </p>
+                <p className="truncate text-[11px] font-semibold text-orange-100">
+                  {order.code} • {formatIDR(info.payAmount ?? order.total)} • di dalam aplikasi
+                </p>
+              </div>
+              <span
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-black tabular-nums ring-1",
+                  codeStale
+                    ? "bg-red-500/90 text-white ring-red-200"
+                    : secondsLeft < 60
+                      ? "bg-amber-400/90 text-amber-950 ring-amber-200"
+                      : "bg-white/15 text-white ring-white/30"
+                )}
+              >
+                <Timer className="h-3.5 w-3.5" />
+                {codeStale ? "Hangus" : mmss(secondsLeft)}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center gap-2 rounded-xl bg-white/10 px-2.5 py-1.5 ring-1 ring-white/20">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-70" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-300" />
+              </span>
+              <p className="min-w-0 truncate text-[10px] font-bold text-white/90">
+                {monitorNote ?? "Status dicek otomatis — lunas sendiri begitu dana masuk"}
+              </p>
+            </div>
+          </header>
+
+          {/* Halaman bayar DOKU — dirender penuh di dalam aplikasi */}
+          <div className="relative flex-1 bg-white">
+            <iframe
+              src={info.paymentUrl}
+              title="Halaman Pembayaran DOKU"
+              className="absolute inset-0 h-full w-full border-0"
+              allow="payment *; clipboard-write"
+              referrerPolicy="strict-origin-when-cross-origin"
+            />
+          </div>
+
+          <p className="shrink-0 bg-neutral-50 px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 text-center text-[10px] leading-snug text-neutral-400">
+            Halaman pembayaran resmi DOKU (checkout.doku.com) ditampilkan di dalam aplikasi AGSI —
+            tekan ← untuk kembali ke kode QR.
+          </p>
+        </motion.div>
+      )}
     </AnimatePresence>,
     document.body
   );

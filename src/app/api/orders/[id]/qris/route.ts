@@ -168,11 +168,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
   // Pesanan E-Wallet: halaman bayar DOKU difilter ke kanal e-wallet
   // (DOKU Wallet, DANA, OVO, ShopeePay, LinkAja + VA DOKU cadangan —
   // sesuai kanal yang aktif di akun DOKU merchant).
+  // callbackRef = id pesanan: redirect browser setelah bayar diarahkan ke
+  // halaman IN-APP /pay/<orderId> — tetap dalam satu aplikasi.
   try {
     const trx = await createQrisGatewayPayment({
       amount: order.total,
       reference: order.code,
       ...(order.paymentMethod === "EWALLET" ? { channelMode: "EWALLET" } : {}),
+      callbackRef: order.id,
     });
     // Jalur DOKU Checkout tidak mengembalikan QR string — URL halaman bayar
     // disimpan di qrisPayload (pola sama dengan simulator Midtrans sandbox).

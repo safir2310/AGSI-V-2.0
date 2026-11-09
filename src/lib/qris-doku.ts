@@ -35,7 +35,7 @@ import {
   DOKU_API_BASE,
   DOKU_API_KEY,
   DOKU_APIKEY_READY,
-  DOKU_CHECKOUT_CALLBACK_URL,
+  DOKU_CHECKOUT_CALLBACK_BASE,
   DOKU_CHECKOUT_READY,
   DOKU_CLIENT_ID,
   DOKU_CLIENT_SECRET,
@@ -772,6 +772,19 @@ function findPaymentUrl(value: unknown, depth = 0): string | undefined {
 }
 
 /**
+ * URL redirect browser pelanggan SETELAH bayar di halaman DOKU.
+ * SELALU menunjuk halaman IN-APP aplikasi /pay/[orderId] — permintaan
+ * pemilik: pembayaran tetap di dalam satu aplikasi, jangan alihkan ke
+ * halaman lain (webhook JSON / situs eksternal).
+ */
+function dokuCallbackUrl(orderId?: string): string {
+  if (orderId && /^[a-zA-Z0-9_-]{6,64}$/.test(orderId)) {
+    return `${DOKU_CHECKOUT_CALLBACK_BASE}/pay/${orderId}`;
+  }
+  return `${DOKU_CHECKOUT_CALLBACK_BASE}/`;
+}
+
+/**
  * Buat pesanan DOKU Checkout (jalur legacy produksi).
  * Halaman bayar menampilkan semua kanal AKTIF merchant (QRIS, VA, retail,
  * e-money, paylater) — sesuai konfigurasi akun DOKU. `channelTypes` bila
@@ -784,13 +797,15 @@ async function checkoutCreateQris(opts: {
   partnerReferenceNo: string;
   amount: number;
   channelTypes?: string[];
+  /** ID pesanan aplikasi — untuk callback_url in-app /pay/<orderId> */
+  callbackRef?: string;
 }): Promise<GatewayTransaction> {
   const payload = {
     order: {
       invoice_number: opts.partnerReferenceNo,
       amount: opts.amount,
       currency: "IDR",
-      callback_url: DOKU_CHECKOUT_CALLBACK_URL,
+      callback_url: dokuCallbackUrl(opts.callbackRef),
       language: "id",
       additional_info: {},
       line_items: [
@@ -967,6 +982,8 @@ export async function createQrisDokuPayment(opts: {
   amount: number;
   reference: string;
   channelMode?: "EWALLET";
+  /** ID pesanan aplikasi — callback_url DOKU diarahkan ke /pay/<id> (in-app) */
+  callbackRef?: string;
 }): Promise<GatewayTransaction> {
   const amount = Math.round(Number(opts.amount));
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -997,6 +1014,7 @@ export async function createQrisDokuPayment(opts: {
       ...(opts.channelMode === "EWALLET"
         ? { channelTypes: DOKU_EWALLET_CHANNEL_TYPES }
         : {}),
+      ...(opts.callbackRef ? { callbackRef: opts.callbackRef } : {}),
     });
   }
 

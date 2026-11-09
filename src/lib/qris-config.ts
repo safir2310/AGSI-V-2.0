@@ -384,5 +384,21 @@ export const DOKU_CHECKOUT_CALLBACK_URL = (
   "https://agsi-v-2-0.vercel.app/api/webhooks/qris"
 ).trim();
 
+/**
+ * BASE origin aplikasi untuk redirect browser pelanggan SETELAH bayar di
+ * halaman DOKU (order.callback_url DOKU Checkout). HARUS tetap di dalam
+ * aplikasi — permintaan pemilik: "buka halaman pembayaran DOKU tetap berada
+ * dalam satu aplikasi, jangan alihkan buka halaman lain".
+ * DOKU membangun URL akhir: {BASE}/pay/{orderId} — halaman IN-APP
+ * /pay/[id] yang menampilkan status pembayaran (lihat src/app/pay/[id]).
+ */
+export const DOKU_CHECKOUT_CALLBACK_BASE = (
+  process.env.NEXT_PUBLIC_APP_URL ??
+  process.env.APP_URL ??
+  "https://agsi-v-2-0.vercel.app"
+)
+  .trim()
+  .replace(/\/+$/, "");
+
 /** Prefix ID transaksi DOKU (trxId berawalan "DOKU-") — untuk deteksi provider */
 export const DOKU_TRX_PREFIX = "DOKU";
