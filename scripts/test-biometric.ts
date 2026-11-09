@@ -294,6 +294,131 @@ async function main() {
   });
   check("tanda tangan palsu ditolak", badVer.status === 401 || badVer.status === 500, `status ${badVer.status}`);
 
+  console.log("== 5b. Passkey discoverable: challengeKey unik (autofill + tombol bersamaan) ==");
+  // Dua permintaan options discoverable berurutan — keduanya harus hidup bersamaan
+  const discA = await jfetch("/api/auth/biometric/login/options", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: null, origin: ORIGIN }),
+  });
+  const discB = await jfetch("/api/auth/biometric/login/options", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: null, origin: ORIGIN }),
+  });
+  const keyA = String(discA.json.challengeKey ?? "");
+  const keyB = String(discB.json.challengeKey ?? "");
+  const chA = String(discA.json.challenge);
+  check(
+    "options discoverable mengembalikan challengeKey unik",
+    discA.status === 200 &&
+      discB.status === 200 &&
+      keyA.startsWith("auth:discover:") &&
+      keyB.startsWith("auth:discover:") &&
+      keyA !== keyB,
+    `keyA=${keyA} keyB=${keyB}`
+  );
+
+  const assertFor = (challenge: string, counter: number) => {
+    const data = buildAuthData({ flags: 0x05, counter });
+    const hash = sha256(clientDataJSON("webauthn.get", challenge));
+    return {
+      id: credIdB64u,
+      rawId: credIdB64u,
+      type: "public-key",
+      clientExtensionResults: {},
+      response: {
+        authenticatorData: b64u(data),
+        clientDataJSON: b64u(clientDataJSON("webauthn.get", challenge)),
+        signature: b64u(signDer(Buffer.concat([data, hash]))),
+        userHandle,
+      },
+    };
+  };
+
+  // Alur A selesai DULUAN (autofill), B masih menunggu di dialog → A tetap lolos
+  const verA = await jfetch("/api/auth/biometric/login/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...assertFor(chA, 3), challengeKey: keyA }),
+  });
+  check(
+    "verify alur A (dengan challengeKey) sukses meski alur B menunggu",
+    verA.status === 200 && typeof verA.json.token === "string",
+    verA.text.slice(0, 160)
+  );
+
+  // Replay alur A → challenge sekali pakai. Ditolak 400 (sesi habis) atau 401
+  // (fallback menemukan challenge alur lain → tanda tangan tidak cocok).
+  const replayA = await jfetch("/api/auth/biometric/login/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...assertFor(chA, 3), challengeKey: keyA }),
+  });
+  check(
+    "challengeKey sekali pakai (replay ditolak)",
+    replayA.status === 400 || replayA.status === 401,
+    `status ${replayA.status}`
+  );
+
+  // Klien LAMA: tanpa challengeKey → fallback = challenge discoverable TERBARU.
+  // Buat challenge segar (C) lalu verifikasi tanda tangan untuk C tanpa kunci —
+  // fallback memilih C (expiresAt terjauh) sehingga deterministik walau ada
+  // sisa challenge dari run sebelumnya.
+  const optsC = await jfetch("/api/auth/biometric/login/options", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: null, origin: ORIGIN }),
+  });
+  const chC = String(optsC.json.challenge);
+  const verOldClient = await jfetch("/api/auth/biometric/login/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(assertFor(chC, 4)),
+  });
+  check(
+    "verify tanpa challengeKey (klien lama) → fallback discover terbaru",
+    verOldClient.status === 200 && typeof verOldClient.json.token === "string",
+    verOldClient.text.slice(0, 160)
+  );
+
+  // Replay C tanpa kunci → challenge sudah dipakai / tak cocok → ditolak
+  const replayOld = await jfetch("/api/auth/biometric/login/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(assertFor(chC, 4)),
+  });
+  check(
+    "replay klien lama ditolak (400 sesi habis / 401 mismatch)",
+    replayOld.status === 400 || replayOld.status === 401,
+    `status ${replayOld.status}`
+  );
+
+  // Alur dengan email juga mengembalikan challengeKey (auth:<userId>)
+  const emailOpts = await jfetch("/api/auth/biometric/login/options", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: EMAIL, origin: ORIGIN }),
+  });
+  const emailKey = String(emailOpts.json.challengeKey ?? "");
+  check(
+    "options dengan email mengembalikan challengeKey per-user",
+    emailOpts.status === 200 && emailKey.startsWith("auth:") && !emailKey.startsWith("auth:discover"),
+    emailKey
+  );
+  // Dan challenge per-user itu benar-benar bisa diverifikasi dengan challengeKey-nya
+  const chEmail = String(emailOpts.json.challenge);
+  const verEmail = await jfetch("/api/auth/biometric/login/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...assertFor(chEmail, 6), challengeKey: emailKey }),
+  });
+  check(
+    "verify alur email (dengan challengeKey) sukses",
+    verEmail.status === 200 && typeof verEmail.json.token === "string",
+    verEmail.text.slice(0, 160)
+  );
+
   console.log("== 6. Kelola kredensial ==");
   const list = await jfetch("/api/auth/biometric/credentials", { headers: bearer });
   const items = (list.json.credentials as { id: string; label: string | null }[]) ?? [];

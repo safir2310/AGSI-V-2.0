@@ -206,13 +206,17 @@ export async function loginBiometric(
       const data = await optionsRes.json().catch(() => ({}));
       return { ok: false, code: "error", message: data.error ?? "Login biometrik belum tersedia." };
     }
-    const optionsJSON = await optionsRes.json();
-    const authResp = await startAuthentication({ optionsJSON });
+    // challengeKey = kunci challenge milik permintaan ini — dikembalikan saat
+    // verify agar alur bersamaan tidak saling menimpa challenge.
+    const { challengeKey, ...optionsJSON } = await optionsRes.json();
+    const authResp = await startAuthentication({
+      optionsJSON: optionsJSON as Parameters<typeof startAuthentication>[0]["optionsJSON"],
+    });
 
     const verifyRes = await fetch("/api/auth/biometric/login/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(authResp),
+      body: JSON.stringify({ ...authResp, challengeKey }),
     });
     const data = await verifyRes.json().catch(() => ({}));
     if (!verifyRes.ok) {
@@ -221,6 +225,58 @@ export async function loginBiometric(
     return { ok: true, token: String(data.token), user: data.user as AppUser };
   } catch (err) {
     return failureFromUnknown(err);
+  }
+}
+
+/**
+ * LOGIN PASSKEY via AUTOFILL (conditional mediation) — se-otomatis yang
+ * diizinkan browser: TANPA tombol & tanpa dialog modal. Begitu halaman login
+ * siap, passkey tersimpan muncul sebagai saran di kolom email (autofill
+ * browser); begitu dipilih, sidik jari/Face ID langsung dipindai dan onSuccess
+ * dipanggil → masuk akun.
+ *
+ * Catatan penting: dialog biometrik sistem (mis. "Masuk ke agsi-v-2-0.vercel.app
+ * dengan kunci sandi Anda…") TIDAK BISA dihilangkan aplikasi web — Chrome/
+ * Android/iOS wajib menampilkan dialog itu karena di DALAM dialog itulah
+ * sidik jari dipindai; browser melarang situs membaca biometrik secara senyap.
+ * Autofill ini bentuk teringan yang sah: satu ketuk saran → pindai → masuk.
+ *
+ * Sifatnya PASIF: dipanggil sekali saat halaman login siap; bila browser tidak
+ * mendukung conditional mediation atau pengguna tidak memilih passkey, fungsi
+ * ini diam saja (tanpa error) sehingga tidak mengganggu login password.
+ */
+export async function startBiometricAutofill(
+  onSuccess: (result: { token: string; user: AppUser }) => void
+): Promise<void> {
+  const env = await biometricEnvironment();
+  if (env !== "ok") return;
+  try {
+    const optionsRes = await fetch("/api/auth/biometric/login/options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: null, origin: window.location.origin }),
+    });
+    if (!optionsRes.ok) return;
+    const { challengeKey, ...optionsJSON } = await optionsRes.json();
+    // useBrowserAutofill → navigator.credentials.get({ mediation: "conditional" })
+    // Butuh <input autocomplete="username webauthn"> di halaman (ada di AuthView).
+    const authResp = await startAuthentication({
+      optionsJSON: optionsJSON as Parameters<typeof startAuthentication>[0]["optionsJSON"],
+      useBrowserAutofill: true,
+    });
+
+    const verifyRes = await fetch("/api/auth/biometric/login/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...authResp, challengeKey }),
+    });
+    if (!verifyRes.ok) return;
+    const data = await verifyRes.json().catch(() => ({}));
+    if (data?.token && data?.user) {
+      onSuccess({ token: String(data.token), user: data.user as AppUser });
+    }
+  } catch {
+    // Pasif: batal / tidak didukung / tanpa passkey tersimpan → diam saja.
   }
 }
 

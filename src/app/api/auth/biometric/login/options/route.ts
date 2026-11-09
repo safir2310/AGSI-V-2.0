@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateAuthenticationOptions } from "@simplewebauthn/server";
 import type { AuthenticatorTransportFuture } from "@simplewebauthn/server";
 import { db } from "@/lib/db";
-import { AUTH_DISCOVER_KEY, authChallengeKey, rpFromClientOrigin, saveChallenge } from "@/lib/biometric";
+import { authChallengeKey, newDiscoverKey, rpFromClientOrigin, saveChallenge } from "@/lib/biometric";
 
 /** POST /api/auth/biometric/login/options
  *  Opsi autentikasi biometrik. Body: { email?, origin? }.
  *  - Dengan email    → hanya kredensial akun itu yang diizinkan.
- *  - Tanpa email     → passkey discoverable: pengguna memilih akun di dialog biometrik.
- *  origin = window.location.origin yang dikirim browser — sumber rp.id yang
- *  benar di belakang proxy yang menulis-ulang Host header. */
+ *  - Tanpa email     → passkey discoverable: pengguna memilih akun di dialog biometrik
+ *                      (modal tombol sidik jari ATAU saran autofill passkey).
+ *  Respons berisi `challengeKey` — klien baru mengembalikannya saat verify agar
+ *  tiap permintaan punya challenge sendiri (dua alur bersamaan tidak menimpa). */
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as {
@@ -19,7 +20,9 @@ export async function POST(req: NextRequest) {
     const { rpID, origin } = rpFromClientOrigin(body?.origin, req);
 
     let allowCredentials: { id: string; transports?: AuthenticatorTransportFuture[] }[] = [];
-    let challengeKey = AUTH_DISCOVER_KEY;
+    // Discoverable → kunci UNIK per permintaan: passkey autofill & tombol
+    // sidik jari bisa berjalan bersamaan tanpa saling mengganti challenge.
+    let challengeKey = newDiscoverKey();
 
     if (body?.email && String(body.email).trim()) {
       const user = await db.user.findUnique({
@@ -50,7 +53,9 @@ export async function POST(req: NextRequest) {
     });
 
     await saveChallenge(challengeKey, options.challenge, rpID, origin);
-    return NextResponse.json(options);
+    // Klien baru memakai challengeKey ini saat verify; klien lama tetap dilayani
+    // lewat fallback di route verify.
+    return NextResponse.json({ ...options, challengeKey });
   } catch {
     return NextResponse.json({ error: "Gagal menyiapkan login biometrik." }, { status: 500 });
   }

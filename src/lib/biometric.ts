@@ -11,6 +11,7 @@
  *    proses, agar konsisten antar route/worker dan tahan restart server.
  */
 import type { NextRequest } from "next/server";
+import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
 
 /** rpID (hostname) + origin persis seperti yang dilihat browser.
@@ -94,6 +95,12 @@ export const regChallengeKey = (userId: string) => `reg:${userId}`;
 /** Kunci challenge login: per user (dengan email) atau global (tanpa email / passkey discoverable) */
 export const authChallengeKey = (userId: string) => `auth:${userId}`;
 export const AUTH_DISCOVER_KEY = "auth:discover";
+
+/** Kunci challenge passkey discoverable UNIK per permintaan.
+ *  Dua alur login bersamaan (mis. passkey autofill di kolom email + tombol
+ *  sidik jari yang ditekan hampir bersamaan) tidak lagi saling menimpa
+ *  challenge — klien baru mengembalikan kunci ini saat verify. */
+export const newDiscoverKey = () => `auth:discover:${randomUUID()}`;
 
 // ===== KONVERSI KUNCI PUBLIK (Uint8Array <-> base64 untuk disimpan di DB) =====
 export function publicKeyToBase64(input: Uint8Array): string {

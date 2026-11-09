@@ -4,18 +4,23 @@ import type { AuthenticationResponseJSON, AuthenticatorTransportFuture } from "@
 import { createSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
-  AUTH_DISCOVER_KEY,
   authChallengeKey,
   base64ToUint8Array,
   rpFromRequest,
   takeChallengeEntry,
+  type ChallengeEntry,
 } from "@/lib/biometric";
 
 /** POST /api/auth/biometric/login/verify
- *  Verifikasi tanda tangan biometrik → buat sesi seperti login biasa. */
+ *  Verifikasi tanda tangan biometrik → buat sesi seperti login biasa.
+ *  Klien baru mengirim `challengeKey` (kunci challenge yang diterima dari
+ *  /options) supaya alur bersamaan (passkey autofill + tombol) tidak saling
+ *  menimpa; klien lama tetap dilayani lewat fallback per-user / discoverable. */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as AuthenticationResponseJSON;
+    const body = (await req.json()) as AuthenticationResponseJSON & {
+      challengeKey?: unknown;
+    };
     const credentialId = String(body.id ?? body.rawId ?? "");
     if (!credentialId) {
       return NextResponse.json({ error: "Respons biometrik tidak valid." }, { status: 400 });
@@ -32,9 +37,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Challenge bisa disimpan per user (login dengan email) atau global (passkey discoverable)
-    const userEntry = await takeChallengeEntry(authChallengeKey(credential.userId));
-    const entry = userEntry ?? (await takeChallengeEntry(AUTH_DISCOVER_KEY));
+    // 1) Klien baru: kunci challenge PERSIS dari respons /options.
+    let entry: ChallengeEntry | null = null;
+    if (typeof body.challengeKey === "string" && body.challengeKey.startsWith("auth:")) {
+      entry = await takeChallengeEntry(body.challengeKey);
+    }
+    // 2) Fallback klien lama (login dengan email): challenge per user.
+    entry = entry ?? (await takeChallengeEntry(authChallengeKey(credential.userId)));
+    // 3) Fallback terakhir (klien lama, passkey discoverable): challenge
+    //    discoverable terbaru yang masih hidup.
+    if (!entry) {
+      const latest = await db.biometricChallenge.findFirst({
+        where: { key: { startsWith: "auth:discover" }, expiresAt: { gt: new Date() } },
+        // TTL konstan 5 menit → expiresAt terjauh = challenge terbaru dibuat
+        orderBy: { expiresAt: "desc" },
+      });
+      if (latest) {
+        // Sekali pakai — hapus segera seperti takeChallengeEntry
+        await db.biometricChallenge.delete({ where: { key: latest.key } }).catch(() => undefined);
+        if (latest.expiresAt.getTime() > Date.now()) {
+          entry = { challenge: latest.challenge, rpId: latest.rpId, origin: latest.origin };
+        }
+      }
+    }
     if (!entry) {
       return NextResponse.json(
         { error: "Sesi biometrik kedaluwarsa — coba lagi ya." },
@@ -44,22 +69,29 @@ export async function POST(req: NextRequest) {
 
     // expectedOrigin/expectedRPID = nilai persis yang dilihat browser saat
     // challenge dibuat (fallback: rpID kredensial, lalu derivasi header).
-    const headerRp = rpFromRequest(req);
-    const verification = await verifyAuthenticationResponse({
-      response: body,
-      expectedChallenge: entry.challenge,
-      expectedOrigin: entry.origin ?? headerRp.origin,
-      expectedRPID: entry.rpId ?? credential.rpId ?? headerRp.rpID,
-      requireUserVerification: true,
-      credential: {
-        id: credential.id,
-        publicKey: base64ToUint8Array(credential.publicKey),
-        counter: credential.counter,
-        transports: credential.transports
-          ? (credential.transports.split(",") as AuthenticatorTransportFuture[])
-          : undefined,
-      },
-    });
+    // Library melempar Error saat challenge/origin/rpID tak cocok — ubah
+    // menjadi penolakan 401 yang benar (bukan 500 "kesalahan server").
+    let verification;
+    try {
+      const headerRp = rpFromRequest(req);
+      verification = await verifyAuthenticationResponse({
+        response: body,
+        expectedChallenge: entry.challenge,
+        expectedOrigin: entry.origin ?? headerRp.origin,
+        expectedRPID: entry.rpId ?? credential.rpId ?? headerRp.rpID,
+        requireUserVerification: true,
+        credential: {
+          id: credential.id,
+          publicKey: base64ToUint8Array(credential.publicKey),
+          counter: credential.counter,
+          transports: credential.transports
+            ? (credential.transports.split(",") as AuthenticatorTransportFuture[])
+            : undefined,
+        },
+      });
+    } catch {
+      return NextResponse.json({ error: "Verifikasi biometrik gagal." }, { status: 401 });
+    }
 
     if (!verification.verified) {
       return NextResponse.json({ error: "Verifikasi biometrik gagal." }, { status: 401 });
@@ -91,7 +123,9 @@ export async function POST(req: NextRequest) {
         appTermsVersion: user.appTermsVersion,
       },
     });
-  } catch {
+  } catch (err) {
+    // Diagnostik: detail error ke log server (tanpa bocor data pengguna)
+    console.error("[biometric/login/verify]", err);
     return NextResponse.json({ error: "Verifikasi login biometrik gagal." }, { status: 500 });
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowLeft,
@@ -22,6 +22,7 @@ import {
   getBiometricEmail,
   loginBiometric,
   setBiometricEmail,
+  startBiometricAutofill,
 } from "@/lib/biometric-client";
 import { useNoticeStore } from "@/lib/store";
 import type { AppUser } from "@/lib/types";
@@ -75,7 +76,17 @@ export function AuthView({ onSuccess }: AuthViewProps) {
     };
   }, []);
 
+  /* Proteksi: hanya SATU alur login biometrik (modal/autofill) yang selesai dalam satu waktu */
+  const bioInFlight = useRef(false);
+  const autofillStarted = useRef(false);
+  const onSuccessRef = useRef(onSuccess);
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+  });
+
   const handleBiometricLogin = async () => {
+    if (bioInFlight.current) return; // satu login biometrik saja dalam satu waktu
+    bioInFlight.current = true;
     setBioLoading(true);
     try {
       const result = await loginBiometric(bioEmail);
@@ -96,9 +107,29 @@ export function AuthView({ onSuccess }: AuthViewProps) {
       setBiometricEmail(result.user.email);
       onSuccess(result.user);
     } finally {
+      bioInFlight.current = false;
       setBioLoading(false);
     }
   };
+
+  /* ===== PASSKEY AUTOFILL (conditional mediation) — se-otomatis yang
+     diizinkan browser. Tanpa tombol & tanpa dialog modal: begitu halaman login
+     siap, passkey tersimpan ditawarkan browser sebagai saran autofill di kolom
+     email; ketuk saran → pindai sidik jari → LANGSUNG masuk akun.
+     Catatan: dialog biometrik sistem Chrome/Android ("Masuk ke <domain>…")
+     tidak bisa dihilangkan aplikasi web — di dalam dialog itulah sidik jari
+     dipindai; browser melarang situs membaca biometrik tanpa dialog. */
+  useEffect(() => {
+    if (!bioReady || mode !== "login" || autofillStarted.current) return;
+    autofillStarted.current = true;
+    void startBiometricAutofill((result) => {
+      if (bioInFlight.current) return; // login lain sedang berjalan
+      bioInFlight.current = true;
+      setAuthToken(result.token);
+      setBiometricEmail(result.user.email);
+      onSuccessRef.current(result.user);
+    });
+  }, [bioReady, mode]);
 
   /** Setelah login password: kalau akun punya kredensial biometrik,
    *  ingat emailnya agar tombol sidik jari langsung siap berikutnya. */
@@ -480,6 +511,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                       className="pl-9"
                       value={form.email}
                       onChange={(e) => setForm({ ...form, email: e.target.value })}
+                      autoComplete="username webauthn"
                       required
                     />
                   </div>
