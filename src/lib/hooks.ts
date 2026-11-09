@@ -172,12 +172,24 @@ export type MenuHeroInfo = {
   menuHeroImageUrl: string | null;
 };
 
+/**
+ * Setelan slide voucher di carousel promo halaman Menu
+ * (Profil Admin → Banner & Promo → bagian Slide Voucher di Menu).
+ */
+export type MenuPromoInfo = {
+  /** tampilkan slide voucher aktif di carousel Menu */
+  menuPromoVouchersEnabled: boolean;
+  /** jumlah maksimal slide voucher (1–5) */
+  menuPromoVouchersMax: number;
+};
+
 type SettingsState = {
   deliveryEnabled: boolean;
   qrisEnabled: boolean;
   banner: BannerInfo;
   promo: PromoStripInfo;
   menuHero: MenuHeroInfo;
+  menuPromo: MenuPromoInfo;
   loaded: boolean;
   loading: boolean;
   load: (force?: boolean) => Promise<void>;
@@ -209,6 +221,12 @@ const FALLBACK_MENU_HERO: MenuHeroInfo = {
   menuHeroHasImage: false,
   menuHeroVersion: null,
   menuHeroImageUrl: null,
+};
+
+/** Nilai awal setelan slide voucher carousel menu — sama dengan default schema/DB. */
+const FALLBACK_MENU_PROMO: MenuPromoInfo = {
+  menuPromoVouchersEnabled: true,
+  menuPromoVouchersMax: 3,
 };
 
 function normalizePromo(raw: unknown): PromoStripInfo {
@@ -256,12 +274,23 @@ function normalizeMenuHero(raw: unknown): MenuHeroInfo {
   };
 }
 
+function normalizeMenuPromo(raw: unknown): MenuPromoInfo {
+  const m = (raw ?? {}) as Partial<MenuPromoInfo>;
+  const max = Number(m.menuPromoVouchersMax);
+  return {
+    menuPromoVouchersEnabled: m.menuPromoVouchersEnabled !== false,
+    menuPromoVouchersMax:
+      Number.isFinite(max) && max >= 1 && max <= 5 ? Math.round(max) : FALLBACK_MENU_PROMO.menuPromoVouchersMax,
+  };
+}
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   deliveryEnabled: true,
   qrisEnabled: true,
   banner: FALLBACK_BANNER,
   promo: FALLBACK_PROMO,
   menuHero: FALLBACK_MENU_HERO,
+  menuPromo: FALLBACK_MENU_PROMO,
   loaded: false,
   loading: false,
   load: async (force = false) => {
@@ -278,6 +307,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           banner: normalizeBanner(data.banner),
           promo: normalizePromo(data.promo),
           menuHero: normalizeMenuHero(data.menuHero),
+          menuPromo: normalizeMenuPromo(data.menuPromo),
           loaded: true,
         });
       }

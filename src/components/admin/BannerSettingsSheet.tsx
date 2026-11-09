@@ -8,9 +8,12 @@ import {
   Image as ImageIcon,
   Loader2,
   Megaphone,
+  Minus,
   PanelTop,
+  Plus,
   Save,
   Tag,
+  Ticket,
   Trash2,
   TriangleAlert,
   X,
@@ -118,6 +121,9 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
   const heroFileInputRef = useRef<HTMLInputElement>(null);
   const [heroServerHasImage, setHeroServerHasImage] = useState(false);
   const [heroServerVersion, setHeroServerVersion] = useState<string | null>(null);
+  // ===== Slide voucher di carousel Menu =====
+  const [vpEnabled, setVpEnabled] = useState(true);
+  const [vpMax, setVpMax] = useState(3);
   // undefined = tidak diubah, string = data URL baru, null = hapus gambar
   const [imageData, setImageData] = useState<string | null | undefined>(undefined);
   const [imageBusy, setImageBusy] = useState(false);
@@ -154,6 +160,10 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       setHeroServerHasImage(h.menuHeroHasImage);
       setHeroServerVersion(h.menuHeroVersion);
       setHeroImageData(undefined);
+      // Slide voucher carousel menu
+      const mp = useSettingsStore.getState().menuPromo;
+      setVpEnabled(mp.menuPromoVouchersEnabled);
+      setVpMax(mp.menuPromoVouchersMax);
     } finally {
       setLoading(false);
     }
@@ -264,6 +274,8 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
         menuHeroTitle: heroTitle.trim(),
         menuHeroText: heroText.trim(),
         menuHeroTouch: true,
+        menuPromoVouchersEnabled: vpEnabled,
+        menuPromoVouchersMax: vpMax,
       };
       if (imageData !== undefined) {
         if (imageData === null) body.bannerImageRemove = true;
@@ -296,7 +308,8 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
         type: "success",
         autoCloseMs: 3600,
         title: "Banner & Promo Disimpan ✓",
-        message: "Perubahan popup banner, strip promo, dan hero Menu langsung tampil di aplikasi pelanggan.",
+        message:
+          "Perubahan popup banner, strip promo, hero Menu, dan slide voucher langsung tampil di aplikasi pelanggan.",
       });
     } catch {
       showNotice({ type: "error", title: "Koneksi Bermasalah", message: "Tidak dapat menghubungi server." });
@@ -342,7 +355,7 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-black tracking-wide">Banner &amp; Promo</p>
                   <p className="truncate text-[11px] font-semibold text-orange-100">
-                    Popup Beranda, strip promo &amp; hero banner Menu pelanggan
+                    Popup Beranda, strip promo, hero Menu &amp; slide voucher pelanggan
                   </p>
                 </div>
                 <button
@@ -647,7 +660,7 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                       />
                     </div>
 
-                    {/* Pratinjau hero — meniru tampilan asli di halaman Menu */}
+                    {/* Pratinjau hero — meniru tampilan cerah asli di halaman Menu */}
                     <div className="relative mt-3 h-28 overflow-hidden rounded-xl shadow">
                       {heroPreviewSrc ? (
                         <img
@@ -656,24 +669,25 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                           className="absolute inset-0 h-full w-full object-cover"
                         />
                       ) : (
-                        <div className="absolute inset-0 bg-gradient-to-br from-orange-700 via-orange-500 to-amber-400">
-                          <div className="pointer-events-none absolute -right-2 -top-6 text-[80px] opacity-20">🍗</div>
+                        <div className="absolute inset-0 bg-gradient-to-br from-orange-500 via-amber-400 to-yellow-300">
+                          <div className="pointer-events-none absolute -right-2 -top-6 text-[80px] opacity-30">🍗</div>
+                          <div className="pointer-events-none absolute -bottom-8 left-1/3 h-20 w-20 rounded-full bg-white/35 blur-xl" />
                         </div>
                       )}
-                      <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-transparent" />
+                      <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/15 to-transparent" />
                       <div className="relative flex h-full flex-col justify-center gap-1 p-4">
                         {heroBadge.trim() && (
-                          <span className="w-fit rounded-full bg-white/20 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white backdrop-blur-sm">
+                          <span className="w-fit rounded-full bg-white/30 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white ring-1 ring-white/45">
                             {heroBadge.trim()}
                           </span>
                         )}
                         {heroTitle.trim() ? (
-                          <p className="text-base font-black leading-tight text-white">{heroTitle.trim()}</p>
+                          <p className="text-base font-black leading-tight text-white drop-shadow-[0_2px_3px_rgba(0,0,0,0.4)]">{heroTitle.trim()}</p>
                         ) : (
-                          <p className="text-[10px] font-semibold text-white/70">Judul kosong — baris disembunyikan</p>
+                          <p className="text-[10px] font-semibold text-white/75">Judul kosong — baris disembunyikan</p>
                         )}
                         {heroText.trim() && (
-                          <p className="text-[11px] font-medium text-white/85">{heroText.trim()}</p>
+                          <p className="text-[11px] font-medium text-white/90">{heroText.trim()}</p>
                         )}
                       </div>
                     </div>
@@ -765,6 +779,121 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                         </p>
                       </div>
                     </div>
+                  </div>
+
+                  {/* ===== SLIDE VOUCHER DI CAROUSEL MENU ===== */}
+                  <div className="mt-6 flex items-center gap-2">
+                    <div className="h-px flex-1 bg-neutral-200" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
+                      Slide Voucher di Menu
+                    </span>
+                    <div className="h-px flex-1 bg-neutral-200" />
+                  </div>
+                  <div
+                    className={cn(
+                      "mt-3 rounded-2xl border p-4 transition-colors",
+                      vpEnabled ? "border-orange-200 bg-orange-50/60" : "border-neutral-200 bg-neutral-50"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <span
+                        className={cn(
+                          "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+                          vpEnabled ? "bg-rose-500 text-white" : "bg-neutral-200 text-neutral-400"
+                        )}
+                      >
+                        <Ticket className="h-5.5 w-5.5" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-black text-neutral-800">Slide Voucher Aktif</p>
+                        <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-500">
+                          Slide voucher bergantian dengan hero di carousel Menu (ketuk pelanggan = salin kode).
+                          Isi slide diambil otomatis dari daftar voucher aktif — Kelola Voucher di Profil.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={vpEnabled}
+                        onCheckedChange={setVpEnabled}
+                        aria-label={`${vpEnabled ? "Nonaktifkan" : "Aktifkan"} slide voucher di menu`}
+                        className="mt-0.5 h-6 w-11 data-[state=checked]:bg-rose-500 data-[state=unchecked]:bg-neutral-300"
+                      />
+                    </div>
+
+                    {/* Pengatur jumlah maksimal slide voucher */}
+                    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-orange-100 bg-white px-3.5 py-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-neutral-700">Jumlah slide voucher</p>
+                        <p className="text-[10px] text-neutral-400">Maksimal voucher yang tampil bergantian (1–5)</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setVpMax((v) => Math.max(1, v - 1))}
+                          disabled={!vpEnabled || vpMax <= 1}
+                          aria-label="Kurangi jumlah slide voucher"
+                          className="press-effect flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 transition hover:bg-orange-100 hover:text-orange-700 disabled:opacity-40"
+                        >
+                          <Minus className="h-4 w-4" />
+                        </button>
+                        <span
+                          className={cn(
+                            "flex h-8 w-9 items-center justify-center rounded-lg text-sm font-black",
+                            vpEnabled ? "bg-orange-50 text-orange-700" : "bg-neutral-100 text-neutral-400"
+                          )}
+                        >
+                          {vpMax}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setVpMax((v) => Math.min(5, v + 1))}
+                          disabled={!vpEnabled || vpMax >= 5}
+                          aria-label="Tambah jumlah slide voucher"
+                          className="press-effect flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 transition hover:bg-orange-100 hover:text-orange-700 disabled:opacity-40"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Pratinjau slide voucher — meniru tampilan cerah asli */}
+                    <div className="relative mt-3 h-24 overflow-hidden rounded-xl shadow">
+                      <div
+                        className={cn(
+                          "absolute inset-0 bg-gradient-to-br transition-opacity",
+                          vpEnabled ? "from-rose-500 via-orange-400 to-amber-300" : "from-neutral-300 via-neutral-300 to-neutral-300"
+                        )}
+                      >
+                        <div className="pointer-events-none absolute -right-2 -bottom-5 text-[70px] opacity-30">🎟️</div>
+                        <div className="pointer-events-none absolute -left-4 -top-6 h-16 w-16 rounded-full bg-white/30 blur-lg" />
+                      </div>
+                      <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/15 to-transparent" />
+                      <div className="relative flex h-full flex-col justify-center gap-1 p-4">
+                        {vpEnabled ? (
+                          <>
+                            <span className="w-fit rounded-full bg-white/30 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white ring-1 ring-white/45">
+                              Voucher Aktif
+                            </span>
+                            <p className="text-sm font-black leading-tight text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.4)]">
+                              Konten otomatis dari voucher aktif
+                            </p>
+                            <span className="w-fit rounded-lg bg-white px-2 py-0.5 font-mono text-[10px] font-black tracking-wider text-orange-700 shadow">
+                              AGSI-XXXX
+                            </span>
+                          </>
+                        ) : (
+                          <p className="text-[11px] font-semibold text-neutral-600">
+                            Slide voucher disembunyikan — carousel Menu hanya menampilkan hero banner.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {vpEnabled && (
+                      <p className="mt-2 text-[10px] font-semibold leading-relaxed text-neutral-400">
+                        Carousel hanya tampil bila ada slide: hero kosong &amp; tidak ada voucher aktif → strip tersembunyi.
+                        Hero dinonaktifkan? Voucher tetap tampil selama saklar ini aktif.
+                      </p>
+                    )}
                   </div>
 
                   {/* ===== CATATAN ===== */}

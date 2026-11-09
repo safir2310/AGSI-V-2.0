@@ -202,6 +202,58 @@ export type MenuHeroPatch = {
   menuHeroTouch?: boolean;
 };
 
+/* ================= SLIDE VOUCHER DI CAROUSEL MENU ================= */
+
+/**
+ * Setelan slide voucher di carousel promo halaman Menu.
+ * Carousel = slide hero (konten admin) + slide voucher aktif. Bagian voucher
+ * ini bisa disembunyikan seluruhnya atau dibatasi jumlahnya oleh admin
+ * dari Profil Admin → "Banner & Promo" (bagian Slide Voucher di Menu).
+ */
+export type MenuPromoSettings = {
+  /** tampilkan slide voucher aktif di carousel Menu */
+  menuPromoVouchersEnabled: boolean;
+  /** jumlah maksimal slide voucher (1–5) */
+  menuPromoVouchersMax: number;
+};
+
+/** Ambil setelan slide voucher carousel menu (publik). */
+export async function getMenuPromoSettings(): Promise<MenuPromoSettings> {
+  const row = await db.storeSetting.upsert({
+    where: { id: "main" },
+    update: {},
+    create: { id: "main" },
+  });
+  return {
+    menuPromoVouchersEnabled: row.menuPromoVouchersEnabled,
+    menuPromoVouchersMax: row.menuPromoVouchersMax,
+  };
+}
+
+export type MenuPromoPatch = {
+  menuPromoVouchersEnabled?: boolean;
+  menuPromoVouchersMax?: number;
+};
+
+/** Simpan sebagian setelan slide voucher carousel menu. */
+export async function updateMenuPromoSettings(patch: MenuPromoPatch): Promise<MenuPromoSettings> {
+  const data: Record<string, unknown> = {};
+  if (typeof patch.menuPromoVouchersEnabled === "boolean") {
+    data.menuPromoVouchersEnabled = patch.menuPromoVouchersEnabled;
+  }
+  if (typeof patch.menuPromoVouchersMax === "number" && Number.isFinite(patch.menuPromoVouchersMax)) {
+    // Jepit ke rentang valid 1–5 (server-side clamp, UI juga membatasi)
+    data.menuPromoVouchersMax = Math.min(5, Math.max(1, Math.round(patch.menuPromoVouchersMax)));
+  }
+
+  await db.storeSetting.upsert({
+    where: { id: "main" },
+    update: data,
+    create: { id: "main", ...data },
+  });
+  return getMenuPromoSettings();
+}
+
 /** Simpan sebagian konten hero banner menu. */
 export async function updateMenuHeroSettings(patch: MenuHeroPatch): Promise<MenuHeroSettings> {
   const data: Record<string, unknown> = {};

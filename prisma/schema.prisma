@@ -335,6 +335,12 @@ model StoreSetting {
   menuHeroImageData String? // gambar latar hero (base64, portabel)
   menuHeroImageMime String?
   menuHeroUpdatedAt DateTime? // versi konten — cache-buster URL gambar
+  // ===== SLIDE VOUCHER DI CAROUSEL MENU =====
+  // Carousel promo Menu = slide hero + slide voucher aktif. Admin dapat
+  // menyembunyikan slide voucher atau membatasi jumlahnya dari Profil Admin
+  // → "Banner & Promo" (bagian Slide Voucher di Menu).
+  menuPromoVouchersEnabled Boolean @default(true)
+  menuPromoVouchersMax     Int     @default(3) // 1–5
   updatedAt       DateTime @updatedAt
 }
 

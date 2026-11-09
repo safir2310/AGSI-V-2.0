@@ -3,14 +3,17 @@ import { getCurrentUser, isAdminRole } from "@/lib/auth";
 import {
   getBannerSettings,
   getMenuHeroSettings,
+  getMenuPromoSettings,
   getPromoStripSettings,
   getStoreSettings,
   updateBannerSettings,
   updateMenuHeroSettings,
+  updateMenuPromoSettings,
   updatePromoStripSettings,
   updateStoreSettings,
   type BannerPatch,
   type MenuHeroPatch,
+  type MenuPromoPatch,
   type PromoStripPatch,
 } from "@/lib/store-settings";
 
@@ -28,15 +31,17 @@ function menuHeroImageUrl(hasImage: boolean, enabled: boolean, version: string |
  * plus konten popup banner beranda (tanpa bytes gambar — dimuat
  * terpisah via /api/settings/banner/image agar ringan), konten
  * strip "Promo Hari Ini" di Beranda, dan konten hero banner promo
- * di halaman Menu (gambar terpisah via /api/settings/menu-hero/image).
+ * di halaman Menu (gambar terpisah via /api/settings/menu-hero/image),
+ * plus setelan slide voucher di carousel Menu (menuPromo).
  */
 export async function GET() {
   try {
-    const [settings, banner, promo, menuHero] = await Promise.all([
+    const [settings, banner, promo, menuHero, menuPromo] = await Promise.all([
       getStoreSettings(),
       getBannerSettings(),
       getPromoStripSettings(),
       getMenuHeroSettings(),
+      getMenuPromoSettings(),
     ]);
     return NextResponse.json({
       ...settings,
@@ -56,6 +61,7 @@ export async function GET() {
           menuHero.menuHeroVersion
         ),
       },
+      menuPromo,
     });
   } catch {
     return NextResponse.json(
@@ -85,6 +91,10 @@ export async function GET() {
           menuHeroVersion: null,
           menuHeroImageUrl: null,
         },
+        menuPromo: {
+          menuPromoVouchersEnabled: true,
+          menuPromoVouchersMax: 3,
+        },
       },
       { status: 200 }
     );
@@ -97,6 +107,7 @@ export async function GET() {
  * Body banner : { bannerEnabled?, bannerTitle?, bannerText?, bannerImageData?, bannerImageRemove?, bannerTouch? }
  * Body promo  : { promoStripEnabled?, promoStripBadge?, promoStripTitle?, promoStripText? }
  * Body hero   : { menuHeroEnabled?, menuHeroBadge?, menuHeroTitle?, menuHeroText?, menuHeroImageData?, menuHeroImageRemove?, menuHeroTouch? }
+ * Body mPromo : { menuPromoVouchersEnabled?, menuPromoVouchersMax? } — slide voucher di carousel Menu
  */
 export async function PUT(req: NextRequest) {
   const user = await getCurrentUser();
@@ -267,6 +278,33 @@ export async function PUT(req: NextRequest) {
       menuHeroResult = await updateMenuHeroSettings(hp);
     }
 
+    // ===== Slide voucher di carousel Menu =====
+    let menuPromoResult: Awaited<ReturnType<typeof updateMenuPromoSettings>> | null = null;
+    const menuPromoKeys = ["menuPromoVouchersEnabled", "menuPromoVouchersMax"];
+    if (menuPromoKeys.some((k) => k in body)) {
+      const mp: MenuPromoPatch = {};
+      if ("menuPromoVouchersEnabled" in body) {
+        if (typeof body.menuPromoVouchersEnabled !== "boolean") {
+          return NextResponse.json(
+            { error: "menuPromoVouchersEnabled harus boolean." },
+            { status: 400 }
+          );
+        }
+        mp.menuPromoVouchersEnabled = body.menuPromoVouchersEnabled;
+      }
+      if ("menuPromoVouchersMax" in body) {
+        const n = Number(body.menuPromoVouchersMax);
+        if (!Number.isFinite(n) || n < 1 || n > 5) {
+          return NextResponse.json(
+            { error: "Jumlah slide voucher harus angka 1–5." },
+            { status: 400 }
+          );
+        }
+        mp.menuPromoVouchersMax = n;
+      }
+      menuPromoResult = await updateMenuPromoSettings(mp);
+    }
+
     // ===== Strip promo hari ini (Beranda) =====
     let promoResult: Awaited<ReturnType<typeof updatePromoStripSettings>> | null = null;
     const promoKeys = ["promoStripEnabled", "promoStripBadge", "promoStripTitle", "promoStripText"];
@@ -295,7 +333,13 @@ export async function PUT(req: NextRequest) {
       promoResult = await updatePromoStripSettings(pp);
     }
 
-    if (Object.keys(patch).length === 0 && !bannerResult && !promoResult && !menuHeroResult) {
+    if (
+      Object.keys(patch).length === 0 &&
+      !bannerResult &&
+      !promoResult &&
+      !menuHeroResult &&
+      !menuPromoResult
+    ) {
       return NextResponse.json(
         { error: "Tidak ada pengaturan yang diubah." },
         { status: 400 }
@@ -322,6 +366,7 @@ export async function PUT(req: NextRequest) {
           menuHero.menuHeroVersion
         ),
       },
+      menuPromo: menuPromoResult ?? (await getMenuPromoSettings()),
     });
   } catch {
     return NextResponse.json({ error: "Terjadi kesalahan server." }, { status: 500 });

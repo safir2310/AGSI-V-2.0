@@ -22,9 +22,10 @@ import { cn } from "@/lib/utils";
  * STRIP PROMO SLIDE-OTOMATIS di atas daftar Menu.
  *  - Slide 1  : hero banner — konten diatur admin dari Profil →
  *               "Banner & Promo" → bagian Hero Banner Halaman Menu.
- *  - Slide 2+ : voucher aktif (maks 3) — ketuk slide untuk salin kode.
+ *  - Slide 2+ : voucher aktif (jumlah diatur admin, maks 5) — ketuk untuk salin kode.
  * Slide berganti OTOMATIS tiap 4 detik (geser ke kiri; fade bila pengguna
  * memilih kurangi gerakan) dengan indikator titik yang bisa diketuk.
+ * Tampilan cerah: gradien oranye→kuning menyala + dekorasi mengapung + kilau.
  */
 type PromoSlide = { kind: "hero" } | { kind: "voucher"; voucher: VoucherInfo };
 
@@ -35,6 +36,7 @@ function MenuHeroBanner() {
   const prefersReduced = useReducedMotion();
   const showNotice = useNoticeStore((s) => s.show);
   const hero = useSettingsStore((s) => s.menuHero);
+  const menuPromo = useSettingsStore((s) => s.menuPromo);
   const vouchers = useVouchersStore((s) => s.vouchers);
 
   // Pastikan konten hero & daftar voucher selalu segar saat Menu dibuka
@@ -43,8 +45,10 @@ function MenuHeroBanner() {
     void refreshVouchers();
   }, []);
 
-  // Susun daftar slide: hero dulu, lalu voucher aktif (maks 3).
+  // Susun daftar slide: hero dulu, lalu voucher aktif (jumlah diatur admin).
   // Voucher aktif = belum dipakai akun ini, kuota sisa, dan belum kedaluwarsa.
+  // Admin dapat menyembunyikan slide voucher (Profil → Banner & Promo →
+  // "Slide Voucher di Menu") atau membatasi jumlahnya 1–5.
   const slides = useMemo<PromoSlide[]>(() => {
     const hasHeroContent =
       !!hero.menuHeroBadge.trim() ||
@@ -53,18 +57,20 @@ function MenuHeroBanner() {
       !!hero.menuHeroImageUrl;
     const list: PromoSlide[] = [];
     if (hero.menuHeroEnabled && hasHeroContent) list.push({ kind: "hero" });
-    const now = Date.now();
-    vouchers
-      .filter(
-        (v) =>
-          !v.usedByMe &&
-          v.remaining > 0 &&
-          (!v.expiresAt || new Date(v.expiresAt).getTime() > now)
-      )
-      .slice(0, 3)
-      .forEach((voucher) => list.push({ kind: "voucher", voucher }));
+    if (menuPromo.menuPromoVouchersEnabled) {
+      const now = Date.now();
+      vouchers
+        .filter(
+          (v) =>
+            !v.usedByMe &&
+            v.remaining > 0 &&
+            (!v.expiresAt || new Date(v.expiresAt).getTime() > now)
+        )
+        .slice(0, menuPromo.menuPromoVouchersMax)
+        .forEach((voucher) => list.push({ kind: "voucher", voucher }));
+    }
     return list;
-  }, [hero, vouchers]);
+  }, [hero, vouchers, menuPromo]);
 
   const [index, setIndex] = useState(0);
 
@@ -103,7 +109,7 @@ function MenuHeroBanner() {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ type: "spring", stiffness: 260, damping: 26 }}
       aria-label="Banner promo"
-      className="relative mb-4 h-40 w-full overflow-hidden rounded-3xl shadow-lg shadow-orange-600/20"
+      className="relative mb-4 h-40 w-full overflow-hidden rounded-3xl shadow-lg shadow-orange-500/30 ring-1 ring-orange-300/40"
     >
       {/* ===== SLIDE BERJALAN ===== */}
       <AnimatePresence initial={false}>
@@ -116,7 +122,7 @@ function MenuHeroBanner() {
           className="absolute inset-0"
         >
           {isHero && heroSlide ? (
-            /* ---- SLIDE HERO BANNER (konten admin) ---- */
+            /* ---- SLIDE HERO BANNER (konten admin) — cerah menyala ---- */
             <div className="absolute inset-0">
               {heroSlide.menuHeroImageUrl ? (
                 <img
@@ -125,38 +131,70 @@ function MenuHeroBanner() {
                   className="absolute inset-0 h-full w-full object-cover"
                 />
               ) : (
-                <div className="absolute inset-0 bg-gradient-to-br from-orange-700 via-orange-500 to-amber-400">
-                  <div className="pointer-events-none absolute -right-3 -top-8 select-none text-[130px] leading-none opacity-20">
+                <div className="absolute inset-0 bg-gradient-to-br from-orange-500 via-amber-400 to-yellow-300">
+                  {/* Blob cahaya mengapung — memberi kesan cerah & hidup */}
+                  <motion.div
+                    aria-hidden
+                    className="pointer-events-none absolute -right-6 -top-12 h-36 w-36 rounded-full bg-white/35 blur-2xl"
+                    animate={prefersReduced ? undefined : { y: [0, 10, 0], x: [0, -8, 0] }}
+                    transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                  <motion.div
+                    aria-hidden
+                    className="pointer-events-none absolute -bottom-12 left-1/3 h-32 w-32 rounded-full bg-yellow-200/45 blur-2xl"
+                    animate={prefersReduced ? undefined : { y: [0, -8, 0], scale: [1, 1.08, 1] }}
+                    transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                  <motion.div
+                    aria-hidden
+                    className="pointer-events-none absolute -right-3 -top-8 select-none text-[130px] leading-none opacity-30 drop-shadow-md"
+                    animate={prefersReduced ? undefined : { y: [0, -9, 0], rotate: [0, 5, 0] }}
+                    transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
+                  >
                     🍗
-                  </div>
-                  <div className="pointer-events-none absolute -bottom-10 right-16 select-none text-[90px] leading-none opacity-15">
+                  </motion.div>
+                  <motion.div
+                    aria-hidden
+                    className="pointer-events-none absolute -bottom-10 right-16 select-none text-[90px] leading-none opacity-25"
+                    animate={prefersReduced ? undefined : { y: [0, 7, 0], rotate: [0, -6, 0] }}
+                    transition={{ duration: 6.5, repeat: Infinity, ease: "easeInOut" }}
+                  >
                     🌶️
-                  </div>
+                  </motion.div>
                 </div>
               )}
-              {/* Overlay agar teks selalu terbaca */}
-              <div className="absolute inset-0 bg-gradient-to-r from-neutral-900/65 via-neutral-900/30 to-transparent" />
+              {/* Kilau menyapu berkala (dilewati bila pengguna pilih kurangi gerakan) */}
+              {!prefersReduced && (
+                <motion.div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 skew-x-[-12deg] bg-gradient-to-r from-transparent via-white/45 to-transparent"
+                  animate={{ x: ["0%", "480%"] }}
+                  transition={{ duration: 2.4, repeat: Infinity, repeatDelay: 2.8, ease: "easeInOut" }}
+                />
+              )}
+              {/* Overlay ringan hanya di sisi teks — sisi kanan tetap terang */}
+              <div className="absolute inset-0 bg-gradient-to-r from-neutral-900/60 via-neutral-900/20 to-transparent" />
               {/* Konten teks (tanpa tombol — strip murni promosi) */}
               <div className="relative flex h-full flex-col justify-center gap-1.5 p-5">
                 {!!heroSlide.menuHeroBadge.trim() && (
-                  <span className="w-fit rounded-full bg-white/25 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white ring-1 ring-white/30 backdrop-blur-sm">
+                  <span className="w-fit rounded-full bg-white/30 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white shadow-sm ring-1 ring-white/45 backdrop-blur-sm">
                     {heroSlide.menuHeroBadge}
                   </span>
                 )}
                 {!!heroSlide.menuHeroTitle.trim() && (
-                  <h2 className="max-w-[75%] text-lg font-black leading-tight text-white drop-shadow-sm">
+                  <h2 className="max-w-[75%] text-lg font-black leading-tight text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.45)]">
                     {heroSlide.menuHeroTitle}
                   </h2>
                 )}
                 {!!heroSlide.menuHeroText.trim() && (
-                  <p className="max-w-[70%] text-xs font-semibold leading-snug text-white/85">
+                  <p className="max-w-[70%] text-xs font-semibold leading-snug text-white/90 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
                     {heroSlide.menuHeroText}
                   </p>
                 )}
               </div>
             </div>
           ) : (
-            /* ---- SLIDE VOUCHER AKTIF (ketuk = salin kode) ---- */
+            /* ---- SLIDE VOUCHER AKTIF (ketuk = salin kode) — cerah menyala ---- */
             slide.kind === "voucher" && (
               <button
                 type="button"
@@ -164,27 +202,51 @@ function MenuHeroBanner() {
                 aria-label={`Salin kode voucher ${slide.voucher.code}`}
                 className="absolute inset-0 w-full cursor-pointer text-left"
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-rose-600 via-orange-500 to-amber-400">
-                  <div className="pointer-events-none absolute -right-2 -bottom-6 select-none text-[110px] leading-none opacity-20">
+                <div className="absolute inset-0 bg-gradient-to-br from-rose-500 via-orange-400 to-amber-300">
+                  <motion.div
+                    aria-hidden
+                    className="pointer-events-none absolute -left-6 -top-12 h-32 w-32 rounded-full bg-white/30 blur-2xl"
+                    animate={prefersReduced ? undefined : { y: [0, 9, 0], scale: [1, 1.06, 1] }}
+                    transition={{ duration: 6.5, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                  <motion.div
+                    aria-hidden
+                    className="pointer-events-none absolute -right-2 -bottom-6 select-none text-[110px] leading-none opacity-30 drop-shadow-md"
+                    animate={prefersReduced ? undefined : { y: [0, -8, 0], rotate: [0, 6, 0] }}
+                    transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+                  >
                     🎟️
-                  </div>
-                  <div className="pointer-events-none absolute -top-6 left-10 select-none text-[70px] leading-none opacity-15">
+                  </motion.div>
+                  <motion.div
+                    aria-hidden
+                    className="pointer-events-none absolute -top-6 left-10 select-none text-[70px] leading-none opacity-30"
+                    animate={prefersReduced ? undefined : { y: [0, 8, 0], rotate: [0, -8, 0] }}
+                    transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+                  >
                     ✨
-                  </div>
+                  </motion.div>
                 </div>
-                <div className="absolute inset-0 bg-gradient-to-r from-neutral-900/55 via-neutral-900/25 to-transparent" />
+                {!prefersReduced && (
+                  <motion.div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 skew-x-[-12deg] bg-gradient-to-r from-transparent via-white/45 to-transparent"
+                    animate={{ x: ["0%", "480%"] }}
+                    transition={{ duration: 2.4, repeat: Infinity, repeatDelay: 3.2, ease: "easeInOut" }}
+                  />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-r from-neutral-900/55 via-neutral-900/15 to-transparent" />
                 <div className="relative flex h-full flex-col justify-center gap-1.5 p-5">
-                  <span className="w-fit rounded-full bg-white/25 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white ring-1 ring-white/30 backdrop-blur-sm">
+                  <span className="w-fit rounded-full bg-white/30 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white shadow-sm ring-1 ring-white/45 backdrop-blur-sm">
                     Voucher Aktif
                   </span>
-                  <h2 className="max-w-[75%] text-lg font-black leading-tight text-white drop-shadow-sm">
+                  <h2 className="max-w-[75%] text-lg font-black leading-tight text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.45)]">
                     Potongan {formatVoucherValue(slide.voucher)}
                     {slide.voucher.type === "PERCENT" ? " Off" : ""}
                   </h2>
-                  <p className="max-w-[70%] text-xs font-semibold leading-snug text-white/85">
+                  <p className="max-w-[70%] text-xs font-semibold leading-snug text-white/90 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
                     {slide.voucher.title}
                   </p>
-                  <span className="mt-0.5 flex w-fit items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 font-mono text-[11px] font-black tracking-wider text-orange-700 shadow">
+                  <span className="mt-0.5 flex w-fit items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 font-mono text-[11px] font-black tracking-wider text-orange-700 shadow-md">
                     {slide.voucher.code}
                     <span className="font-sans text-[9px] font-bold uppercase text-orange-400">
                       ketuk salin
@@ -208,7 +270,9 @@ function MenuHeroBanner() {
               onClick={() => setIndex(i)}
               className={cn(
                 "h-1.5 rounded-full transition-all",
-                i === index ? "w-4 bg-white" : "w-1.5 bg-white/50 hover:bg-white/80"
+                i === index
+                  ? "w-4 bg-white shadow-[0_0_6px_rgba(255,255,255,0.9)]"
+                  : "w-1.5 bg-white/60 hover:bg-white/90"
               )}
             />
           ))}
