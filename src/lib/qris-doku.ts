@@ -879,7 +879,19 @@ function finishCheckoutCreate(
       `DOKU Checkout tidak mengembalikan URL pembayaran. ${legacyErrorMessage(body, "")}`.trim()
     );
   }
-  // expired_datetime contoh: "2026-11-09T08:47:21Z" (UTC ISO)
+  // expired_datetime contoh: "2026-11-09T08:47:21Z" (UTC ISO) atau
+  // "20261109225045" (14 digit TANPA zona waktu).
+  //
+  // !!! PERBAIKAN BUG (2026-11-10): string 14 digit dari DOKU Checkout
+  // produksi ternyata berbasis UTC, bukan WIB. Menebak "+07:00" membuat
+  // kedaluwarsa jatuh 7 JAM di masa lalu — kode bayar dianggap "Hangus"
+  // begitu dibuat, dan layar pembayaran MENUTUP halaman DOKU seketika
+  // setelah dibuka (tombol "Bayar dengan E-Wallet (DOKU)" tampak tidak
+  // melakukan apa-apa). String telanjang itu memang ambigu, jadi coba
+  // kedua zona (UTC dulu — perilaku teramati, lalu WIB) dan ambil tafsir
+  // yang masih DI MASA DEPAN dan paling dekat dengan sekarang. Bila
+  // keduanya sudah lewat (data tak masuk akal), biarkan null — UI lalu
+  // memakai batas 5 menit pesanan, tidak pernah "Hangus" palsu.
   let expiresAt: string | null = null;
   const resp = body.response as Record<string, unknown> | undefined;
   const payment = (resp?.payment ?? body.payment) as
@@ -887,13 +899,15 @@ function finishCheckoutCreate(
     | undefined;
   const exp = payment?.expired_datetime ?? payment?.expired_date;
   if (typeof exp === "string" && exp.trim()) {
-    // "20261109154721" (WIB tanpa tz) atau ISO — normalkan
     const digits = exp.replace(/\D/g, "");
     if (digits.length === 14) {
-      const d = new Date(
-        `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}+07:00`
-      );
-      if (!Number.isNaN(d.getTime())) expiresAt = d.toISOString();
+      const iso = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}`;
+      const nowMs = Date.now();
+      const parsed = [`${iso}Z`, `${iso}+07:00`]
+        .map((c) => new Date(c))
+        .filter((d) => !Number.isNaN(d.getTime()) && d.getTime() > nowMs)
+        .sort((a, b) => a.getTime() - b.getTime());
+      if (parsed.length > 0) expiresAt = parsed[0].toISOString();
     } else {
       const d = new Date(exp);
       if (!Number.isNaN(d.getTime())) expiresAt = d.toISOString();
