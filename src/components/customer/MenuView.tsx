@@ -2,37 +2,100 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ChevronRight, Minus, Plus, Search, SearchX } from "lucide-react";
+import { Minus, Plus, Search, SearchX } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { SpicyDots } from "@/components/shared/StatusBadge";
 import { ProductThumb } from "@/components/shared/ProductThumb";
-import { refreshSettings, useProductsStore, useSettingsStore } from "@/lib/hooks";
-import { useAppStore, useCartStore } from "@/lib/store";
-import { formatIDR } from "@/lib/types";
+import {
+  refreshSettings,
+  refreshVouchers,
+  useProductsStore,
+  useSettingsStore,
+  useVouchersStore,
+} from "@/lib/hooks";
+import { useCartStore, useNoticeStore } from "@/lib/store";
+import { copyText } from "@/lib/clipboard";
+import { formatIDR, formatVoucherValue, type VoucherInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
- * Hero banner promo di atas daftar Menu.
- * Konten (saklar, gambar latar, badge, judul, teks) diatur admin dari
- * Profil → "Banner & Promo" → bagian Hero Banner Halaman Menu.
- * Tanpa gambar latar → gradien orange khas AGSI + dekorasi maskot.
+ * STRIP PROMO SLIDE-OTOMATIS di atas daftar Menu.
+ *  - Slide 1  : hero banner — konten diatur admin dari Profil →
+ *               "Banner & Promo" → bagian Hero Banner Halaman Menu.
+ *  - Slide 2+ : voucher aktif (maks 3) — ketuk slide untuk salin kode.
+ * Slide berganti OTOMATIS tiap 4 detik (geser ke kiri; fade bila pengguna
+ * memilih kurangi gerakan) dengan indikator titik yang bisa diketuk.
  */
+type PromoSlide = { kind: "hero" } | { kind: "voucher"; voucher: VoucherInfo };
+
+/** Jeda antar slide (ms) */
+const PROMO_SLIDE_INTERVAL = 4000;
+
 function MenuHeroBanner() {
   const prefersReduced = useReducedMotion();
-  const go = useAppStore((s) => s.go);
+  const showNotice = useNoticeStore((s) => s.show);
   const hero = useSettingsStore((s) => s.menuHero);
+  const vouchers = useVouchersStore((s) => s.vouchers);
 
-  // Pastikan konten hero selalu segar saat halaman Menu dibuka
+  // Pastikan konten hero & daftar voucher selalu segar saat Menu dibuka
   useEffect(() => {
     void refreshSettings();
+    void refreshVouchers();
   }, []);
 
-  if (!hero.menuHeroEnabled) return null;
-  const hasBadge = !!hero.menuHeroBadge.trim();
-  const hasTitle = !!hero.menuHeroTitle.trim();
-  const hasText = !!hero.menuHeroText.trim();
-  // Tanpa konten apa pun sama sekali → jangan tampilkan kotak kosong
-  if (!hasBadge && !hasTitle && !hasText && !hero.menuHeroImageUrl) return null;
+  // Susun daftar slide: hero dulu, lalu voucher aktif (maks 3).
+  // Voucher aktif = belum dipakai akun ini, kuota sisa, dan belum kedaluwarsa.
+  const slides = useMemo<PromoSlide[]>(() => {
+    const hasHeroContent =
+      !!hero.menuHeroBadge.trim() ||
+      !!hero.menuHeroTitle.trim() ||
+      !!hero.menuHeroText.trim() ||
+      !!hero.menuHeroImageUrl;
+    const list: PromoSlide[] = [];
+    if (hero.menuHeroEnabled && hasHeroContent) list.push({ kind: "hero" });
+    const now = Date.now();
+    vouchers
+      .filter(
+        (v) =>
+          !v.usedByMe &&
+          v.remaining > 0 &&
+          (!v.expiresAt || new Date(v.expiresAt).getTime() > now)
+      )
+      .slice(0, 3)
+      .forEach((voucher) => list.push({ kind: "voucher", voucher }));
+    return list;
+  }, [hero, vouchers]);
+
+  const [index, setIndex] = useState(0);
+
+  // GESER OTOMATIS: maju ke slide berikutnya tiap 4 detik (jika >1 slide).
+  // Timer di-reset tiap kali index berubah → ketukan manual juga mendapat
+  // jeda penuh 4 detik sebelum slide berganti lagi.
+  useEffect(() => {
+    if (slides.length <= 1) return;
+    const t = setInterval(() => setIndex((i) => (i + 1) % slides.length), PROMO_SLIDE_INTERVAL);
+    return () => clearInterval(t);
+  }, [slides.length, index]);
+
+  // Jaga index tetap valid bila daftar slide menyusut (voucher habis dsb.)
+  useEffect(() => {
+    if (index >= slides.length) setIndex(0);
+  }, [slides.length, index]);
+
+  if (slides.length === 0) return null;
+  const slide = slides[Math.min(index, slides.length - 1)];
+  const isHero = slide.kind === "hero";
+  const heroSlide = !isHero ? null : hero;
+
+  /** Ketuk slide voucher → salin kode (perilaku sama dengan kartu voucher di Beranda) */
+  const copyVoucherCode = async (v: VoucherInfo) => {
+    const ok = await copyText(v.code);
+    showNotice({
+      type: "success",
+      title: ok ? `Kode ${v.code} Disalin! 🎟️` : `Voucher ${v.code} Disiapkan 🎟️`,
+      message: "Buka keranjang, tempel kodenya, dan potongan dihitung otomatis.",
+    });
+  };
 
   return (
     <motion.section
@@ -42,50 +105,115 @@ function MenuHeroBanner() {
       aria-label="Banner promo"
       className="relative mb-4 h-40 w-full overflow-hidden rounded-3xl shadow-lg shadow-orange-600/20"
     >
-      {/* Latar: gambar upload admin, atau gradien orange bawaan */}
-      {hero.menuHeroImageUrl ? (
-        <img
-          src={hero.menuHeroImageUrl}
-          alt={hasTitle ? hero.menuHeroTitle : "Banner promo menu"}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-orange-700 via-orange-500 to-amber-400">
-          <div className="pointer-events-none absolute -right-3 -top-8 select-none text-[130px] leading-none opacity-20">
-            🍗
-          </div>
-          <div className="pointer-events-none absolute -bottom-10 right-16 select-none text-[90px] leading-none opacity-15">
-            🌶️
-          </div>
+      {/* ===== SLIDE BERJALAN ===== */}
+      <AnimatePresence initial={false}>
+        <motion.div
+          key={index}
+          initial={prefersReduced ? { opacity: 0 } : { x: "100%" }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={prefersReduced ? { opacity: 0 } : { x: "-100%" }}
+          transition={{ type: "spring", stiffness: 220, damping: 30 }}
+          className="absolute inset-0"
+        >
+          {isHero && heroSlide ? (
+            /* ---- SLIDE HERO BANNER (konten admin) ---- */
+            <div className="absolute inset-0">
+              {heroSlide.menuHeroImageUrl ? (
+                <img
+                  src={heroSlide.menuHeroImageUrl}
+                  alt={heroSlide.menuHeroTitle.trim() ? heroSlide.menuHeroTitle : "Banner promo menu"}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <div className="absolute inset-0 bg-gradient-to-br from-orange-700 via-orange-500 to-amber-400">
+                  <div className="pointer-events-none absolute -right-3 -top-8 select-none text-[130px] leading-none opacity-20">
+                    🍗
+                  </div>
+                  <div className="pointer-events-none absolute -bottom-10 right-16 select-none text-[90px] leading-none opacity-15">
+                    🌶️
+                  </div>
+                </div>
+              )}
+              {/* Overlay agar teks selalu terbaca */}
+              <div className="absolute inset-0 bg-gradient-to-r from-neutral-900/65 via-neutral-900/30 to-transparent" />
+              {/* Konten teks (tanpa tombol — strip murni promosi) */}
+              <div className="relative flex h-full flex-col justify-center gap-1.5 p-5">
+                {!!heroSlide.menuHeroBadge.trim() && (
+                  <span className="w-fit rounded-full bg-white/25 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white ring-1 ring-white/30 backdrop-blur-sm">
+                    {heroSlide.menuHeroBadge}
+                  </span>
+                )}
+                {!!heroSlide.menuHeroTitle.trim() && (
+                  <h2 className="max-w-[75%] text-lg font-black leading-tight text-white drop-shadow-sm">
+                    {heroSlide.menuHeroTitle}
+                  </h2>
+                )}
+                {!!heroSlide.menuHeroText.trim() && (
+                  <p className="max-w-[70%] text-xs font-semibold leading-snug text-white/85">
+                    {heroSlide.menuHeroText}
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* ---- SLIDE VOUCHER AKTIF (ketuk = salin kode) ---- */
+            slide.kind === "voucher" && (
+              <button
+                type="button"
+                onClick={() => void copyVoucherCode(slide.voucher)}
+                aria-label={`Salin kode voucher ${slide.voucher.code}`}
+                className="absolute inset-0 w-full cursor-pointer text-left"
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-rose-600 via-orange-500 to-amber-400">
+                  <div className="pointer-events-none absolute -right-2 -bottom-6 select-none text-[110px] leading-none opacity-20">
+                    🎟️
+                  </div>
+                  <div className="pointer-events-none absolute -top-6 left-10 select-none text-[70px] leading-none opacity-15">
+                    ✨
+                  </div>
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-r from-neutral-900/55 via-neutral-900/25 to-transparent" />
+                <div className="relative flex h-full flex-col justify-center gap-1.5 p-5">
+                  <span className="w-fit rounded-full bg-white/25 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white ring-1 ring-white/30 backdrop-blur-sm">
+                    Voucher Aktif
+                  </span>
+                  <h2 className="max-w-[75%] text-lg font-black leading-tight text-white drop-shadow-sm">
+                    Potongan {formatVoucherValue(slide.voucher)}
+                    {slide.voucher.type === "PERCENT" ? " Off" : ""}
+                  </h2>
+                  <p className="max-w-[70%] text-xs font-semibold leading-snug text-white/85">
+                    {slide.voucher.title}
+                  </p>
+                  <span className="mt-0.5 flex w-fit items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 font-mono text-[11px] font-black tracking-wider text-orange-700 shadow">
+                    {slide.voucher.code}
+                    <span className="font-sans text-[9px] font-bold uppercase text-orange-400">
+                      ketuk salin
+                    </span>
+                  </span>
+                </div>
+              </button>
+            )
+          )}
+        </motion.div>
+      </AnimatePresence>
+
+      {/* ===== INDIKATOR TITIK (bisa diketuk untuk lompat slide) ===== */}
+      {slides.length > 1 && (
+        <div className="absolute bottom-2.5 right-3 z-20 flex items-center gap-1.5">
+          {slides.map((s, i) => (
+            <button
+              key={s.kind === "hero" ? "hero" : s.voucher.id}
+              type="button"
+              aria-label={`Ke slide ${i + 1}`}
+              onClick={() => setIndex(i)}
+              className={cn(
+                "h-1.5 rounded-full transition-all",
+                i === index ? "w-4 bg-white" : "w-1.5 bg-white/50 hover:bg-white/80"
+              )}
+            />
+          ))}
         </div>
       )}
-      {/* Overlay agar teks selalu terbaca */}
-      <div className="absolute inset-0 bg-gradient-to-r from-neutral-900/65 via-neutral-900/30 to-transparent" />
-
-      {/* Konten teks */}
-      <div className="relative flex h-full flex-col justify-center gap-1.5 p-5">
-        {hasBadge && (
-          <span className="w-fit rounded-full bg-white/25 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white ring-1 ring-white/30 backdrop-blur-sm">
-            {hero.menuHeroBadge}
-          </span>
-        )}
-        {hasTitle && (
-          <h2 className="max-w-[75%] text-lg font-black leading-tight text-white drop-shadow-sm">
-            {hero.menuHeroTitle}
-          </h2>
-        )}
-        {hasText && (
-          <p className="max-w-[70%] text-xs font-semibold leading-snug text-white/85">
-            {hero.menuHeroText}
-          </p>
-        )}
-        <button
-          onClick={() => go("cart")}
-          className="press-effect mt-1 flex w-fit items-center gap-1 rounded-full bg-white px-4 py-1.5 text-[11px] font-black text-orange-700 shadow-md transition hover:bg-orange-50"
-        >
-          Pesan Sekarang <ChevronRight className="h-3.5 w-3.5" />
-        </button>
-      </div>
     </motion.section>
   );
 }
