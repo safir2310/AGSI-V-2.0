@@ -3,6 +3,10 @@
 # Pakai: bash scripts/dev-server.sh
 cd "$(dirname "$0")/.." || exit 1
 
+# Muat .env project agar server memakai DATABASE_URL dll dari .env
+# (menimpa placeholder platform yang menyebabkan semua query DB gagal).
+set -a; [ -f ./.env ] && . ./.env; set +a
+
 if curl -s -o /dev/null -m 3 http://localhost:3000; then
   echo "✓ Server sudah jalan di http://localhost:3000"
   exit 0

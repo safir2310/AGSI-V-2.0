@@ -26,6 +26,16 @@ export type CashierInfo = {
   createdAt: string;
 };
 
+/** Akun admin/owner (GET/POST /api/admins) — menu "Kelola Admin" di Profil */
+export type AdminInfo = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: string; // ADMIN | OWNER
+  createdAt: string;
+};
+
 export type Product = {
   id: string;
   name: string;

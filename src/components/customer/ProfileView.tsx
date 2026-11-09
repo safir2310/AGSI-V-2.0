@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { EditProfileSheet } from "@/components/shared/EditProfileSheet";
 import { BiometricSheet } from "@/components/shared/BiometricSheet";
+import { AdminsSheet } from "@/components/admin/AdminsSheet";
 import { CashiersSheet } from "@/components/admin/CashiersSheet";
 import { StoreSettingsSheet } from "@/components/admin/StoreSettingsSheet";
 import { BannerSettingsSheet } from "@/components/admin/BannerSettingsSheet";
@@ -67,6 +68,7 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const chatUnreadTick = useUiStore((s) => s.chatUnreadTick);
   const [editOpen, setEditOpen] = useState(false);
   const [cashiersOpen, setCashiersOpen] = useState(false);
+  const [adminsOpen, setAdminsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bannerOpen, setBannerOpen] = useState(false);
   const [qrisOpen, setQrisOpen] = useState(false);
@@ -241,6 +243,7 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
         { icon: PenLine, label: "Edit Profil", desc: "Ubah nama, no. HP, & password", onClick: () => setEditOpen(true) },
         { icon: MessageCircle, label: "Chat Pelanggan (CS)", desc: chatUnread > 0 ? `${chatUnread} pesan pelanggan belum dibalas` : "Layani pertanyaan pelanggan lewat chat", onClick: openChat, badge: chatUnread },
         { icon: UserPlus, label: "Kelola Kasir", desc: "Tambah & atur akun kasir POS", onClick: () => setCashiersOpen(true) },
+        { icon: ShieldCheck, label: "Kelola Admin", desc: "Tambah admin baru & atur akses owner/admin", onClick: () => setAdminsOpen(true) },
         {
           icon: Settings2,
           label: "Pengaturan Toko",
@@ -385,6 +388,15 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
         onUpdated={onUserUpdate}
       />
       {isAdmin && <CashiersSheet open={cashiersOpen} onClose={() => setCashiersOpen(false)} />}
+      {/* Sheet kelola admin — daftar/tambah/edit/hapus akun admin & owner */}
+      {isAdmin && (
+        <AdminsSheet
+          open={adminsOpen}
+          onClose={() => setAdminsOpen(false)}
+          currentUserId={user.id}
+          currentUserRole={user.role}
+        />
+      )}
       {isAdmin && (
         <StoreSettingsSheet
           open={settingsOpen}
