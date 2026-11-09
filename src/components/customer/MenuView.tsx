@@ -12,6 +12,7 @@ import {
   useProductsStore,
   useSettingsStore,
   useVouchersStore,
+  type MenuPromoBannerInfo,
 } from "@/lib/hooks";
 import { useCartStore, useNoticeStore } from "@/lib/store";
 import { copyText } from "@/lib/clipboard";
@@ -20,17 +21,32 @@ import { cn } from "@/lib/utils";
 
 /**
  * STRIP PROMO SLIDE-OTOMATIS di atas daftar Menu.
- *  - Slide 1  : hero banner — konten diatur admin dari Profil →
- *               "Banner & Promo" → bagian Hero Banner Halaman Menu.
- *  - Slide 2+ : voucher aktif (jumlah diatur admin, maks 5) — ketuk untuk salin kode.
+ *  - Slide 1      : hero banner — konten diatur admin dari Profil →
+ *                   "Banner & Promo" → bagian Hero Banner Halaman Menu.
+ *  - Slide 2 & 3  : 2 banner promo custom (slot 1 & 2) — teks, emoji, warna
+ *                   gradien & gambar latar dapat diganti-ganti admin dari
+ *                   bagian Banner Promo Menu.
+ *  - Slide 4+     : voucher aktif (jumlah diatur admin, maks 5) — ketuk untuk salin kode.
  * Slide berganti OTOMATIS tiap 4 detik (geser ke kiri; fade bila pengguna
  * memilih kurangi gerakan) dengan indikator titik yang bisa diketuk.
- * Tampilan cerah: gradien oranye→kuning menyala + dekorasi mengapung + kilau.
+ * Tampilan cerah: gradien menyala + dekorasi mengapung + kilau.
  */
-type PromoSlide = { kind: "hero" } | { kind: "voucher"; voucher: VoucherInfo };
+type PromoSlide =
+  | { kind: "hero" }
+  | { kind: "banner"; banner: MenuPromoBannerInfo }
+  | { kind: "voucher"; voucher: VoucherInfo };
 
 /** Jeda antar slide (ms) */
 const PROMO_SLIDE_INTERVAL = 4000;
+
+/** Gradien latar per tema banner promo (cerah menyala, sesuai pilihan admin). */
+const BANNER_GRADIENTS: Record<MenuPromoBannerInfo["theme"], string> = {
+  orange: "from-orange-500 via-amber-400 to-yellow-300",
+  rose: "from-rose-500 via-orange-400 to-amber-300",
+  emerald: "from-emerald-500 via-teal-400 to-lime-300",
+  blue: "from-blue-500 via-sky-400 to-cyan-300",
+  violet: "from-violet-500 via-purple-400 to-fuchsia-300",
+};
 
 function MenuHeroBanner() {
   const prefersReduced = useReducedMotion();
@@ -45,10 +61,11 @@ function MenuHeroBanner() {
     void refreshVouchers();
   }, []);
 
-  // Susun daftar slide: hero dulu, lalu voucher aktif (jumlah diatur admin).
-  // Voucher aktif = belum dipakai akun ini, kuota sisa, dan belum kedaluwarsa.
-  // Admin dapat menyembunyikan slide voucher (Profil → Banner & Promo →
-  // "Slide Voucher di Menu") atau membatasi jumlahnya 1–5.
+  // Susun daftar slide: hero dulu, lalu 2 banner promo custom, lalu voucher
+  // aktif (jumlah diatur admin). Voucher aktif = belum dipakai akun ini,
+  // kuota sisa, dan belum kedaluwarsa. Banner promo disembunyikan bila
+  // saklarnya mati atau isinya benar-benar kosong (Profil → Banner & Promo →
+  // "Banner Promo Menu").
   const slides = useMemo<PromoSlide[]>(() => {
     const hasHeroContent =
       !!hero.menuHeroBadge.trim() ||
@@ -57,6 +74,14 @@ function MenuHeroBanner() {
       !!hero.menuHeroImageUrl;
     const list: PromoSlide[] = [];
     if (hero.menuHeroEnabled && hasHeroContent) list.push({ kind: "hero" });
+    for (const banner of menuPromo.banners) {
+      const hasBannerContent =
+        banner.hasImage ||
+        !!banner.badge.trim() ||
+        !!banner.title.trim() ||
+        !!banner.text.trim();
+      if (banner.enabled && hasBannerContent) list.push({ kind: "banner", banner });
+    }
     if (menuPromo.menuPromoVouchersEnabled) {
       const now = Date.now();
       vouchers
@@ -193,6 +218,78 @@ function MenuHeroBanner() {
                 )}
               </div>
             </div>
+          ) : slide.kind === "banner" ? (
+            /* ---- SLIDE BANNER PROMO CUSTOM (slot 1 & 2, konten diganti-ganti admin) ---- */
+            <div className="absolute inset-0">
+              {slide.banner.imageUrl ? (
+                <img
+                  src={slide.banner.imageUrl}
+                  alt={slide.banner.title.trim() ? slide.banner.title : "Banner promo menu"}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <div
+                  className={cn(
+                    "absolute inset-0 bg-gradient-to-br",
+                    BANNER_GRADIENTS[slide.banner.theme] ?? BANNER_GRADIENTS.orange
+                  )}
+                >
+                  {/* Blob cahaya mengapung — memberi kesan cerah & hidup */}
+                  <motion.div
+                    aria-hidden
+                    className="pointer-events-none absolute -left-6 -top-10 h-32 w-32 rounded-full bg-white/35 blur-2xl"
+                    animate={prefersReduced ? undefined : { y: [0, 9, 0], scale: [1, 1.07, 1] }}
+                    transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                  <motion.div
+                    aria-hidden
+                    className="pointer-events-none absolute -bottom-10 right-1/4 h-28 w-28 rounded-full bg-white/25 blur-2xl"
+                    animate={prefersReduced ? undefined : { y: [0, -7, 0], x: [0, 8, 0] }}
+                    transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                  {/* Emoji dekorasi mengapung — dipilih admin */}
+                  {!!slide.banner.emoji.trim() && (
+                    <motion.div
+                      aria-hidden
+                      className="pointer-events-none absolute -right-2 -bottom-6 select-none text-[110px] leading-none opacity-30 drop-shadow-md"
+                      animate={prefersReduced ? undefined : { y: [0, -8, 0], rotate: [0, 6, 0] }}
+                      transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+                    >
+                      {slide.banner.emoji}
+                    </motion.div>
+                  )}
+                </div>
+              )}
+              {/* Kilau menyapu berkala (dilewati bila pengguna pilih kurangi gerakan) */}
+              {!prefersReduced && (
+                <motion.div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 skew-x-[-12deg] bg-gradient-to-r from-transparent via-white/45 to-transparent"
+                  animate={{ x: ["0%", "480%"] }}
+                  transition={{ duration: 2.4, repeat: Infinity, repeatDelay: 3, ease: "easeInOut" }}
+                />
+              )}
+              {/* Overlay ringan hanya di sisi teks — sisi kanan tetap terang */}
+              <div className="absolute inset-0 bg-gradient-to-r from-neutral-900/60 via-neutral-900/20 to-transparent" />
+              {/* Konten teks banner promo */}
+              <div className="relative flex h-full flex-col justify-center gap-1.5 p-5">
+                {!!slide.banner.badge.trim() && (
+                  <span className="w-fit rounded-full bg-white/30 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white shadow-sm ring-1 ring-white/45 backdrop-blur-sm">
+                    {slide.banner.badge}
+                  </span>
+                )}
+                {!!slide.banner.title.trim() && (
+                  <h2 className="max-w-[75%] text-lg font-black leading-tight text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.45)]">
+                    {slide.banner.title}
+                  </h2>
+                )}
+                {!!slide.banner.text.trim() && (
+                  <p className="max-w-[70%] text-xs font-semibold leading-snug text-white/90 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
+                    {slide.banner.text}
+                  </p>
+                )}
+              </div>
+            </div>
           ) : (
             /* ---- SLIDE VOUCHER AKTIF (ketuk = salin kode) — cerah menyala ---- */
             slide.kind === "voucher" && (
@@ -264,7 +361,7 @@ function MenuHeroBanner() {
         <div className="absolute bottom-2.5 right-3 z-20 flex items-center gap-1.5">
           {slides.map((s, i) => (
             <button
-              key={s.kind === "hero" ? "hero" : s.voucher.id}
+              key={s.kind === "hero" ? "hero" : s.kind === "banner" ? `banner-${s.banner.slot}` : s.voucher.id}
               type="button"
               aria-label={`Ke slide ${i + 1}`}
               onClick={() => setIndex(i)}

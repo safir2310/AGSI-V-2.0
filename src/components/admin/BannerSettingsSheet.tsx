@@ -20,7 +20,12 @@ import {
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
-import { refreshSettings, useSettingsStore } from "@/lib/hooks";
+import {
+  refreshSettings,
+  useSettingsStore,
+  type MenuPromoBannerInfo,
+  type MenuPromoBannerTheme,
+} from "@/lib/hooks";
 import { useNoticeStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +42,48 @@ const MAX_STRIP_TEXT = 120;
 const MAX_HERO_BADGE = 24;
 const MAX_HERO_TITLE = 80;
 const MAX_HERO_TEXT = 120;
+const MAX_PROMO_BADGE = 24;
+const MAX_PROMO_TITLE = 80;
+const MAX_PROMO_TEXT = 120;
+const MAX_PROMO_EMOJI = 8;
+
+/** Pilihan tema warna gradien banner promo (cerah menyala) — pratinjau & swatch. */
+const PROMO_THEMES: Array<{ value: MenuPromoBannerTheme; label: string; swatch: string; slide: string }> = [
+  { value: "orange", label: "Orange", swatch: "from-orange-500 to-amber-300", slide: "from-orange-500 via-amber-400 to-yellow-300" },
+  { value: "rose", label: "Merah Muda", swatch: "from-rose-500 to-amber-300", slide: "from-rose-500 via-orange-400 to-amber-300" },
+  { value: "emerald", label: "Hijau", swatch: "from-emerald-500 to-lime-300", slide: "from-emerald-500 via-teal-400 to-lime-300" },
+  { value: "blue", label: "Biru", swatch: "from-blue-500 to-cyan-300", slide: "from-blue-500 via-sky-400 to-cyan-300" },
+  { value: "violet", label: "Ungu", swatch: "from-violet-500 to-fuchsia-300", slide: "from-violet-500 via-purple-400 to-fuchsia-300" },
+];
+
+/** Draf lokal 1 banner promo di sheet (imageData: undefined=tak diubah, string=gambar baru, null=hapus). */
+type BannerDraft = {
+  enabled: boolean;
+  badge: string;
+  title: string;
+  text: string;
+  emoji: string;
+  theme: MenuPromoBannerTheme;
+  imageData: string | null | undefined;
+  imageBusy: boolean;
+};
+
+/** Nilai awal 2 banner promo — konsisten dengan default schema/DB. */
+const EMPTY_PROMO_BANNERS: MenuPromoBannerInfo[] = [
+  { slot: 1, enabled: true, badge: "Promo Spesial", title: "Beli 2 Gratis 1 Es Teh", text: "Berlaku setiap hari kerja di outlet AGSI", emoji: "🥤", theme: "violet", hasImage: false, imageUrl: null },
+  { slot: 2, enabled: true, badge: "Menu Baru", title: "Ayam Geprik Sambal Bawang", text: "Pedas nampol, harga hemat mulai Rp 15.000", emoji: "🌶️", theme: "emerald", hasImage: false, imageUrl: null },
+];
+
+const draftFromBanner = (b: MenuPromoBannerInfo): BannerDraft => ({
+  enabled: b.enabled,
+  badge: b.badge,
+  title: b.title,
+  text: b.text,
+  emoji: b.emoji,
+  theme: b.theme,
+  imageData: undefined,
+  imageBusy: false,
+});
 
 /** Kompres & perkecil gambar banner di sisi klien (maks 1200px, JPEG) */
 async function fileToResizedDataUrl(file: File): Promise<string> {
@@ -92,6 +139,9 @@ async function processImageFile(file: File | undefined): Promise<string | null> 
  *     dikompres), judul & pesan singkat.
  *  2. Strip "Promo Hari Ini" di Beranda — 3 baris teks.
  *  3. Hero banner halaman Menu — saklar, gambar latar, badge, judul, teks.
+ *  4. 2 Banner Promo Menu (slot 1 & 2) — dua slide carousel yang berganti
+ *     otomatis: saklar, gambar latar, emoji, tema warna & 3 baris teks per banner.
+ *  5. Slide voucher di carousel Menu — saklar + jumlah maksimal (1–5).
  *
  * Tersimpan via PUT /api/settings (divalidasi ulang server-side).
  * Popup tampil 1x per sesi pelanggan untuk tiap versi banner; menyimpan
@@ -124,6 +174,14 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
   // ===== Slide voucher di carousel Menu =====
   const [vpEnabled, setVpEnabled] = useState(true);
   const [vpMax, setVpMax] = useState(3);
+  // ===== 2 Banner Promo Menu (slot 1 & 2) =====
+  const [bannerDrafts, setBannerDrafts] = useState<BannerDraft[]>(() => EMPTY_PROMO_BANNERS.map(draftFromBanner));
+  /** status gambar di server per slot — dipakai untuk URL pratinjau */
+  const [bannerServerHasImage, setBannerServerHasImage] = useState<[boolean, boolean]>([false, false]);
+  /** versi konten banner promo saat sheet dibuka — cache-buster URL pratinjau */
+  const [bannerServerVersion, setBannerServerVersion] = useState<string | null>(null);
+  const bannerFileRef0 = useRef<HTMLInputElement>(null);
+  const bannerFileRef1 = useRef<HTMLInputElement>(null);
   // undefined = tidak diubah, string = data URL baru, null = hapus gambar
   const [imageData, setImageData] = useState<string | null | undefined>(undefined);
   const [imageBusy, setImageBusy] = useState(false);
@@ -164,6 +222,11 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       const mp = useSettingsStore.getState().menuPromo;
       setVpEnabled(mp.menuPromoVouchersEnabled);
       setVpMax(mp.menuPromoVouchersMax);
+      // 2 banner promo menu (slot 1 & 2)
+      const mpBanners = mp.banners ?? EMPTY_PROMO_BANNERS;
+      setBannerDrafts(mpBanners.slice(0, 2).map(draftFromBanner));
+      setBannerServerHasImage([!!mpBanners[0]?.hasImage, !!mpBanners[1]?.hasImage]);
+      setBannerServerVersion(mp.version);
     } finally {
       setLoading(false);
     }
@@ -203,6 +266,29 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
     setHeroImageBusy(false);
     if (dataUrl) setHeroImageData(dataUrl);
     if (heroFileInputRef.current) heroFileInputRef.current.value = "";
+  };
+
+  /** Ubah draf 1 banner promo slot ke-N. */
+  const updateDraft = (slot: number, patch: Partial<BannerDraft>) =>
+    setBannerDrafts((prev) => prev.map((d, i) => (i === slot ? { ...d, ...patch } : d)));
+
+  const pickBannerImage = async (slot: number, file: File | undefined, ref: { current: HTMLInputElement | null }) => {
+    if (!file) return;
+    updateDraft(slot, { imageBusy: true });
+    const dataUrl = await processImageFile(file);
+    updateDraft(slot, { imageBusy: false, ...(dataUrl ? { imageData: dataUrl } : {}) });
+    if (ref.current) ref.current.value = "";
+  };
+
+  /** URL pratinjau gambar banner promo slot ke-N: gambar baru > gambar server > kosong */
+  const bannerPreviewSrc = (slot: number) => {
+    const d = bannerDrafts[slot];
+    if (!d) return null;
+    if (d.imageData !== undefined && d.imageData !== null) return d.imageData;
+    if (d.imageData === null) return null;
+    return bannerServerHasImage[slot]
+      ? `/api/settings/menu-promo/image?slot=${slot + 1}&v=${encodeURIComponent(bannerServerVersion ?? "1")}`
+      : null;
   };
 
   /** URL pratinjau: gambar baru > gambar server > kosong */
@@ -257,6 +343,23 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       });
       return;
     }
+    for (let i = 0; i < bannerDrafts.length; i++) {
+      const d = bannerDrafts[i];
+      if (
+        d.enabled &&
+        bannerPreviewSrc(i) === null &&
+        !d.badge.trim() &&
+        !d.title.trim() &&
+        !d.text.trim()
+      ) {
+        showNotice({
+          type: "error",
+          title: `Banner Promo ${i + 1} Belum Siap`,
+          message: "Isi minimal satu baris, unggah gambar latar, atau matikan saklarnya.",
+        });
+        return;
+      }
+    }
 
     setSaving(true);
     try {
@@ -276,6 +379,20 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
         menuHeroTouch: true,
         menuPromoVouchersEnabled: vpEnabled,
         menuPromoVouchersMax: vpMax,
+        menuPromoBanners: bannerDrafts.map((d, i) => ({
+          slot: i + 1,
+          enabled: d.enabled,
+          badge: d.badge.trim(),
+          title: d.title.trim(),
+          text: d.text.trim(),
+          emoji: d.emoji.trim(),
+          theme: d.theme,
+          ...(d.imageData === null
+            ? { imageRemove: true }
+            : d.imageData !== undefined
+              ? { imageData: d.imageData }
+              : {}),
+        })),
       };
       if (imageData !== undefined) {
         if (imageData === null) body.bannerImageRemove = true;
@@ -304,12 +421,16 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       setHeroServerVersion(useSettingsStore.getState().menuHero.menuHeroVersion);
       setImageData(undefined);
       setHeroImageData(undefined);
+      const mpState = useSettingsStore.getState().menuPromo;
+      setBannerServerHasImage([!!mpState.banners[0]?.hasImage, !!mpState.banners[1]?.hasImage]);
+      setBannerServerVersion(mpState.version);
+      setBannerDrafts((prev) => prev.map((d) => ({ ...d, imageData: undefined })));
       showNotice({
         type: "success",
         autoCloseMs: 3600,
         title: "Banner & Promo Disimpan ✓",
         message:
-          "Perubahan popup banner, strip promo, hero Menu, dan slide voucher langsung tampil di aplikasi pelanggan.",
+          "Perubahan popup banner, strip promo, hero Menu, 2 banner promo, dan slide voucher langsung tampil di aplikasi pelanggan.",
       });
     } catch {
       showNotice({ type: "error", title: "Koneksi Bermasalah", message: "Tidak dapat menghubungi server." });
@@ -355,7 +476,7 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-black tracking-wide">Banner &amp; Promo</p>
                   <p className="truncate text-[11px] font-semibold text-orange-100">
-                    Popup Beranda, strip promo, hero Menu &amp; slide voucher pelanggan
+                    Popup Beranda, strip promo, hero Menu, banner promo &amp; voucher
                   </p>
                 </div>
                 <button
@@ -781,6 +902,228 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                     </div>
                   </div>
 
+                  {/* ===== 2 BANNER PROMO MENU (slot 1 & 2, diganti-ganti admin) ===== */}
+                  <div className="mt-6 flex items-center gap-2">
+                    <div className="h-px flex-1 bg-neutral-200" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
+                      Banner Promo Menu (2 Slide)
+                    </span>
+                    <div className="h-px flex-1 bg-neutral-200" />
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-neutral-500">
+                    Dua slide banner promo yang bergantian <strong className="font-bold">otomatis</strong> di carousel
+                    Menu — urutan: hero → banner promo 1 → banner promo 2 → voucher. Ganti teks, emoji,
+                    warna, atau unggah gambar latar; konten baru langsung tampil di aplikasi pelanggan.
+                  </p>
+                  {bannerDrafts.map((d, i) => {
+                    const preview = bannerPreviewSrc(i);
+                    const themeMeta = PROMO_THEMES.find((t) => t.value === d.theme) ?? PROMO_THEMES[0];
+                    const fileRef = i === 0 ? bannerFileRef0 : bannerFileRef1;
+                    return (
+                      <div
+                        key={i}
+                        className={cn(
+                          "mt-3 rounded-2xl border p-4 transition-colors",
+                          d.enabled ? "border-orange-200 bg-orange-50/60" : "border-neutral-200 bg-neutral-50"
+                        )}
+                      >
+                        <div className="flex items-start gap-3">
+                          <span
+                            className={cn(
+                              "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+                              d.enabled ? "bg-orange-600 text-white" : "bg-neutral-200 text-neutral-400"
+                            )}
+                          >
+                            <ImageIcon className="h-5.5 w-5.5" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-black text-neutral-800">Banner Promo {i + 1}</p>
+                            <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-500">
+                              Kosongkan baris mana pun untuk menyembunyikan baris itu di slide.
+                            </p>
+                          </div>
+                          <Switch
+                            checked={d.enabled}
+                            onCheckedChange={(v) => updateDraft(i, { enabled: v })}
+                            aria-label={`${d.enabled ? "Nonaktifkan" : "Aktifkan"} banner promo ${i + 1}`}
+                            className="mt-0.5 h-6 w-11 data-[state=checked]:bg-orange-600 data-[state=unchecked]:bg-neutral-300"
+                          />
+                        </div>
+
+                        {/* Pratinjau slide banner promo — meniru tampilan asli di Menu */}
+                        <div className="relative mt-3 h-24 overflow-hidden rounded-xl shadow">
+                          {preview ? (
+                            <img
+                              src={preview}
+                              alt={`Pratinjau banner promo ${i + 1}`}
+                              className="absolute inset-0 h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div
+                              className={cn(
+                                "absolute inset-0 bg-gradient-to-br transition-opacity",
+                                d.enabled ? themeMeta.slide : "from-neutral-300 via-neutral-300 to-neutral-300"
+                              )}
+                            >
+                              <div className="pointer-events-none absolute -right-2 -bottom-5 text-[70px] opacity-30">
+                                {d.emoji.trim() || "🎉"}
+                              </div>
+                              <div className="pointer-events-none absolute -left-4 -top-6 h-16 w-16 rounded-full bg-white/30 blur-lg" />
+                            </div>
+                          )}
+                          <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/15 to-transparent" />
+                          <div className="relative flex h-full flex-col justify-center gap-1 p-4">
+                            {d.badge.trim() && (
+                              <span className="w-fit rounded-full bg-white/30 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white ring-1 ring-white/45">
+                                {d.badge.trim()}
+                              </span>
+                            )}
+                            {d.title.trim() ? (
+                              <p className="text-sm font-black leading-tight text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.4)]">
+                                {d.title.trim()}
+                              </p>
+                            ) : (
+                              <p className="text-[10px] font-semibold text-white/75">Judul kosong — baris disembunyikan</p>
+                            )}
+                            {d.text.trim() && (
+                              <p className="text-[11px] font-medium text-white/90">{d.text.trim()}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Upload gambar latar banner promo (opsional) */}
+                        <p className="mb-2 mt-3 text-[11px] font-black uppercase tracking-widest text-neutral-400">
+                          Gambar latar (opsional)
+                        </p>
+                        <input
+                          ref={fileRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => void pickBannerImage(i, e.target.files?.[0], fileRef)}
+                        />
+                        {d.imageBusy ? (
+                          <div className="flex h-20 items-center justify-center rounded-2xl border-2 border-dashed border-orange-200 bg-orange-50/50">
+                            <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
+                          </div>
+                        ) : preview ? (
+                          <div className="relative overflow-hidden rounded-2xl border border-orange-200">
+                            <img
+                              src={preview}
+                              alt={`Gambar latar banner promo ${i + 1} terpilih`}
+                              className="aspect-video w-full object-cover"
+                            />
+                            <div className="absolute bottom-2 right-2 flex gap-2">
+                              <button
+                                onClick={() => fileRef.current?.click()}
+                                className="press-effect rounded-full bg-white/95 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-orange-700 shadow-md ring-1 ring-orange-200 transition hover:bg-orange-50"
+                              >
+                                Ganti
+                              </button>
+                              <button
+                                onClick={() =>
+                                  // undefined → null (tandai hapus gambar server),
+                                  // null → undefined (urungkan), string → null (buang gambar yg baru dipilih)
+                                  updateDraft(i, { imageData: d.imageData === null ? undefined : null })
+                                }
+                                className="press-effect flex items-center gap-1 rounded-full bg-red-600 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white shadow-md transition hover:bg-red-700"
+                              >
+                                <Trash2 className="h-3 w-3" /> Hapus
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => fileRef.current?.click()}
+                            className="flex h-20 w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-orange-300 bg-orange-50/50 text-orange-500 transition hover:border-orange-400 hover:bg-orange-50"
+                          >
+                            <ImagePlus className="h-6 w-6" />
+                            <span className="text-xs font-extrabold">Ketuk untuk unggah gambar latar</span>
+                            <span className="text-[10px] font-semibold text-neutral-400">
+                              Tanpa gambar → gradien warna di bawah
+                            </span>
+                          </button>
+                        )}
+
+                        {/* Tema warna gradien (dipakai bila tanpa gambar) */}
+                        <p className="mb-2 mt-3 text-[11px] font-black uppercase tracking-widest text-neutral-400">
+                          Warna gradien (bila tanpa gambar)
+                        </p>
+                        <div className="flex items-center gap-2">
+                          {PROMO_THEMES.map((t) => (
+                            <button
+                              key={t.value}
+                              type="button"
+                              aria-label={`Tema ${t.label}`}
+                              disabled={!d.enabled}
+                              onClick={() => updateDraft(i, { theme: t.value })}
+                              className={cn(
+                                "press-effect h-7 w-7 rounded-full bg-gradient-to-br ring-2 ring-offset-1 transition disabled:opacity-40",
+                                t.swatch,
+                                d.theme === t.value ? "scale-110 ring-orange-500" : "ring-transparent"
+                              )}
+                            />
+                          ))}
+                          <span className="ml-1 text-[10px] font-bold text-neutral-400">{themeMeta.label}</span>
+                        </div>
+
+                        {/* Emoji dekorasi + 3 baris teks */}
+                        <div className="mt-3 grid grid-cols-[72px_1fr] items-start gap-2.5">
+                          <div>
+                            <input
+                              value={d.emoji}
+                              onChange={(e) => updateDraft(i, { emoji: e.target.value.slice(0, MAX_PROMO_EMOJI) })}
+                              placeholder="🍗"
+                              disabled={!d.enabled}
+                              className="w-full rounded-xl border border-orange-200 bg-white px-2 py-2.5 text-center text-lg outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
+                            />
+                            <p className="mt-1 text-center text-[10px] font-semibold text-neutral-300">
+                              Emoji
+                            </p>
+                          </div>
+                          <div className="space-y-2.5">
+                            <div>
+                              <input
+                                value={d.badge}
+                                onChange={(e) => updateDraft(i, { badge: e.target.value.slice(0, MAX_PROMO_BADGE) })}
+                                placeholder="cth: Promo Spesial"
+                                disabled={!d.enabled}
+                                className="w-full rounded-xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-800 outline-none transition placeholder:font-normal placeholder:text-neutral-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
+                              />
+                              <p className="mt-1 text-right text-[10px] font-semibold text-neutral-300">
+                                Label kecil · {d.badge.length}/{MAX_PROMO_BADGE}
+                              </p>
+                            </div>
+                            <div>
+                              <input
+                                value={d.title}
+                                onChange={(e) => updateDraft(i, { title: e.target.value.slice(0, MAX_PROMO_TITLE) })}
+                                placeholder="cth: Beli 2 Gratis 1 Es Teh"
+                                disabled={!d.enabled}
+                                className="w-full rounded-xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-800 outline-none transition placeholder:font-normal placeholder:text-neutral-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
+                              />
+                              <p className="mt-1 text-right text-[10px] font-semibold text-neutral-300">
+                                Judul utama · {d.title.length}/{MAX_PROMO_TITLE}
+                              </p>
+                            </div>
+                            <div>
+                              <input
+                                value={d.text}
+                                onChange={(e) => updateDraft(i, { text: e.target.value.slice(0, MAX_PROMO_TEXT) })}
+                                placeholder="cth: Berlaku setiap hari kerja"
+                                disabled={!d.enabled}
+                                className="w-full rounded-xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-800 outline-none transition placeholder:font-normal placeholder:text-neutral-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
+                              />
+                              <p className="mt-1 text-right text-[10px] font-semibold text-neutral-300">
+                                Baris penjelas · {d.text.length}/{MAX_PROMO_TEXT}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
                   {/* ===== SLIDE VOUCHER DI CAROUSEL MENU ===== */}
                   <div className="mt-6 flex items-center gap-2">
                     <div className="h-px flex-1 bg-neutral-200" />
@@ -890,8 +1233,9 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
 
                     {vpEnabled && (
                       <p className="mt-2 text-[10px] font-semibold leading-relaxed text-neutral-400">
-                        Carousel hanya tampil bila ada slide: hero kosong &amp; tidak ada voucher aktif → strip tersembunyi.
-                        Hero dinonaktifkan? Voucher tetap tampil selama saklar ini aktif.
+                        Carousel hanya tampil bila ada slide: hero, banner promo, &amp; voucher semuanya
+                        kosong → strip tersembunyi. Hero/banner promo dinonaktifkan? Voucher tetap tampil
+                        selama saklar ini aktif.
                       </p>
                     )}
                   </div>

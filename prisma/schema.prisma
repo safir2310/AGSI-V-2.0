@@ -341,6 +341,17 @@ model StoreSetting {
   // → "Banner & Promo" (bagian Slide Voucher di Menu).
   menuPromoVouchersEnabled Boolean @default(true)
   menuPromoVouchersMax     Int     @default(3) // 1–5
+  // ===== 2 BANNER PROMO CUSTOM DI CAROUSEL MENU =====
+  // Dua slide banner promo tambahan (slot 1 & 2) yang kontennya — teks, emoji,
+  // warna gradien, dan gambar latar — dapat diganti-ganti admin dari Profil →
+  // "Banner & Promo" (bagian Banner Promo Menu). Urutan carousel Menu berganti
+  // OTOMATIS: hero → banner promo 1 → banner promo 2 → voucher aktif.
+  menuPromoBanners          Json? // array konfigurasi 2 banner (konten saja, tanpa bytes gambar)
+  menuPromoBannersUpdatedAt DateTime? // versi konten banner promo — cache-buster URL gambar
+  menuPromoBanner1ImageData String? // gambar latar banner slot 1 (base64, portabel)
+  menuPromoBanner1ImageMime String?
+  menuPromoBanner2ImageData String? // gambar latar banner slot 2 (base64)
+  menuPromoBanner2ImageMime String?
   updatedAt       DateTime @updatedAt
 }
 

@@ -202,40 +202,139 @@ export type MenuHeroPatch = {
   menuHeroTouch?: boolean;
 };
 
-/* ================= SLIDE VOUCHER DI CAROUSEL MENU ================= */
+/* ================= SLIDE VOUCHER + 2 BANNER PROMO DI CAROUSEL MENU ================= */
 
 /**
- * Setelan slide voucher di carousel promo halaman Menu.
- * Carousel = slide hero (konten admin) + slide voucher aktif. Bagian voucher
- * ini bisa disembunyikan seluruhnya atau dibatasi jumlahnya oleh admin
- * dari Profil Admin → "Banner & Promo" (bagian Slide Voucher di Menu).
+ * Setelan carousel promo halaman Menu.
+ * Carousel berganti OTOMATIS (tiap 4 detik) dengan urutan:
+ *   slide hero (konten admin) → banner promo 1 → banner promo 2 → voucher aktif.
+ * Bagian voucher bisa disembunyikan/dibatasi, dan 2 banner promo custom
+ * (slot 1 & 2) kontennya dapat diganti-ganti admin dari Profil Admin →
+ * "Banner & Promo".
  */
+export const MENU_PROMO_BANNER_THEMES = ["orange", "rose", "emerald", "blue", "violet"] as const;
+export type MenuPromoBannerTheme = (typeof MENU_PROMO_BANNER_THEMES)[number];
+
+/** Konten 1 banner promo custom (disimpan di kolom JSON menuPromoBanners). */
+export type MenuPromoBannerConfig = {
+  enabled: boolean;
+  /** label kecil di atas judul — string kosong = baris disembunyikan */
+  badge: string;
+  /** judul utama banner — string kosong = disembunyikan */
+  title: string;
+  /** baris penjelas — string kosong = disembunyikan */
+  text: string;
+  /** emoji dekorasi mengapung (maks 8 karakter) */
+  emoji: string;
+  /** tema gradien latar (dipakai bila tanpa gambar) */
+  theme: MenuPromoBannerTheme;
+};
+
+/** Isi awal 2 banner promo — konsisten dengan FALLBACK di hooks.ts. */
+export const DEFAULT_MENU_PROMO_BANNERS: MenuPromoBannerConfig[] = [
+  {
+    enabled: true,
+    badge: "Promo Spesial",
+    title: "Beli 2 Gratis 1 Es Teh",
+    text: "Berlaku setiap hari kerja di outlet AGSI",
+    emoji: "🥤",
+    theme: "violet",
+  },
+  {
+    enabled: true,
+    badge: "Menu Baru",
+    title: "Ayam Geprik Sambal Bawang",
+    text: "Pedas nampol, harga hemat mulai Rp 15.000",
+    emoji: "🌶️",
+    theme: "emerald",
+  },
+];
+
+/** Konfigurasi 1 banner slot + status gambarnya (respons publik). */
+export type MenuPromoBannerSlot = MenuPromoBannerConfig & {
+  slot: 1 | 2;
+  hasImage: boolean;
+};
+
 export type MenuPromoSettings = {
   /** tampilkan slide voucher aktif di carousel Menu */
   menuPromoVouchersEnabled: boolean;
   /** jumlah maksimal slide voucher (1–5) */
   menuPromoVouchersMax: number;
+  /** konfigurasi 2 banner promo custom — SELALU tepat 2 entri (slot 1 & 2) */
+  banners: MenuPromoBannerSlot[];
+  /** ISO timestamp konten banner promo terakhir diubah — cache-buster URL gambar */
+  version: string | null;
 };
 
-/** Ambil setelan slide voucher carousel menu (publik). */
+/** Normalisasi 1 entri konfigurasi banner dari JSON DB → bentuk aman. */
+function normalizeBannerConfig(raw: unknown, index: 0 | 1): MenuPromoBannerConfig {
+  const r = (raw ?? {}) as Partial<MenuPromoBannerConfig>;
+  const def = DEFAULT_MENU_PROMO_BANNERS[index];
+  return {
+    enabled: r.enabled !== false,
+    badge: typeof r.badge === "string" ? r.badge.slice(0, 24) : def.badge,
+    title: typeof r.title === "string" ? r.title.slice(0, 80) : def.title,
+    text: typeof r.text === "string" ? r.text.slice(0, 120) : def.text,
+    emoji: typeof r.emoji === "string" && r.emoji.trim() ? r.emoji.trim().slice(0, 8) : def.emoji,
+    theme: (MENU_PROMO_BANNER_THEMES as readonly string[]).includes(r.theme ?? "")
+      ? (r.theme as MenuPromoBannerTheme)
+      : def.theme,
+  };
+}
+
+/** Baca kolom JSON menuPromoBanners → selalu tepat 2 konfigurasi valid. */
+function readMenuPromoBanners(raw: unknown): MenuPromoBannerConfig[] {
+  const arr = Array.isArray(raw) ? raw : [];
+  return [normalizeBannerConfig(arr[0], 0), normalizeBannerConfig(arr[1], 1)];
+}
+
+/** Ambil setelan carousel promo menu (publik — tanpa bytes gambar). */
 export async function getMenuPromoSettings(): Promise<MenuPromoSettings> {
   const row = await db.storeSetting.upsert({
     where: { id: "main" },
     update: {},
     create: { id: "main" },
   });
+  const banners = readMenuPromoBanners(row.menuPromoBanners);
   return {
     menuPromoVouchersEnabled: row.menuPromoVouchersEnabled,
     menuPromoVouchersMax: row.menuPromoVouchersMax,
+    banners: banners.map((c, i) => ({
+      ...c,
+      slot: (i + 1) as 1 | 2,
+      hasImage: i === 0
+        ? !!(row.menuPromoBanner1ImageData && row.menuPromoBanner1ImageMime)
+        : !!(row.menuPromoBanner2ImageData && row.menuPromoBanner2ImageMime),
+    })),
+    version: row.menuPromoBannersUpdatedAt ? row.menuPromoBannersUpdatedAt.toISOString() : null,
   };
 }
+
+/** Patch 1 banner promo slot (dipakai route PUT setelah divalidasi). */
+export type MenuPromoBannerPatch = {
+  slot: 1 | 2;
+  enabled?: boolean;
+  badge?: string;
+  title?: string;
+  text?: string;
+  emoji?: string;
+  theme?: MenuPromoBannerTheme;
+  /** base64 murni gambar latar baru (tanpa prefiks data URL) */
+  imageData?: string;
+  imageMime?: string;
+  /** true = hapus gambar latar slot ini */
+  imageRemove?: boolean;
+};
 
 export type MenuPromoPatch = {
   menuPromoVouchersEnabled?: boolean;
   menuPromoVouchersMax?: number;
+  /** patch per slot banner promo (slot 1 & 2) */
+  banners?: MenuPromoBannerPatch[];
 };
 
-/** Simpan sebagian setelan slide voucher carousel menu. */
+/** Simpan sebagian setelan carousel promo menu (saklar voucher + 2 banner promo). */
 export async function updateMenuPromoSettings(patch: MenuPromoPatch): Promise<MenuPromoSettings> {
   const data: Record<string, unknown> = {};
   if (typeof patch.menuPromoVouchersEnabled === "boolean") {
@@ -244,6 +343,43 @@ export async function updateMenuPromoSettings(patch: MenuPromoPatch): Promise<Me
   if (typeof patch.menuPromoVouchersMax === "number" && Number.isFinite(patch.menuPromoVouchersMax)) {
     // Jepit ke rentang valid 1–5 (server-side clamp, UI juga membatasi)
     data.menuPromoVouchersMax = Math.min(5, Math.max(1, Math.round(patch.menuPromoVouchersMax)));
+  }
+  if (Array.isArray(patch.banners) && patch.banners.length > 0) {
+    const existing = await db.storeSetting.upsert({
+      where: { id: "main" },
+      update: {},
+      create: { id: "main" },
+    });
+    const configs = readMenuPromoBanners(existing.menuPromoBanners);
+    const imageCols: Record<string, unknown> = {};
+    for (const b of patch.banners) {
+      const idx: 0 | 1 = b.slot === 2 ? 1 : 0;
+      const cfg = configs[idx];
+      if (!cfg) continue;
+      if (typeof b.enabled === "boolean") cfg.enabled = b.enabled;
+      if (b.badge !== undefined) cfg.badge = b.badge.trim().slice(0, 24);
+      if (b.title !== undefined) cfg.title = b.title.trim().slice(0, 80);
+      if (b.text !== undefined) cfg.text = b.text.trim().slice(0, 120);
+      if (b.emoji !== undefined) {
+        cfg.emoji = b.emoji.trim().slice(0, 8) || DEFAULT_MENU_PROMO_BANNERS[idx].emoji;
+      }
+      if (b.theme && (MENU_PROMO_BANNER_THEMES as readonly string[]).includes(b.theme)) {
+        cfg.theme = b.theme;
+      }
+      const col = idx === 0 ? "1" : "2";
+      if (b.imageData && b.imageMime) {
+        imageCols[`menuPromoBanner${col}ImageData`] = b.imageData;
+        imageCols[`menuPromoBanner${col}ImageMime`] = b.imageMime;
+      }
+      if (b.imageRemove) {
+        imageCols[`menuPromoBanner${col}ImageData`] = null;
+        imageCols[`menuPromoBanner${col}ImageMime`] = null;
+      }
+    }
+    data.menuPromoBanners = configs;
+    // Konten banner promo berubah → naikkan versi agar URL gambar (?v=…) segar
+    data.menuPromoBannersUpdatedAt = new Date();
+    Object.assign(data, imageCols);
   }
 
   await db.storeSetting.upsert({

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
 import {
+  MENU_PROMO_BANNER_THEMES,
   getBannerSettings,
   getMenuHeroSettings,
   getMenuPromoSettings,
@@ -13,6 +14,7 @@ import {
   updateStoreSettings,
   type BannerPatch,
   type MenuHeroPatch,
+  type MenuPromoBannerPatch,
   type MenuPromoPatch,
   type PromoStripPatch,
 } from "@/lib/store-settings";
@@ -32,7 +34,9 @@ function menuHeroImageUrl(hasImage: boolean, enabled: boolean, version: string |
  * terpisah via /api/settings/banner/image agar ringan), konten
  * strip "Promo Hari Ini" di Beranda, dan konten hero banner promo
  * di halaman Menu (gambar terpisah via /api/settings/menu-hero/image),
- * plus setelan slide voucher di carousel Menu (menuPromo).
+ * plus setelan carousel promo Menu (menuPromo): saklar slide voucher,
+ * jumlah maksimalnya, dan konfigurasi 2 banner promo custom
+ * (gambar latar terpisah via /api/settings/menu-promo/image?slot=1|2).
  */
 export async function GET() {
   try {
@@ -61,7 +65,16 @@ export async function GET() {
           menuHero.menuHeroVersion
         ),
       },
-      menuPromo,
+      menuPromo: {
+        ...menuPromo,
+        banners: menuPromo.banners.map((b) => ({
+          ...b,
+          imageUrl:
+            b.enabled && b.hasImage
+              ? `/api/settings/menu-promo/image?slot=${b.slot}&v=${encodeURIComponent(menuPromo.version ?? "1")}`
+              : null,
+        })),
+      },
     });
   } catch {
     return NextResponse.json(
@@ -94,6 +107,11 @@ export async function GET() {
         menuPromo: {
           menuPromoVouchersEnabled: true,
           menuPromoVouchersMax: 3,
+          banners: [
+            { slot: 1, enabled: true, badge: "Promo Spesial", title: "Beli 2 Gratis 1 Es Teh", text: "Berlaku setiap hari kerja di outlet AGSI", emoji: "🥤", theme: "violet", hasImage: false, imageUrl: null },
+            { slot: 2, enabled: true, badge: "Menu Baru", title: "Ayam Geprik Sambal Bawang", text: "Pedas nampol, harga hemat mulai Rp 15.000", emoji: "🌶️", theme: "emerald", hasImage: false, imageUrl: null },
+          ],
+          version: null,
         },
       },
       { status: 200 }
@@ -107,7 +125,9 @@ export async function GET() {
  * Body banner : { bannerEnabled?, bannerTitle?, bannerText?, bannerImageData?, bannerImageRemove?, bannerTouch? }
  * Body promo  : { promoStripEnabled?, promoStripBadge?, promoStripTitle?, promoStripText? }
  * Body hero   : { menuHeroEnabled?, menuHeroBadge?, menuHeroTitle?, menuHeroText?, menuHeroImageData?, menuHeroImageRemove?, menuHeroTouch? }
- * Body mPromo : { menuPromoVouchersEnabled?, menuPromoVouchersMax? } — slide voucher di carousel Menu
+ * Body mPromo : { menuPromoVouchersEnabled?, menuPromoVouchersMax?, menuPromoBanners?: [...] } —
+ *               carousel promo Menu: slide voucher + 2 banner promo custom
+ *               (menuPromoBanners: [{ slot: 1|2, enabled?, badge?, title?, text?, emoji?, theme?, imageData?, imageRemove? }])
  */
 export async function PUT(req: NextRequest) {
   const user = await getCurrentUser();
@@ -278,9 +298,9 @@ export async function PUT(req: NextRequest) {
       menuHeroResult = await updateMenuHeroSettings(hp);
     }
 
-    // ===== Slide voucher di carousel Menu =====
+    // ===== Carousel promo Menu: slide voucher + 2 banner promo custom =====
     let menuPromoResult: Awaited<ReturnType<typeof updateMenuPromoSettings>> | null = null;
-    const menuPromoKeys = ["menuPromoVouchersEnabled", "menuPromoVouchersMax"];
+    const menuPromoKeys = ["menuPromoVouchersEnabled", "menuPromoVouchersMax", "menuPromoBanners"];
     if (menuPromoKeys.some((k) => k in body)) {
       const mp: MenuPromoPatch = {};
       if ("menuPromoVouchersEnabled" in body) {
@@ -301,6 +321,92 @@ export async function PUT(req: NextRequest) {
           );
         }
         mp.menuPromoVouchersMax = n;
+      }
+      if ("menuPromoBanners" in body) {
+        const rawBanners = body.menuPromoBanners;
+        if (!Array.isArray(rawBanners)) {
+          return NextResponse.json(
+            { error: "menuPromoBanners harus berupa array." },
+            { status: 400 }
+          );
+        }
+        const bannerPatches: MenuPromoBannerPatch[] = [];
+        for (const raw of rawBanners) {
+          const r = (raw ?? {}) as Record<string, unknown>;
+          const slot = Number(r.slot);
+          if (slot !== 1 && slot !== 2) {
+            return NextResponse.json(
+              { error: "Slot banner promo harus 1 atau 2." },
+              { status: 400 }
+            );
+          }
+          const bpatch: MenuPromoBannerPatch = { slot };
+          if ("enabled" in r) {
+            if (typeof r.enabled !== "boolean") {
+              return NextResponse.json(
+                { error: "enabled banner promo harus boolean." },
+                { status: 400 }
+              );
+            }
+            bpatch.enabled = r.enabled;
+          }
+          const bannerTextRules: Array<["badge" | "title" | "text", number, string]> = [
+            ["badge", 24, "Label banner promo maksimal 24 karakter."],
+            ["title", 80, "Judul banner promo maksimal 80 karakter."],
+            ["text", 120, "Pesan banner promo maksimal 120 karakter."],
+          ];
+          for (const [key, max, err] of bannerTextRules) {
+            if (key in r) {
+              const t = String(r[key] ?? "").trim();
+              if (t.length > max) {
+                return NextResponse.json({ error: err }, { status: 400 });
+              }
+              bpatch[key] = t;
+            }
+          }
+          if ("emoji" in r) {
+            const e = String(r.emoji ?? "").trim();
+            if (e.length > 8) {
+              return NextResponse.json(
+                { error: "Emoji banner promo maksimal 8 karakter." },
+                { status: 400 }
+              );
+            }
+            bpatch.emoji = e;
+          }
+          if ("theme" in r) {
+            const th = String(r.theme ?? "");
+            if (!(MENU_PROMO_BANNER_THEMES as readonly string[]).includes(th)) {
+              return NextResponse.json(
+                { error: "Tema warna banner promo tidak dikenal." },
+                { status: 400 }
+              );
+            }
+            bpatch.theme = th as MenuPromoBannerPatch["theme"];
+          }
+          if (r.imageData != null) {
+            const m = String(r.imageData).match(
+              /^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/=]+)$/
+            );
+            if (!m) {
+              return NextResponse.json(
+                { error: "Gambar banner promo harus berformat JPG, PNG, WEBP, atau GIF." },
+                { status: 400 }
+              );
+            }
+            if (m[2].length > 2_000_000) {
+              return NextResponse.json(
+                { error: "Gambar banner promo terlalu besar (maksimal ±1,5 MB setelah dikompres)." },
+                { status: 400 }
+              );
+            }
+            bpatch.imageData = m[2];
+            bpatch.imageMime = m[1];
+          }
+          if (r.imageRemove === true) bpatch.imageRemove = true;
+          bannerPatches.push(bpatch);
+        }
+        mp.banners = bannerPatches;
       }
       menuPromoResult = await updateMenuPromoSettings(mp);
     }

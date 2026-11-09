@@ -173,14 +173,38 @@ export type MenuHeroInfo = {
 };
 
 /**
- * Setelan slide voucher di carousel promo halaman Menu
- * (Profil Admin → Banner & Promo → bagian Slide Voucher di Menu).
+ * Tema warna gradien latar banner promo (tanpa gambar).
+ * Konsisten dengan MENU_PROMO_BANNER_THEMES di lib/store-settings (server).
+ */
+export type MenuPromoBannerTheme = "orange" | "rose" | "emerald" | "blue" | "violet";
+
+/** Konfigurasi 1 banner promo custom di carousel Menu (slot 1 & 2). */
+export type MenuPromoBannerInfo = {
+  slot: number; // 1 | 2
+  enabled: boolean;
+  badge: string;
+  title: string;
+  text: string;
+  emoji: string;
+  theme: MenuPromoBannerTheme;
+  hasImage: boolean;
+  /** URL gambar latar banner (cache-busted) — null bila nonaktif / belum ada gambar */
+  imageUrl: string | null;
+};
+
+/**
+ * Setelan carousel promo halaman Menu
+ * (Profil Admin → Banner & Promo): slide voucher + 2 banner promo custom.
  */
 export type MenuPromoInfo = {
   /** tampilkan slide voucher aktif di carousel Menu */
   menuPromoVouchersEnabled: boolean;
   /** jumlah maksimal slide voucher (1–5) */
   menuPromoVouchersMax: number;
+  /** konfigurasi 2 banner promo custom — selalu tepat 2 entri (slot 1 & 2) */
+  banners: MenuPromoBannerInfo[];
+  /** ISO timestamp konten banner promo terakhir diubah — cache-buster URL gambar */
+  version: string | null;
 };
 
 type SettingsState = {
@@ -223,10 +247,16 @@ const FALLBACK_MENU_HERO: MenuHeroInfo = {
   menuHeroImageUrl: null,
 };
 
-/** Nilai awal setelan slide voucher carousel menu — sama dengan default schema/DB. */
+/** Nilai awal setelan carousel promo menu — sama dengan default schema/DB. */
+const FALLBACK_MENU_PROMO_BANNERS: MenuPromoBannerInfo[] = [
+  { slot: 1, enabled: true, badge: "Promo Spesial", title: "Beli 2 Gratis 1 Es Teh", text: "Berlaku setiap hari kerja di outlet AGSI", emoji: "🥤", theme: "violet", hasImage: false, imageUrl: null },
+  { slot: 2, enabled: true, badge: "Menu Baru", title: "Ayam Geprik Sambal Bawang", text: "Pedas nampol, harga hemat mulai Rp 15.000", emoji: "🌶️", theme: "emerald", hasImage: false, imageUrl: null },
+];
 const FALLBACK_MENU_PROMO: MenuPromoInfo = {
   menuPromoVouchersEnabled: true,
   menuPromoVouchersMax: 3,
+  banners: FALLBACK_MENU_PROMO_BANNERS,
+  version: null,
 };
 
 function normalizePromo(raw: unknown): PromoStripInfo {
@@ -274,13 +304,42 @@ function normalizeMenuHero(raw: unknown): MenuHeroInfo {
   };
 }
 
+const MENU_PROMO_THEME_VALUES: MenuPromoBannerTheme[] = ["orange", "rose", "emerald", "blue", "violet"];
+
 function normalizeMenuPromo(raw: unknown): MenuPromoInfo {
   const m = (raw ?? {}) as Partial<MenuPromoInfo>;
   const max = Number(m.menuPromoVouchersMax);
+  const version = typeof m.version === "string" ? m.version : null;
+  const rawBanners = Array.isArray(m.banners) ? m.banners : [];
+  const banners: MenuPromoBannerInfo[] = [0, 1].map((i) => {
+    const def = FALLBACK_MENU_PROMO_BANNERS[i];
+    const r = (rawBanners[i] ?? {}) as Partial<MenuPromoBannerInfo>;
+    const enabled = r.enabled !== false;
+    const hasImage = r.hasImage === true;
+    const theme: MenuPromoBannerTheme = MENU_PROMO_THEME_VALUES.includes(r.theme as MenuPromoBannerTheme)
+      ? (r.theme as MenuPromoBannerTheme)
+      : def.theme;
+    return {
+      slot: i + 1,
+      enabled,
+      badge: typeof r.badge === "string" ? r.badge : def.badge,
+      title: typeof r.title === "string" ? r.title : def.title,
+      text: typeof r.text === "string" ? r.text : def.text,
+      emoji: typeof r.emoji === "string" && r.emoji.trim() ? r.emoji : def.emoji,
+      theme,
+      hasImage,
+      imageUrl:
+        enabled && hasImage
+          ? `/api/settings/menu-promo/image?slot=${i + 1}&v=${encodeURIComponent(version ?? "1")}`
+          : null,
+    };
+  });
   return {
     menuPromoVouchersEnabled: m.menuPromoVouchersEnabled !== false,
     menuPromoVouchersMax:
       Number.isFinite(max) && max >= 1 && max <= 5 ? Math.round(max) : FALLBACK_MENU_PROMO.menuPromoVouchersMax,
+    banners,
+    version,
   };
 }
 
