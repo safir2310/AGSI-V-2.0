@@ -166,3 +166,92 @@ export const CASAKU_ENABLED =
 
 /** Prefix ID transaksi Casaku (trxId berawalan "CSK-") — untuk deteksi provider */
 export const CASAKU_TRX_PREFIX = "CSK";
+
+// ============================================================
+//  DANA ENTERPRISE — QRIS (Acquirer) MPM resmi
+//  https://api.sandbox.dana.id (sandbox) | https://api.saas.dana.id (produksi)
+// ============================================================
+// Ini SATU-SATUNYA integrasi yang mengalirkan dana LANGSUNG ke saldo akun
+// DANA merchant pemilik toko (DANA sebagai acquirer QRIS, bukan perantara).
+//
+// Kredensial di .env / Vercel env (dashboard DANA ▸ Developer):
+//   DANA_CLIENT_ID    -> Client ID  = header X-PARTNER-ID
+//   DANA_MERCHANT_ID  -> Merchant ID DANA (mis. "216660000274111177110")
+//   DANA_STORE_ID     -> Store ID toko (opsional, direkomendasikan)
+//   DANA_PRIVATE_KEY  -> PRIVATE KEY PEM milik toko (PKCS#8) untuk MENANDA
+//                        TANGANI request (X-SIGNATURE). Bila disimpan satu
+//                        baris, tulis newline sebagai "\n" literal.
+//   DANA_PUBLIC_KEY   -> PUBLIC KEY PEM dari DANA (portal) untuk VERIFIKASI
+//                        webhook Finish Notify yang dikirim DANA.
+//   DANA_API_BASE     -> override URL API (default sandbox di bawah);
+//                        produksi: https://api.saas.dana.id
+//
+// Sandbox portal : https://dashboard.dana.id/sandbox/ — Client ID, Merchant
+//                  ID, Public/Private Key uji langsung diberikan DANA.
+// Produksi       : generate keypair sendiri (openssl, PKCS#8), upload public
+//                  key di portal merchant, lalu terima Merchant ID + Client ID.
+
+/** PEM satu baris (env Vercel) -> PEM utuh dengan newline; tanpa header -> bungkus PKCS#8 */
+function normalizeDanaPem(raw: string): string {
+  const v = raw.trim();
+  if (!v) return "";
+  const withBreaks = v.includes("\\n") ? v.replace(/\\n/g, "\n") : v;
+  if (withBreaks.includes("-----BEGIN")) return withBreaks.trim();
+  return `-----BEGIN PRIVATE KEY-----\n${withBreaks}\n-----END PRIVATE KEY-----`;
+}
+
+/** Client ID DANA — dikirim sebagai header X-PARTNER-ID */
+export const DANA_CLIENT_ID = (process.env.DANA_CLIENT_ID ?? "").trim();
+
+/** Merchant ID DANA (wajib) */
+export const DANA_MERCHANT_ID = (process.env.DANA_MERCHANT_ID ?? "").trim();
+
+/** Store ID toko di DANA (opsional — dikirim bila tersedia) */
+export const DANA_STORE_ID = (process.env.DANA_STORE_ID ?? "").trim();
+
+/** Terminal ID per merchant (opsional, maks 16 karakter) */
+export const DANA_TERMINAL_ID = (process.env.DANA_TERMINAL_ID ?? "").trim().slice(0, 16);
+
+/** Private key milik toko — tanda tangan request (SHA256withRSA) */
+export const DANA_PRIVATE_KEY = normalizeDanaPem(process.env.DANA_PRIVATE_KEY ?? "");
+
+/** Public key DANA — verifikasi signature webhook Finish Notify */
+export const DANA_PUBLIC_KEY = normalizeDanaPem(process.env.DANA_PUBLIC_KEY ?? "");
+
+/** Basis URL API DANA — default SANDBOX agar tidak ada uang nyata salah kirim */
+export const DANA_API_BASE = (
+  process.env.DANA_API_BASE ?? "https://api.sandbox.dana.id"
+).replace(/\/+$/, "");
+
+/**
+ * Mode produksi = base URL TANPA kata "sandbox" DAN bukan host lokal
+ * (localhost/127.0.0.1 = lingkungan uji/mock, selalu diberi label sandbox
+ * agar layar pembayaran tidak pernah berdusta tentang uang nyata).
+ */
+export const DANA_IS_PRODUCTION =
+  !/sandbox/i.test(DANA_API_BASE) && !/localhost|127\.0\.0\.1/i.test(DANA_API_BASE);
+
+/** CHANNEL-ID header (maks 5 karakter; contoh resmi DANA memakai "95221") */
+export const DANA_CHANNEL_ID = (process.env.DANA_CHANNEL_ID ?? "95221").trim().slice(0, 5);
+
+/** Masa berlaku QRIS dinamis DANA (menit) */
+export const DANA_QRIS_EXPIRY_MINUTES = Math.max(
+  1,
+  Math.min(60, Number(process.env.DANA_QRIS_EXPIRY_MINUTES ?? 5) || 5)
+);
+
+/**
+ * DANA aktif sebagai penyedia QRIS bila Client ID, Merchant ID, dan private
+ * key tersedia. Tanpa salah satu, DANA dilewati (penyedia lain mengambil alih).
+ */
+export const DANA_ENABLED =
+  DANA_CLIENT_ID.length > 0 && DANA_MERCHANT_ID.length > 0 && DANA_PRIVATE_KEY.length > 0;
+
+/**
+ * Webhook DANA siap diverifikasi? Tanpa DANA_PUBLIC_KEY (public key DANA),
+ * notifikasi Finish Notify DITOLAK (fail-closed) — polling status tetap jalan.
+ */
+export const DANA_WEBHOOK_READY = DANA_ENABLED && DANA_PUBLIC_KEY.length > 0;
+
+/** Prefix ID transaksi DANA (trxId berawalan "DANA-") — untuk deteksi provider */
+export const DANA_TRX_PREFIX = "DANA";

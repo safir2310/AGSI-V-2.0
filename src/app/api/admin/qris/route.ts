@@ -3,7 +3,14 @@ import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
 import { cancelExpiredQrisOrders } from "@/lib/order-expiry";
 import { notifyOrderStatus } from "@/lib/push";
-import { MIDTRANS_ENABLED, MIDTRANS_IS_PRODUCTION, QRIS_SANDBOX_ENABLED } from "@/lib/qris-config";
+import {
+  DANA_ENABLED,
+  DANA_IS_PRODUCTION,
+  MIDTRANS_ENABLED,
+  MIDTRANS_IS_PRODUCTION,
+  QRIS_SANDBOX_ENABLED,
+} from "@/lib/qris-config";
+import { cancelQrisDanaPayment } from "@/lib/qris-dana";
 import { cancelQrisMidtransPayment } from "@/lib/qris-midtrans";
 import { QrisGatewayError } from "@/lib/qris-provider";
 
@@ -111,9 +118,16 @@ export async function GET() {
 
   return NextResponse.json({
     config: {
+      dana: { enabled: DANA_ENABLED, production: DANA_IS_PRODUCTION },
       midtrans: { enabled: MIDTRANS_ENABLED, production: MIDTRANS_IS_PRODUCTION },
       internal: { sandboxEnabled: QRIS_SANDBOX_ENABLED },
-      activeProvider: MIDTRANS_ENABLED ? "midtrans" : QRIS_SANDBOX_ENABLED ? "internal" : "external",
+      activeProvider: DANA_ENABLED
+        ? "dana"
+        : MIDTRANS_ENABLED
+          ? "midtrans"
+          : QRIS_SANDBOX_ENABLED
+            ? "internal"
+            : "external",
     },
     summary: {
       totalMasuk,
@@ -187,7 +201,21 @@ export async function POST(req: NextRequest) {
   // ===== 1) Batalkan transaksi di PENYEDIA supaya QR tidak bisa dibayar lagi =====
   let providerNote: string | null = null;
   try {
-    if (order.qrisProvider === "midtrans" && order.qrisTrxId && MIDTRANS_ENABLED) {
+    if (order.qrisProvider === "dana" && order.qrisTrxId && DANA_ENABLED) {
+      const r = await cancelQrisDanaPayment(order.qrisTrxId);
+      if (r.alreadyPaid) {
+        // Dana ternyata baru masuk di DANA — JANGAN batalkan; biarkan
+        // polling/webhook melunaskan pesanan otomatis.
+        return NextResponse.json(
+          {
+            error:
+              "Dana baru saja terdeteksi masuk di DANA. Pembatalan dibatalkan — pesanan akan dilunaskan otomatis oleh sistem.",
+          },
+          { status: 409 }
+        );
+      }
+      providerNote = r.providerStatus;
+    } else if (order.qrisProvider === "midtrans" && order.qrisTrxId && MIDTRANS_ENABLED) {
       const r = await cancelQrisMidtransPayment(order.qrisTrxId);
       if (r.alreadyPaid) {
         // Dana ternyata baru masuk di Midtrans — JANGAN batalkan; biarkan

@@ -550,6 +550,11 @@ export function QrisPaySheet({
                         <p className="mt-1 text-[10px] font-bold text-emerald-600">
                           Penyedia: Casaku — dana masuk langsung ke rekening toko
                         </p>
+                      ) : info?.provider?.startsWith("dana") ? (
+                        <p className="mt-1 text-[10px] font-bold text-emerald-600">
+                          Penyedia: DANA ({info.provider === "dana" ? "Produksi" : "Sandbox"}) —
+                          dana masuk langsung ke saldo DANA toko
+                        </p>
                       ) : info?.provider?.startsWith("midtrans") ? (
                         <p className="mt-1 text-[10px] font-bold text-emerald-600">
                           Penyedia: Midtrans ({info.provider === "midtrans" ? "Produksi" : "Sandbox"})

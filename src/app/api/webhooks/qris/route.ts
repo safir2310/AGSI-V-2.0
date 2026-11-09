@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { markOrderPaidBySystem, normalizeGatewayStatus } from "@/lib/qris-gateway";
+import {
+  DANA_CLIENT_ID,
+  DANA_ENABLED,
+  DANA_PUBLIC_KEY,
+} from "@/lib/qris-config";
+import { verifyDanaWebhookSignature } from "@/lib/qris-dana";
 import { MIDTRANS_ENABLED } from "@/lib/qris-config";
 import { verifyMidtransSignature } from "@/lib/qris-midtrans";
 
@@ -11,6 +17,18 @@ import { verifyMidtransSignature } from "@/lib/qris-midtrans";
  * dipanggil mesin penyedia, bukan manusia). Ketika penyedia memberi tahu
  * bahwa sebuah transaksi sudah dibayar, SISTEM langsung melunaskan
  * pesanan terkait. Ini jalur verifikasi otomatis kedua (selain polling).
+ *
+ * DANA ENTERPRISE (QRIS Acquirer — Finish Notify): DANA memanggil URL ini
+ * dengan header X-SIGNATURE (asimetris, ditandatangani DANA dengan private
+ * key mereka), X-TIMESTAMP, dan X-PARTNER-ID. Body Finish Notify berisi
+ * originalPartnerReferenceNo (= trxId DANA yang tersimpan di Order) dan
+ * latestTransactionStatus ("00" = dana masuk). Signature DIVERIFIKASI dengan
+ * DANA_PUBLIC_KEY atas stringToSnap "POST:<path>:<sha256(body)>:<ts>"
+ * SEBELUM dipercaya (fail-closed — tanpa kunci publik, notifikasi ditolak
+ * agar DANA mengulangi pengiriman). Respons yang benar menurut DANA:
+ *   { "responseCode": "2005600", "responseMessage": "Successful" }
+ * Tautan webhook produksi: {DOMAIN}/api/webhooks/qris
+ * (portal DANA ▸ Developer ▸ Webhook ▸ Finish Notify URL).
  *
  * MIDTRANS: HTTP Notification dikirim dengan body
  *   { order_id, status_code, gross_amount, signature_key, transaction_status,
@@ -25,11 +43,129 @@ import { verifyMidtransSignature } from "@/lib/qris-midtrans";
  * yang bisa dilunaskan.
  */
 export async function POST(req: NextRequest) {
+  // Body mentah dibaca SEKALI — dibutuhkan PERSIS untuk verifikasi signature
+  // DANA (sha256 atas byte yang dikirim) sekaligus untuk parsing JSON.
+  const rawBody = await req.text();
   let body: Record<string, unknown>;
   try {
-    body = (await req.json()) as Record<string, unknown>;
+    body = JSON.parse(rawBody) as Record<string, unknown>;
   } catch {
     return NextResponse.json({ ok: false, reason: "Body bukan JSON." }, { status: 400 });
+  }
+
+  // ===== DANA QRIS ACQUIRER — FINISH NOTIFY (webhook resmi DANA) =====
+  const danaSig = req.headers.get("x-signature") ?? "";
+  const danaTs = req.headers.get("x-timestamp") ?? "";
+  const danaPartner = req.headers.get("x-partner-id") ?? "";
+  const danaRef =
+    typeof body.originalPartnerReferenceNo === "string"
+      ? body.originalPartnerReferenceNo
+      : null;
+  const danaStatus =
+    typeof body.latestTransactionStatus === "string" ? body.latestTransactionStatus : null;
+  if (DANA_ENABLED && danaRef && danaStatus && danaSig && danaTs) {
+    // Signature DANA WAJIB terverifikasi — tanpa DANA_PUBLIC_KEY, minta DANA
+    // mencoba lagi (5005601) hingga pemilik menyetel kunci publik di .env.
+    if (!DANA_PUBLIC_KEY) {
+      return NextResponse.json({
+        responseCode: "5005601",
+        responseMessage: "Merchant webhook key not configured — retry later.",
+      });
+    }
+    const pathname = new URL(req.url).pathname;
+    const valid = verifyDanaWebhookSignature({
+      signature: danaSig,
+      timestamp: danaTs,
+      rawBody,
+      paths: [pathname],
+    });
+    if (!valid) {
+      return NextResponse.json(
+        { ok: false, reason: "Signature DANA tidak valid." },
+        { status: 403 }
+      );
+    }
+    // X-PARTNER-ID harus milik merchant ini (bila DANA mengirimnya)
+    if (danaPartner && DANA_CLIENT_ID && danaPartner !== DANA_CLIENT_ID) {
+      return NextResponse.json(
+        { ok: false, reason: "X-PARTNER-ID tidak cocok dengan merchant ini." },
+        { status: 403 }
+      );
+    }
+
+    // Hanya status "00" (Success) yang melunaskan pesanan; "05" (closed)
+    // dan lainnya cukup diterima — tidak ada dana baru yang masuk.
+    if (danaStatus !== "00") {
+      return NextResponse.json({
+        responseCode: "2005600",
+        responseMessage: "Successful",
+      });
+    }
+
+    // Cari pesanan: qrisTrxId = partnerReferenceNo DANA (bisa + suffix retry
+    // unik bila kode dibuat ulang); fallback: kode pesanan dari referensi.
+    const candidates = new Set<string>();
+    const addCandidate = (s: string) => {
+      if (!s) return;
+      candidates.add(s);
+      const noSuffix = s.replace(/-[0-9a-z]+$/i, "");
+      if (noSuffix !== s) candidates.add(noSuffix);
+    };
+    addCandidate(danaRef);
+    let order: { id: string; paymentMethod: string } | null = null;
+    for (const c of candidates) {
+      if (order) break;
+      order = await db.order.findFirst({ where: { qrisTrxId: c } });
+    }
+    for (const c of candidates) {
+      if (order) break;
+      const bare = c.replace(/^DANA-/, "");
+      if (!bare) continue;
+      order =
+        (await db.order.findFirst({
+          where: { code: bare, paymentMethod: "QRIS" },
+          orderBy: { createdAt: "desc" },
+        })) ??
+        (await db.order.findFirst({
+          where: { code: `AGSI-${bare}`, paymentMethod: "QRIS" },
+          orderBy: { createdAt: "desc" },
+        }));
+    }
+    if (!order) {
+      // Bukan transaksi merchant ini / pesanan tak dikenal — terima notifikasi
+      // (2005600) agar DANA tidak mengulang terus, namun beri jejak di respons.
+      console.warn("[QRIS] Finish Notify DANA: pesanan tidak ditemukan untuk", danaRef);
+      return NextResponse.json({
+        responseCode: "2005600",
+        responseMessage: "Successful",
+        ok: false,
+        reason: "Pesanan tidak ditemukan.",
+      });
+    }
+    if (order.paymentMethod !== "QRIS") {
+      return NextResponse.json({
+        responseCode: "2005600",
+        responseMessage: "Successful",
+        ok: false,
+        reason: "Bukan pesanan QRIS.",
+      });
+    }
+    const result = await markOrderPaidBySystem(order.id);
+    if (result.cancelled) {
+      // Dana masuk SETELAH pesanan dibatalkan otomatis (lewat 5 menit) —
+      // pesanan tidak dihidupkan kembali; dana dikembalikan DANA ke pembayar.
+      return NextResponse.json({
+        responseCode: "2005600",
+        responseMessage: "Successful",
+        ok: false,
+        reason:
+          "Pesanan sudah dibatalkan otomatis karena melewati batas waktu pembayaran. Dana dikembalikan ke pembayar.",
+      });
+    }
+    return NextResponse.json({
+      responseCode: "2005600",
+      responseMessage: "Successful",
+    });
   }
 
   // ===== MIDTRANS HTTP NOTIFICATION — verifikasi signature khusus =====

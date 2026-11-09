@@ -8,7 +8,11 @@
  *   lunas pesanan QRIS lewat API mana pun.
  *
  * Urutan penyedia (lihat qris-config.ts & qris-provider.ts):
- *   1. CASAKU (prioritas utama) — aktif otomatis bila CASAKU_LICENSE_KEY
+ *   0. DANA ENTERPRISE (prioritas utama) — aktif otomatis bila DANA_CLIENT_ID
+ *      + DANA_MERCHANT_ID + DANA_PRIVATE_KEY tersedia di .env. QRIS dinamis
+ *      resmi dari API DANA (Acquirer MPM) — dana masuk LANGSUNG ke saldo
+ *      akun DANA merchant pemilik toko (lihat qris-dana.ts).
+ *   1. CASAKU — aktif otomatis bila CASAKU_LICENSE_KEY
  *      + CASAKU_QR_ID tersedia di .env. QRIS statis toko menjadi dinamis:
  *      nominal melekat, verifikasi dana masuk via listener Android
  *      pemilik (webhook real-time + polling status — lihat qris-casaku.ts).
@@ -33,6 +37,8 @@ import { db } from "@/lib/db";
 import { notifyOrderPaid } from "@/lib/push";
 import {
   CASAKU_ENABLED,
+  DANA_ENABLED,
+  DANA_IS_PRODUCTION,
   MIDTRANS_ENABLED,
   MIDTRANS_IS_PRODUCTION,
   QRIS_GATEWAY_API_KEY,
@@ -44,6 +50,11 @@ import {
   getCasakuStatus,
   isCasakuTrx,
 } from "@/lib/qris-casaku";
+import {
+  createQrisDanaPayment,
+  getQrisDanaStatus,
+  isDanaTrx,
+} from "@/lib/qris-dana";
 import {
   createQrisMidtransPayment,
   getQrisMidtransStatus,
@@ -168,7 +179,23 @@ export async function createQrisGatewayPayment(opts: {
   amount: number;
   reference: string;
 }): Promise<GatewayTransaction> {
-  // ==== 0) CASAKU — penyedia utama (QRIS statis toko + listener Android) ====
+  // ==== -1) DANA ENTERPRISE — penyedia utama (QRIS Acquirer resmi DANA) ====
+  // Dana masuk LANGSUNG ke saldo DANA merchant pemilik toko. Bila DANA
+  // sandbox menolak (kredensial uji bermasalah), lanjut ke penyedia
+  // berikutnya dan tampilkan alasannya (fallbackReason). Di mode PRODUKSI
+  // tidak ada fallback senyap — galat DANA diteruskan apa adanya.
+  let danaFailure: string | null = null;
+  if (DANA_ENABLED) {
+    try {
+      const trx = await createQrisDanaPayment(opts);
+      return { ...trx, provider: "dana" };
+    } catch (err) {
+      danaFailure = err instanceof Error ? err.message : "DANA tidak dapat dihubungi.";
+      console.warn("[QRIS] DANA menolak charge — lanjut penyedia berikutnya:", danaFailure);
+      if (DANA_IS_PRODUCTION) throw err;
+    }
+  }
+  // ==== 0) CASAKU — QRIS statis toko + listener Android ====
   // Dana 100% masuk rekening pemilik (0% MDR). Bila Casaku menolak (mis.
   // langganan belum aktif / listener offline), lanjut ke penyedia berikutnya
   // dan tampilkan alasannya di layar pembayaran (fallbackReason).
@@ -183,6 +210,11 @@ export async function createQrisGatewayPayment(opts: {
     }
   }
   // ==== 1) MIDTRANS ====
+  // Gabungan alasan penyedia utama yang ditolak (transparansi layar bayar)
+  const upstreamFailures = [
+    danaFailure ? `DANA: ${danaFailure}` : null,
+    casakuFailure ? `Casaku: ${casakuFailure}` : null,
+  ].filter(Boolean) as string[];
   if (MIDTRANS_ENABLED) {
     try {
       const trx = await createQrisMidtransPayment(opts);
@@ -199,9 +231,8 @@ export async function createQrisGatewayPayment(opts: {
         qrString: trx.qrString,
         expiresAt: trx.expiresAt.toISOString(),
         provider: "internal",
-        fallbackReason: casakuFailure
-          ? `Casaku: ${casakuFailure} — Midtrans: ${reason}`
-          : reason,
+        fallbackReason:
+          [...upstreamFailures, `Midtrans: ${reason}`].join(" — ") || reason,
       };
     }
   }
@@ -213,7 +244,7 @@ export async function createQrisGatewayPayment(opts: {
       qrString: trx.qrString,
       expiresAt: trx.expiresAt.toISOString(),
       provider: "internal",
-      ...(casakuFailure ? { fallbackReason: `Casaku: ${casakuFailure}` } : {}),
+      ...(upstreamFailures.length ? { fallbackReason: upstreamFailures.join(" — ") } : {}),
     };
   }
   // ==== 3) Penyedia eksternal ====
@@ -239,6 +270,10 @@ export async function createQrisGatewayPayment(opts: {
  * penyedia eksternal.
  */
 export async function getQrisGatewayStatus(trxId: string): Promise<GatewayStatus> {
+  // ==== -1) DANA (prefix DANA-) — QRIS Acquirer resmi DANA ====
+  if (isDanaTrx(trxId)) {
+    return getQrisDanaStatus(trxId);
+  }
   // ==== 0) Transaksi gateway bawaan (prefix SBX-) — termasuk hasil fallback ====
   if (trxId.startsWith("SBX-")) {
     const trx = await getSandboxTrx(trxId);

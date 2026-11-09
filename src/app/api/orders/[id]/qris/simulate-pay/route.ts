@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
-import { QRIS_SANDBOX_ENABLED } from "@/lib/qris-config";
+import {
+  CASAKU_ENABLED,
+  DANA_ENABLED,
+  MIDTRANS_ENABLED,
+  QRIS_SANDBOX_ENABLED,
+} from "@/lib/qris-config";
 import { createSandboxTrx, getSandboxTrx, paySandboxTrx } from "@/lib/qris-sandbox";
 import { markOrderPaidBySystem } from "@/lib/qris-gateway";
 import { cancelQrisOrderIfExpired } from "@/lib/order-expiry";
@@ -12,9 +17,10 @@ type Params = { params: Promise<{ id: string }> };
  * POST /api/orders/[id]/qris/simulate-pay
  *
  * Menyelesaikan pembayaran QRIS lewat SIMULASI DANA MASUK — hanya berlaku
- * selama gateway QRIS BAWAAN (sandbox) aktif, karena gateway bawaan tidak
- * terhubung ke jaringan pembayaran nyata (tidak ada dompet digital yang
- * bisa mengirim notifikasi dana ke aplikasi ini).
+ * selama GATEWAY BAWAAN (sandbox) menjadi penyedia AKTIF (tanpa penyedia
+ * nyata: DANA / Casaku / Midtrans tidak terkonfigurasi). Gateway bawaan
+ * tidak terhubung ke jaringan pembayaran nyata (tidak ada dompet digital
+ * yang bisa mengirim notifikasi dana ke aplikasi ini).
  *
  * Cara kerjanya MENIRU alur produksi 1:1 — kebijakan toko tetap utuh:
  *   1. Transaksi ditandai LUNAS di GATEWAY (seperti notifikasi penyedia).
@@ -22,17 +28,20 @@ type Params = { params: Promise<{ id: string }> };
  *      fungsi yang sama dipakai webhook & polling. Kasir tetap TIDAK
  *      punya jalur menandai lunas pesanan secara manual.
  *
- * Saat beralih ke penyedia QRIS sungguhan (QRIS_SANDBOX=false), route ini
- * otomatis nonaktif (404) dan pelunasan hanya lewat webhook/polling nyata.
+ * Saat beralih ke penyedia QRIS sungguhan (DANA/Casaku/Midtrans aktif),
+ * route ini otomatis nonaktif (404) dan pelunasan hanya lewat webhook/
+ * polling nyata — pesanan QRIS tidak bisa jadi lunas tanpa dana benar-benar
+ * masuk ke penyedia.
  *
  * Izin: kasir/admin/owner, atau pemilik pesanan (aplikasi pelanggan).
  */
 export async function POST(_req: NextRequest, { params }: Params) {
-  if (!QRIS_SANDBOX_ENABLED) {
+  const realProviderActive = DANA_ENABLED || CASAKU_ENABLED || MIDTRANS_ENABLED;
+  if (!QRIS_SANDBOX_ENABLED || realProviderActive) {
     return NextResponse.json(
       {
         error:
-          "Simulasi pembayaran hanya tersedia saat gateway QRIS bawaan (sandbox) aktif. Penyedia QRIS sungguhan melunasi pesanan otomatis lewat verifikasi sistem.",
+          "Simulasi pembayaran hanya tersedia saat gateway QRIS bawaan (sandbox) menjadi penyedia aktif. Penyedia QRIS sungguhan melunasi pesanan otomatis lewat verifikasi sistem.",
       },
       { status: 404 }
     );

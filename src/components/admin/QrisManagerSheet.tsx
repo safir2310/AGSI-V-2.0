@@ -57,6 +57,7 @@ type DailyPoint = { date: string; label: string; amount: number; count: number }
 
 type ManagerData = {
   config: {
+    dana: { enabled: boolean; production: boolean };
     midtrans: { enabled: boolean; production: boolean };
     internal: { sandboxEnabled: boolean };
     activeProvider: string;
@@ -135,7 +136,8 @@ const STATE_META: Record<TxState, { label: string; cls: string; dot: string }> =
 };
 
 function providerLabel(p: string | null): string {
-  if (p === "midtrans") return "Midtrans";
+  if (p === "dana") return "DANA";
+  if (p === "casaku") return "Casaku";
   if (p === "internal") return "Bawaan";
   if (p === "external") return "Eksternal";
   return "Tanpa penyedia";
@@ -457,6 +459,23 @@ export function QrisManagerSheet({ open, onClose }: QrisManagerSheetProps) {
                       Status Gateway QRIS
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {config.dana.enabled ? (
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black",
+                            config.dana.production
+                              ? "bg-green-100 text-green-700 ring-1 ring-green-200"
+                              : "bg-amber-100 text-amber-700 ring-1 ring-amber-200"
+                          )}
+                        >
+                          <CheckCircle2 className="h-3 w-3" />
+                          DANA {config.dana.production ? "Produksi ✓" : "Sandbox"}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-black text-neutral-500 ring-1 ring-neutral-200">
+                          <XCircle className="h-3 w-3" /> DANA nonaktif
+                        </span>
+                      )}
                       {config.midtrans.enabled ? (
                         <span
                           className={cn(
@@ -491,7 +510,8 @@ export function QrisManagerSheet({ open, onClose }: QrisManagerSheetProps) {
                         </>
                       ) : (
                         <>
-                          <PlugZap className="h-3.5 w-3.5" /> Uji Koneksi Midtrans
+                          <PlugZap className="h-3.5 w-3.5" /> Uji Koneksi{" "}
+                          {config.dana.enabled ? "DANA" : "Midtrans"}
                         </>
                       )}
                     </button>

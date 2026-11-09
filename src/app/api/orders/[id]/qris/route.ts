@@ -8,19 +8,25 @@ import {
 } from "@/lib/qris-gateway";
 import {
   CASAKU_ENABLED,
+  DANA_ENABLED,
+  DANA_IS_PRODUCTION,
   MIDTRANS_ENABLED,
   MIDTRANS_IS_PRODUCTION,
 } from "@/lib/qris-config";
 import { cancelQrisOrderIfExpired, QRIS_PAYMENT_TIMEOUT_MS } from "@/lib/order-expiry";
 
 /** Penyedia aktif — untuk label layar pembayaran */
-const PROVIDER = CASAKU_ENABLED
-  ? "casaku"
-  : MIDTRANS_ENABLED
-    ? MIDTRANS_IS_PRODUCTION
-      ? "midtrans"
-      : "midtrans-sandbox"
-    : "internal";
+const PROVIDER = DANA_ENABLED
+  ? DANA_IS_PRODUCTION
+    ? "dana"
+    : "dana-sandbox"
+  : CASAKU_ENABLED
+    ? "casaku"
+    : MIDTRANS_ENABLED
+      ? MIDTRANS_IS_PRODUCTION
+        ? "midtrans"
+        : "midtrans-sandbox"
+      : "internal";
 
 type Params = { params: Promise<{ id: string }> };
 
