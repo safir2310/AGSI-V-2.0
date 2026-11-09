@@ -291,12 +291,32 @@ export const DOKU_CLIENT_SECRET = (
   ""
 ).trim();
 
-/** Merchant ID / MID DOKU (mall ID) — alias DOKU_MID */
-export const DOKU_MERCHANT_ID = (
+/**
+ * Merchant ID / MID DOKU (mall ID) — alias DOKU_MID.
+ *
+ * PENTING (kasus nyata): nilai yang dipaste pemilik pada variabel ini
+ * ternyata PUBLIC KEY PEM DOKU (-----BEGIN PUBLIC KEY-----), bukan MID.
+ * PEM otomatis dipindah ke DOKU_PUBLIC_KEY sehingga jalur SNAP tidak
+ * mengirim sampah sebagai merchantId, dan webhook tetap bisa diverifikasi.
+ */
+const DOKU_MERCHANT_RAW = (
   process.env.DOKU_MERCHANT_ID ??
   process.env.DOKU_MID ??
   ""
 ).trim();
+const DOKU_MERCHANT_IS_PEM = /-----BEGIN [A-Z ]*KEY-----/.test(DOKU_MERCHANT_RAW);
+
+/** Merchant ID asli (mall ID) — kosong bila yang dipaste ternyata PEM */
+export const DOKU_MERCHANT_ID = DOKU_MERCHANT_IS_PEM ? "" : DOKU_MERCHANT_RAW;
+
+/**
+ * Public Key DOKU (PEM) — verifikasi signature webhook DOKU.
+ * Sumber: DOKU_PUBLIC_KEY eksplisit, atau PEM yang salah tempat di
+ * DOKU_MERCHANT_ID (otomatis dipindah ke sini).
+ */
+export const DOKU_PUBLIC_KEY = normalizeDanaPem(
+  process.env.DOKU_PUBLIC_KEY ?? (DOKU_MERCHANT_IS_PEM ? DOKU_MERCHANT_RAW : "")
+);
 
 /** Terminal ID QRIS (maks 16 karakter; contoh resmi: "A01" / "K45") */
 export const DOKU_TERMINAL_ID = (process.env.DOKU_TERMINAL_ID ?? "A01")
@@ -339,11 +359,30 @@ export const DOKU_SNAP_READY =
   DOKU_CLIENT_SECRET.length > 0 &&
   DOKU_MERCHANT_ID.length > 0;
 
+/**
+ * Jalur CHECKOUT legacy (Non-SNAP) siap? Client ID + Secret saja cukup —
+ * TANPA MID. Ini jalur yang TERBUKTI hidup di produksi untuk merchant yang
+ * belum terdaftar di gateway SNAP ("Unauthorized. Unknown Client"):
+ * POST /checkout/v1/payment → payment.url + GET /orders/v1/status/{invoice}.
+ */
+export const DOKU_CHECKOUT_READY =
+  DOKU_CLIENT_ID.length > 0 && DOKU_CLIENT_SECRET.length > 0;
+
 /** Jalur API key agentic (MCP) siap? */
 export const DOKU_APIKEY_READY = DOKU_API_KEY.length > 0;
 
 /** DOKU aktif sebagai penyedia QRIS bila salah satu jalur kredensial lengkap */
-export const DOKU_ENABLED = DOKU_SNAP_READY || DOKU_APIKEY_READY;
+export const DOKU_ENABLED =
+  DOKU_SNAP_READY || DOKU_CHECKOUT_READY || DOKU_APIKEY_READY;
+
+/**
+ * URL webhook (callback) yang dikirim ke DOKU Checkout — notifikasi dana
+ * masuk dikirim DOKU ke URL ini. Default: produksi AGSI.
+ */
+export const DOKU_CHECKOUT_CALLBACK_URL = (
+  process.env.DOKU_CHECKOUT_CALLBACK_URL ??
+  "https://agsi-v-2-0.vercel.app/api/webhooks/qris"
+).trim();
 
 /** Prefix ID transaksi DOKU (trxId berawalan "DOKU-") — untuk deteksi provider */
 export const DOKU_TRX_PREFIX = "DOKU";

@@ -13,11 +13,13 @@
  *   4. Rantai createQrisGatewayPayment: DOKU dipanggil PERTAMA; bila menolak,
  *      jatuh ke penyedia berikutnya (gateway bawaan sandbox) — QR tetap jalan.
  */
-import { createQrisDokuPayment, getQrisDokuStatus, isDokuTrx } from "../src/lib/qris-doku";
+import { createHash, createHmac } from "crypto";
+import { createQrisDokuPayment, getQrisDokuStatus, isDokuTrx, verifyDokuLegacyWebhookSignature } from "../src/lib/qris-doku";
 import { createQrisGatewayPayment } from "../src/lib/qris-gateway";
 import {
   DOKU_API_KEY,
   DOKU_API_BASE,
+  DOKU_CHECKOUT_READY,
   DOKU_CLIENT_ID,
   DOKU_CLIENT_SECRET,
   DOKU_ENABLED,
@@ -48,7 +50,7 @@ async function main() {
       DOKU_CLIENT_ID ? "ada" : "kosong"
     } SECRET=${DOKU_CLIENT_SECRET ? "ada" : "kosong"} MERCHANT=${DOKU_MERCHANT_ID ? "ada" : "kosong"}`
   );
-  console.log(`DOKU_ENABLED=${DOKU_ENABLED} SNAP_READY=${DOKU_SNAP_READY}\n`);
+  console.log(`DOKU_ENABLED=${DOKU_ENABLED} SNAP_READY=${DOKU_SNAP_READY} CHECKOUT_READY=${DOKU_CHECKOUT_READY}\n`);
 
   // ==== 1) Unit: isDokuTrx ====
   console.log("[1] Deteksi prefix trxId");
@@ -61,8 +63,21 @@ async function main() {
   let createFailed = false;
   try {
     const trx = await createQrisDokuPayment({ amount: 10000, reference });
-    ok("QRIS dibuat", true, `trxId=${trx.trxId}, qr=${(trx.qrString ?? "").slice(0, 40)}…`);
+    ok(
+      "QRIS dibuat",
+      true,
+      `trxId=${trx.trxId}, ${
+        trx.qrString ? `qr=${trx.qrString.slice(0, 40)}…` : ""
+      }${trx.paymentUrl ? `url=${trx.paymentUrl.slice(0, 52)}…` : ""}`
+    );
     ok("trxId prefix DOKU-", trx.trxId.startsWith("DOKU-"));
+    if (DOKU_CHECKOUT_READY && !DOKU_SNAP_READY) {
+      ok(
+        "jalur CHECKOUT: paymentUrl halaman bayar DOKU",
+        typeof trx.paymentUrl === "string" && trx.paymentUrl.startsWith("https://"),
+        trx.paymentUrl?.slice(0, 60)
+      );
+    }
 
     // ==== 3) Status transaksi (baru dibuat -> PENDING) ====
     console.log("\n[3] getQrisDokuStatus");
@@ -80,7 +95,7 @@ async function main() {
   }
 
   // ==== 4) Status invoice tanpa catatan -> PENDING (jalur MCP) ====
-  if (!DOKU_SNAP_READY) {
+  if (!DOKU_SNAP_READY && !DOKU_CHECKOUT_READY) {
     console.log("\n[4] getQrisDokuStatus invoice tak dikenal");
     try {
       const st = await getQrisDokuStatus(`DOKU-TIDAKADA-${Date.now()}`);
@@ -88,6 +103,63 @@ async function main() {
     } catch (err) {
       ok("invoice tanpa catatan -> PENDING", false, err instanceof Error ? err.message : String(err));
     }
+  }
+
+  // ==== 4b) Verifikasi signature webhook legacy (unit) ====
+  console.log("\n[4b] verifyDokuLegacyWebhookSignature");
+  if (DOKU_CLIENT_ID && DOKU_CLIENT_SECRET) {
+    const rawNotif = JSON.stringify({
+      order: { invoice_number: "DOKU-TEST", amount: 10000 },
+      transaction: { status: "SUCCESS" },
+    });
+    const notifTarget = "/api/webhooks/qris";
+    const notifReqId = `${Date.now()}123`;
+    const notifTs = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    const notifDigest = createHash("sha256").update(rawNotif).digest("base64");
+    const notifSign = `HMACSHA256=${createHmac("sha256", DOKU_CLIENT_SECRET)
+      .update(
+        [
+          `Client-Id:${DOKU_CLIENT_ID}`,
+          `Request-Id:${notifReqId}`,
+          `Request-Timestamp:${notifTs}`,
+          `Request-Target:${notifTarget}`,
+          `Digest:${notifDigest}`,
+        ].join("\n")
+      )
+      .digest("base64")}`;
+    ok(
+      "signature legacy valid diterima",
+      verifyDokuLegacyWebhookSignature({
+        signature: notifSign,
+        clientId: DOKU_CLIENT_ID,
+        requestId: notifReqId,
+        timestamp: notifTs,
+        target: notifTarget,
+        rawBody: rawNotif,
+      })
+    );
+    ok(
+      "signature legacy palsu ditolak",
+      !verifyDokuLegacyWebhookSignature({
+        signature: `${notifSign.slice(0, -2)}XX`,
+        clientId: DOKU_CLIENT_ID,
+        requestId: notifReqId,
+        timestamp: notifTs,
+        target: notifTarget,
+        rawBody: rawNotif,
+      })
+    );
+    ok(
+      "body diubah -> ditolak",
+      !verifyDokuLegacyWebhookSignature({
+        signature: notifSign,
+        clientId: DOKU_CLIENT_ID,
+        requestId: notifReqId,
+        timestamp: notifTs,
+        target: notifTarget,
+        rawBody: rawNotif.replace("10000", "99000"),
+      })
+    );
   }
 
   // ==== 5) Rantai penyedia: DOKU dipanggil dulu, fallback tetap hidup ====

@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { QRCodeSVG } from "qrcode.react";
 import {
   BadgeCheck,
+  ExternalLink,
   FlaskConical,
   Loader2,
   Printer,
@@ -30,6 +31,8 @@ type Phase = "scan" | "paid" | "cancelled";
 type QrisInfo = {
   payload: string | null;
   imageUrl: string | null;
+  /** Jalur DOKU Checkout: URL halaman pembayaran DOKU (status tetap dipantau) */
+  paymentUrl: string | null;
   mode: "GATEWAY" | "LOCAL";
   autoVerify: boolean;
   /** gateway QRIS bawaan (sandbox) aktif — tombol simulasi dana ditampilkan */
@@ -160,6 +163,8 @@ export function QrisPaySheet({
       setInfo({
         payload: (data.payload as string) ?? null,
         imageUrl: (data.imageUrl as string) ?? null,
+        paymentUrl:
+          typeof data.paymentUrl === "string" ? data.paymentUrl : null,
         mode: data.mode === "GATEWAY" ? "GATEWAY" : "LOCAL",
         autoVerify: !!data.autoVerify,
         sandbox: data.sandbox === true,
@@ -479,6 +484,27 @@ export function QrisPaySheet({
                         Coba Lagi
                       </button>
                     </div>
+                  ) : info?.paymentUrl ? (
+                    /* Jalur DOKU Checkout — QR berisi TAUTAN halaman bayar DOKU:
+                       dipindai kamera HP untuk membuka halaman pembayaran. */
+                    <motion.div
+                      initial={prefersReduced ? false : { opacity: 0, scale: 0.94 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="flex flex-col items-center"
+                    >
+                      <QRCodeSVG
+                        value={info.paymentUrl}
+                        size={208}
+                        level="M"
+                        marginSize={1}
+                        bgColor="#FFFFFF"
+                        fgColor="#1C1917"
+                        title={`Pembayaran DOKU ${order.code}`}
+                      />
+                      <span className="mt-2.5 flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-1 text-[10px] font-black tracking-[0.2em] text-white">
+                        DOKU
+                      </span>
+                    </motion.div>
                   ) : info?.imageUrl ? (
                     <img
                       src={info.imageUrl}
@@ -514,13 +540,21 @@ export function QrisPaySheet({
                 <p className="mt-3 text-center text-[11px] font-bold uppercase tracking-wide text-neutral-400">
                   AYAM GEPREK SAMBAL IJO
                 </p>
-                <p className="mt-1 text-center text-[11px] leading-relaxed text-neutral-500">
-                  Buka aplikasi{" "}
-                  <strong className="font-bold text-neutral-700">
-                    GoPay, OVO, DANA, ShopeePay, atau m-Banking
-                  </strong>{" "}
-                  apa pun, lalu pindai kode di atas. Nominal sudah terisi otomatis.
-                </p>
+                {info?.paymentUrl ? (
+                  <p className="mt-1 text-center text-[11px] leading-relaxed text-neutral-500">
+                    Pindai kode di atas dengan kamera HP untuk membuka{" "}
+                    <strong className="font-bold text-neutral-700">halaman pembayaran DOKU</strong>, lalu
+                    pilih QRIS / e-wallet / Virtual Account yang tersedia dan selesaikan pembayaran.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-center text-[11px] leading-relaxed text-neutral-500">
+                    Buka aplikasi{" "}
+                    <strong className="font-bold text-neutral-700">
+                      GoPay, OVO, DANA, ShopeePay, atau m-Banking
+                    </strong>{" "}
+                    apa pun, lalu pindai kode di atas. Nominal sudah terisi otomatis.
+                  </p>
+                )}
 
                 {/* ===== KARTU STATUS VERIFIKASI OTOMATIS (khusus kasir/POS) =====
                     Detail teknis pemantauan TIDAK ditampilkan ke pelanggan —
@@ -552,8 +586,10 @@ export function QrisPaySheet({
                         </p>
                       ) : info?.provider?.startsWith("doku") ? (
                         <p className="mt-1 text-[10px] font-bold text-emerald-600">
-                          Penyedia: DOKU ({info.provider === "doku" ? "Produksi" : "Sandbox"}) —
-                          scan pakai DANA / GoPay / OVO / ShopeePay / m-Banking mana pun
+                          Penyedia: DOKU ({info.provider === "doku" ? "Produksi" : "Sandbox"}) —{" "}
+                          {info.paymentUrl
+                            ? "selesaikan pembayaran di halaman DOKU (kanal aktif akun DOKU); status dicek otomatis"
+                            : "scan pakai DANA / GoPay / OVO / ShopeePay / m-Banking mana pun"}
                         </p>
                       ) : info?.provider?.startsWith("dana") ? (
                         <p className="mt-1 text-[10px] font-bold text-emerald-600">
@@ -669,6 +705,16 @@ export function QrisPaySheet({
                 )}
 
                 {/* Tombol sesuai varian */}
+                {info?.paymentUrl && (
+                  <a
+                    href={info.paymentUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="press-effect mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-red-600 text-sm font-extrabold text-white shadow-lg shadow-red-500/30 hover:bg-red-700"
+                  >
+                    <ExternalLink className="h-4 w-4" /> Buka Halaman Pembayaran DOKU
+                  </a>
+                )}
                 {isPos ? (
                   <div className="mt-4 space-y-2">
                     <button

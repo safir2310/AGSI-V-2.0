@@ -42,6 +42,9 @@ export type GatewayTransaction = {
   qrString?: string;
   /** URL gambar QR (jika penyedia hanya memberi gambar) */
   imageUrl?: string;
+  /** URL halaman pembayaran (jalur DOKU Checkout — pelanggan menyelesaikan
+   *  pembayaran di halaman DOKU; status tetap diverifikasi otomatis) */
+  paymentUrl?: string;
   expiresAt?: string | null;
   /** Penyedia yang benar-benar melayani: "casaku" | "midtrans" | "internal" | "external" */
   provider?: string;

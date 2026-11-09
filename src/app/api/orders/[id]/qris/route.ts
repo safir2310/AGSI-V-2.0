@@ -131,11 +131,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // Nominal final yang harus dibayar (total + kode unik Casaku bila ada)
     const payAmount = order.qrisAmount ?? order.total;
     const uniqueCode = payAmount > order.total ? payAmount - order.total : null;
+    // Jalur DOKU Checkout: payload tersimpan adalah URL halaman bayar
+    const cachedPaymentUrl =
+      cachedProvider.startsWith("doku") &&
+      order.qrisPayload?.startsWith("http")
+        ? order.qrisPayload
+        : undefined;
     return NextResponse.json({
       ...base,
       amount: payAmount,
       ...(uniqueCode !== null ? { uniqueCode } : {}),
       payload: order.qrisPayload,
+      ...(cachedPaymentUrl ? { paymentUrl: cachedPaymentUrl } : {}),
       mode: "GATEWAY",
       autoVerify: true,
       // tombol simulasi dana masuk hanya untuk gateway bawaan (sandbox lokal)
@@ -161,7 +168,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
       amount: order.total,
       reference: order.code,
     });
-    const payload = trx.qrString ?? null;
+    // Jalur DOKU Checkout tidak mengembalikan QR string — URL halaman bayar
+    // disimpan di qrisPayload (pola sama dengan simulator Midtrans sandbox).
+    const payload = trx.qrString ?? trx.paymentUrl ?? null;
     // Casaku (kode unik aktif): nominal final = total + kode unik — pelanggan
     // wajib membayar nominal PERSIS ini agar verifikasi cocok.
     const payAmount = trx.finalAmount ?? order.total;
@@ -183,12 +192,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
       trx.provider === "midtrans"
         ? PROVIDER // "midtrans" | "midtrans-sandbox" untuk UI
         : trx.provider ?? "internal";
+    const paymentUrl =
+      trxProvider.startsWith("doku") && payload !== null && payload.startsWith("http")
+        ? payload
+        : undefined;
     return NextResponse.json({
       ...base,
       amount: payAmount,
       ...(uniqueCode !== null ? { uniqueCode } : {}),
       payload,
       imageUrl: trx.imageUrl ?? undefined,
+      ...(paymentUrl ? { paymentUrl } : {}),
       mode: "GATEWAY",
       autoVerify: true,
       sandbox: trxProvider === "internal" && QRIS_SANDBOX_ENABLED,

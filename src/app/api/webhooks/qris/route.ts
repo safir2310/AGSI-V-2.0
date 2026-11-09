@@ -14,7 +14,7 @@ import {
   DOKU_CLIENT_SECRET,
   DOKU_ENABLED,
 } from "@/lib/qris-config";
-import { getQrisDokuStatus, verifyDokuWebhookSignature } from "@/lib/qris-doku";
+import { getQrisDokuStatus, verifyDokuLegacyWebhookSignature, verifyDokuWebhookSignature } from "@/lib/qris-doku";
 
 /**
  * POST /api/webhooks/qris
@@ -208,6 +208,158 @@ export async function POST(req: NextRequest) {
       responseCode: "2005600",
       responseMessage: "Successful",
     });
+  }
+
+  // ===== DOKU CHECKOUT LEGACY (Non-SNAP) — HTTP NOTIFICATION legacy =====
+  // DOKU Checkout mengirim notifikasi dengan header Client-Id / Request-Id /
+  // Request-Timestamp / Request-Target / Signature (HMACSHA256= atas komponen
+  // + Digest body) dan body { order: { invoice_number, ... },
+  // transaction: { status: "SUCCESS" | ... } }.
+  // KEAMANAN fail-closed: bila DOKU_CLIENT_SECRET diset, signature WAJIB
+  // valid; dan pelunasan SELALU dikonfirmasi ulang ke DOKU (Check Status API)
+  // sebelum pesanan dilunaskan — notifikasi palsu tidak berbahaya.
+  const legacyClientId = req.headers.get("client-id") ?? "";
+  const legacySig = req.headers.get("signature") ?? "";
+  const legacyReqId = req.headers.get("request-id") ?? "";
+  const legacyTs = req.headers.get("request-timestamp") ?? "";
+  const legacyTarget =
+    req.headers.get("request-target") ?? new URL(req.url).pathname;
+  const legacyOrder = (body.order ?? body.Order) as
+    | Record<string, unknown>
+    | undefined;
+  const legacyTx = (body.transaction ?? body.Transaction) as
+    | Record<string, unknown>
+    | undefined;
+  const legacyInvoice =
+    typeof legacyOrder?.invoice_number === "string"
+      ? legacyOrder.invoice_number
+      : null;
+  const legacyStatus =
+    typeof legacyTx?.status === "string" ? legacyTx.status : null;
+  const isDanaLegacyNotify =
+    DANA_ENABLED && legacyClientId.length > 0 && legacyClientId === DANA_CLIENT_ID;
+  if (
+    DOKU_ENABLED &&
+    legacyInvoice &&
+    legacyStatus &&
+    legacyClientId &&
+    !isDanaLegacyNotify &&
+    dokuNotifyRef === null // bukan notifikasi SNAP yang sudah ditangani di atas
+  ) {
+    // Client-Id (bila dikirim) harus milik merchant DOKU ini
+    if (DOKU_CLIENT_ID && legacyClientId !== DOKU_CLIENT_ID) {
+      return NextResponse.json(
+        { ok: false, reason: "Client-Id tidak cocok dengan merchant DOKU ini." },
+        { status: 403 }
+      );
+    }
+    // Signature diverifikasi bila client secret tersedia (fail-closed).
+    if (DOKU_CLIENT_SECRET) {
+      if (!legacySig || !legacyReqId || !legacyTs) {
+        return NextResponse.json(
+          { ok: false, reason: "Header signature DOKU legacy tidak lengkap." },
+          { status: 403 }
+        );
+      }
+      const valid = verifyDokuLegacyWebhookSignature({
+        signature: legacySig,
+        clientId: legacyClientId,
+        requestId: legacyReqId,
+        timestamp: legacyTs,
+        target: legacyTarget,
+        rawBody,
+      });
+      if (!valid) {
+        return NextResponse.json(
+          { ok: false, reason: "Signature DOKU legacy tidak valid." },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Hanya pembayaran sukses yang diproses; lainnya cukup diterima.
+    if (normalizeGatewayStatus(legacyStatus) !== "PAID") {
+      return NextResponse.json({
+        ok: true,
+        provider: "doku",
+        ignored: true,
+        status: legacyStatus,
+      });
+    }
+
+    // Cari pesanan: qrisTrxId = invoice DOKU (bisa + suffix retry unik);
+    // fallback: kode pesanan dari invoice tanpa prefix "DOKU-".
+    const candidates = new Set<string>();
+    const addCandidate = (s: string) => {
+      if (!s) return;
+      candidates.add(s);
+      const noSuffix = s.replace(/-[0-9a-z]+$/i, "");
+      if (noSuffix !== s) candidates.add(noSuffix);
+    };
+    addCandidate(legacyInvoice);
+    addCandidate(legacyInvoice.replace(/^DOKU-/, ""));
+    let legacyOrderMatch: { id: string; paymentMethod: string } | null = null;
+    for (const c of candidates) {
+      if (legacyOrderMatch) break;
+      legacyOrderMatch = await db.order.findFirst({ where: { qrisTrxId: c } });
+    }
+    for (const c of candidates) {
+      if (legacyOrderMatch) break;
+      const bare = c.replace(/^DOKU-/, "");
+      if (!bare) continue;
+      legacyOrderMatch = await db.order.findFirst({
+        where: { code: bare, paymentMethod: "QRIS" },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+    if (!legacyOrderMatch) {
+      console.warn(
+        "[QRIS] Notifikasi DOKU legacy: pesanan tidak ditemukan untuk",
+        legacyInvoice
+      );
+      return NextResponse.json({
+        ok: false,
+        reason: "Pesanan tidak ditemukan.",
+      });
+    }
+    if (legacyOrderMatch.paymentMethod !== "QRIS") {
+      return NextResponse.json({
+        ok: false,
+        reason: "Bukan pesanan QRIS.",
+      });
+    }
+
+    // KONFIRMASI ULANG ke DOKU sebelum melunaskan (fail-closed).
+    try {
+      const confirmed = await getQrisDokuStatus(legacyInvoice);
+      if (confirmed !== "PAID") {
+        return NextResponse.json({
+          ok: true,
+          provider: "doku",
+          reason: `Status di DOKU masih ${confirmed} — polling akan menyusul.`,
+        });
+      }
+    } catch (err) {
+      console.warn(
+        "[QRIS] Notifikasi DOKU legacy: gagal konfirmasi status:",
+        err instanceof Error ? err.message : err
+      );
+      return NextResponse.json({
+        ok: true,
+        provider: "doku",
+        reason: "Konfirmasi status ke DOKU gagal — polling akan menyusul.",
+      });
+    }
+
+    const result = await markOrderPaidBySystem(legacyOrderMatch.id);
+    if (result.cancelled) {
+      return NextResponse.json({
+        ok: false,
+        reason:
+          "Pesanan sudah dibatalkan otomatis karena melewati batas waktu pembayaran. Dana dikembalikan ke pembayar.",
+      });
+    }
+    return NextResponse.json({ ok: true, provider: "doku" });
   }
 
   // ===== DANA QRIS ACQUIRER — FINISH NOTIFY (webhook resmi DANA) =====

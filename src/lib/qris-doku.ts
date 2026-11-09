@@ -35,6 +35,8 @@ import {
   DOKU_API_BASE,
   DOKU_API_KEY,
   DOKU_APIKEY_READY,
+  DOKU_CHECKOUT_CALLBACK_URL,
+  DOKU_CHECKOUT_READY,
   DOKU_CLIENT_ID,
   DOKU_CLIENT_SECRET,
   DOKU_IS_PRODUCTION,
@@ -48,6 +50,7 @@ import {
   DOKU_TRX_PREFIX,
 } from "@/lib/qris-config";
 import {
+  normalizeGatewayStatus,
   QrisGatewayError,
   type GatewayStatus,
   type GatewayTransaction,
@@ -575,6 +578,337 @@ async function mcpQueryStatus(partnerReferenceNo: string): Promise<GatewayStatus
 }
 
 // ============================================================
+//  JALUR CHECKOUT LEGACY (Non-SNAP) — produksi, TERBUKTI HIDUP
+// ============================================================
+// Bila kredensial SNAP belum terdaftar di gateway SNAP (4017300
+// "Unauthorized. Unknown Client") tetapi Client ID + Secret Key VALID di
+// gateway legacy Non-SNAP (divalidasi lewat Check Status API), transaksi
+// dibuat via DOKU CHECKOUT:
+//   POST /checkout/v1/payment        -> response.payment.url (halaman bayar
+//     DOKU berisi kanal aktif merchant — QRIS tampil di sana begitu kanal
+//     QRIS akun diaktifkan DOKU; sementara VA/retail/e-money aktif)
+//   GET  /orders/v1/status/{invoice} -> transaction.status
+// Signature legacy: HMAC-SHA256 atas "Client-Id\nRequest-Id\nRequest-
+// Timestamp\nRequest-Target\nDigest" (HMACSHA256= prefix).
+
+/** Header autentikasi legacy Non-SNAP — nilai TERKIRIM persis (HMACSHA256=) */
+function legacyHeaders(
+  target: string,
+  bodyRaw: string | null
+): Record<string, string> {
+  const requestId = externalId();
+  const ts = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const parts = [
+    `Client-Id:${DOKU_CLIENT_ID}`,
+    `Request-Id:${requestId}`,
+    `Request-Timestamp:${ts}`,
+    `Request-Target:${target}`,
+  ];
+  if (bodyRaw !== null) {
+    parts.push(
+      `Digest:${createHash("sha256").update(bodyRaw).digest("base64")}`
+    );
+  }
+  return {
+    "Client-Id": DOKU_CLIENT_ID,
+    "Request-Id": requestId,
+    "Request-Timestamp": ts,
+    "Request-Target": target,
+    Signature: `HMACSHA256=${createHmac("sha256", DOKU_CLIENT_SECRET)
+      .update(parts.join("\n"))
+      .digest("base64")}`,
+    ...(bodyRaw !== null ? { "Content-Type": "application/json" } : {}),
+  };
+}
+
+/** Pesan galat terbaca dari respons legacy (message bisa string/array) */
+function legacyErrorMessage(
+  body: Record<string, unknown>,
+  fallback: string
+): string {
+  const err = body.error;
+  if (err && typeof err === "object" && !Array.isArray(err)) {
+    const m = (err as Record<string, unknown>).message;
+    if (typeof m === "string" && m.trim()) return m;
+  }
+  const msg = body.message;
+  if (typeof msg === "string" && msg.trim()) return msg;
+  if (Array.isArray(msg)) {
+    const joined = msg.filter((v) => typeof v === "string").join(", ");
+    if (joined) return joined;
+  }
+  if (typeof body.responseMessage === "string" && body.responseMessage.trim()) {
+    return body.responseMessage;
+  }
+  return fallback;
+}
+
+/** POST legacy dengan timeout + galat terurai */
+async function legacyPost(
+  path: string,
+  payload: Record<string, unknown>,
+  timeoutMs = 20_000
+): Promise<Record<string, unknown>> {
+  const raw = JSON.stringify(payload);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let httpStatus = 0;
+  let body: Record<string, unknown>;
+  try {
+    const res = await fetch(`${DOKU_API_BASE}${path}`, {
+      method: "POST",
+      headers: legacyHeaders(path, raw),
+      body: raw,
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    httpStatus = res.status;
+    body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new QrisGatewayError("DOKU Checkout tidak merespons (timeout).");
+    }
+    throw new QrisGatewayError(
+      "Tidak dapat menghubungi DOKU Checkout. Periksa koneksi internet server."
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+  if (httpStatus >= 300) {
+    throw new QrisGatewayError(
+      `DOKU Checkout menolak ${path} (HTTP ${httpStatus}). ${legacyErrorMessage(body, "")}`.trim(),
+      httpStatus === 404 ? 404 : httpStatus === 401 ? 401 : undefined
+    );
+  }
+  return body;
+}
+
+/** GET legacy (tanpa Digest) — 404 berarti invoice tidak dikenal */
+async function legacyGet(
+  path: string,
+  timeoutMs = 15_000
+): Promise<Record<string, unknown>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let httpStatus = 0;
+  let body: Record<string, unknown>;
+  try {
+    const res = await fetch(`${DOKU_API_BASE}${path}`, {
+      method: "GET",
+      headers: legacyHeaders(path, null),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    httpStatus = res.status;
+    body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new QrisGatewayError("DOKU tidak merespons (timeout).");
+    }
+    throw new QrisGatewayError("Tidak dapat menghubungi DOKU (status).");
+  } finally {
+    clearTimeout(timer);
+  }
+  if (httpStatus === 404) {
+    throw new QrisGatewayError(
+      "Transaksi tidak ditemukan di DOKU.",
+      404
+    );
+  }
+  if (httpStatus >= 300) {
+    throw new QrisGatewayError(
+      `DOKU menolak ${path} (HTTP ${httpStatus}). ${legacyErrorMessage(body, "")}`.trim(),
+      httpStatus === 401 ? 401 : undefined
+    );
+  }
+  return body;
+}
+
+/** Cari URL halaman bayar DOKU di kedalaman mana pun (toleran struktur) */
+function findPaymentUrl(value: unknown, depth = 0): string | undefined {
+  if (depth > 6 || value == null) return undefined;
+  if (typeof value === "string") {
+    const v = value.trim();
+    if (
+      v.startsWith("https://") &&
+      (v.includes("checkout.doku.com") || v.includes("/checkout-link-v2/"))
+    ) {
+      return v;
+    }
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const hit = findPaymentUrl(item, depth + 1);
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+  if (typeof value === "object") {
+    for (const v of Object.values(value as Record<string, unknown>)) {
+      const hit = findPaymentUrl(v, depth + 1);
+      if (hit) return hit;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Buat pesanan DOKU Checkout (jalur legacy produksi).
+ * Halaman bayar menampilkan semua kanal AKTIF merchant (QRIS, VA, retail,
+ * e-money) — sesuai konfigurasi akun DOKU. Status tetap diverifikasi otomatis
+ * (polling Check Status + webhook legacy).
+ */
+async function checkoutCreateQris(opts: {
+  partnerReferenceNo: string;
+  amount: number;
+}): Promise<GatewayTransaction> {
+  const payload = {
+    order: {
+      invoice_number: opts.partnerReferenceNo,
+      amount: opts.amount,
+      currency: "IDR",
+      callback_url: DOKU_CHECKOUT_CALLBACK_URL,
+      language: "id",
+      additional_info: {},
+      line_items: [
+        {
+          name: `Pesanan ${opts.partnerReferenceNo.replace(/^DOKU-/, "")}`.slice(0, 60),
+          quantity: 1,
+          price: opts.amount,
+        },
+      ],
+    },
+    payment: {
+      payment_due_date: DOKU_QRIS_EXPIRY_MINUTES,
+      enable_saves: false,
+      enable_paylater: false,
+    },
+    customer: { name: "Pelanggan AGSI", email: "pos@agsi.co.id" },
+  };
+
+  let body: Record<string, unknown>;
+  try {
+    body = await legacyPost("/checkout/v1/payment", payload);
+  } catch (err) {
+    // Invoice duplikat (kode dibuat ulang setelah kedaluwarsa) -> sekali
+    // coba lagi dengan suffix unik agar pelanggan tetap dapat halaman bayar.
+    const msg = (err instanceof Error ? err.message : "").toLowerCase();
+    if (
+      (err instanceof QrisGatewayError && err.status === 400) ||
+      msg.includes("invoice") ||
+      msg.includes("duplicate") ||
+      msg.includes("exist")
+    ) {
+      const retryPayload = {
+        ...payload,
+        order: {
+          ...payload.order,
+          invoice_number: `${opts.partnerReferenceNo}-${Date.now().toString(36)}`,
+        },
+      };
+      body = await legacyPost("/checkout/v1/payment", retryPayload);
+      return finishCheckoutCreate(body, retryPayload.order.invoice_number);
+    }
+    throw err;
+  }
+  return finishCheckoutCreate(body, opts.partnerReferenceNo);
+}
+
+/** Urai respons Checkout sukses -> GatewayTransaction */
+function finishCheckoutCreate(
+  body: Record<string, unknown>,
+  partnerReferenceNo: string
+): GatewayTransaction {
+  const paymentUrl = findPaymentUrl(body);
+  if (!paymentUrl) {
+    throw new QrisGatewayError(
+      `DOKU Checkout tidak mengembalikan URL pembayaran. ${legacyErrorMessage(body, "")}`.trim()
+    );
+  }
+  // expired_datetime contoh: "2026-11-09T08:47:21Z" (UTC ISO)
+  let expiresAt: string | null = null;
+  const resp = body.response as Record<string, unknown> | undefined;
+  const payment = (resp?.payment ?? body.payment) as
+    | Record<string, unknown>
+    | undefined;
+  const exp = payment?.expired_datetime ?? payment?.expired_date;
+  if (typeof exp === "string" && exp.trim()) {
+    // "20261109154721" (WIB tanpa tz) atau ISO — normalkan
+    const digits = exp.replace(/\D/g, "");
+    if (digits.length === 14) {
+      const d = new Date(
+        `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}+07:00`
+      );
+      if (!Number.isNaN(d.getTime())) expiresAt = d.toISOString();
+    } else {
+      const d = new Date(exp);
+      if (!Number.isNaN(d.getTime())) expiresAt = d.toISOString();
+    }
+  }
+  return {
+    trxId: partnerReferenceNo,
+    paymentUrl,
+    expiresAt: expiresAt ?? undefined,
+  };
+}
+
+/**
+ * Status via Check Status API legacy: GET /orders/v1/status/{invoice}.
+ * transaction.status: SUCCESS -> PAID; PENDING/ORDER_GENERATED -> PENDING;
+ * EXPIRED/FAILED/TIMEOUT/CANCELLED -> EXPIRED.
+ */
+async function checkoutQueryStatus(
+  partnerReferenceNo: string
+): Promise<GatewayStatus> {
+  const body = await legacyGet(
+    `/orders/v1/status/${encodeURIComponent(partnerReferenceNo)}`
+  );
+  const transaction = body.transaction as Record<string, unknown> | undefined;
+  const order = body.order as Record<string, unknown> | undefined;
+  const raw =
+    (transaction && typeof transaction.status === "string"
+      ? transaction.status
+      : null) ??
+    (order && typeof order.status === "string"
+      ? order.status
+      : null) ??
+    "";
+  const s = raw.toUpperCase();
+  if (!s) return "UNKNOWN";
+  if (
+    s === "SUCCESS" ||
+    s === "ORDER_PAID" ||
+    s === "PAID" ||
+    s === "SETTLEMENT" ||
+    s === "COMPLETED"
+  ) {
+    return "PAID";
+  }
+  if (
+    s === "PENDING" ||
+    s === "ORDER_GENERATED" ||
+    s === "WAITING" ||
+    s === "INITIATED"
+  ) {
+    return "PENDING";
+  }
+  if (
+    s === "EXPIRED" ||
+    s === "ORDER_EXPIRED" ||
+    s === "ORDER_CANCELLED" ||
+    s === "CANCELLED" ||
+    s === "CANCELED" ||
+    s === "FAILED" ||
+    s === "TIMEOUT" ||
+    s === "VOID"
+  ) {
+    return "EXPIRED";
+  }
+  return normalizeGatewayStatus(raw);
+}
+
+// ============================================================
 //  API ADAPTER — dipakai qris-gateway.ts & webhook
 // ============================================================
 
@@ -582,6 +916,11 @@ async function mcpQueryStatus(partnerReferenceNo: string): Promise<GatewayStatus
  * Buat transaksi QRIS dinamis DOKU.
  * trxId yang disimpan di Order.qrisTrxId = "DOKU-<kode pesanan>" — dipakai
  * juga sebagai partnerReferenceNo / invoice number di DOKU.
+ *
+ * Prioritas jalur:
+ *   1) SNAP MPM (kalau MID terpasang) — QR string langsung
+ *   2) CHECKOUT legacy (Client ID + Secret) — halaman bayar DOKU
+ *   3) MCP API key agentic — QR string via create_qris_payment
  */
 export async function createQrisDokuPayment(opts: {
   amount: number;
@@ -592,14 +931,31 @@ export async function createQrisDokuPayment(opts: {
     throw new QrisGatewayError("Nominal QRIS harus angka lebih dari 0.");
   }
   const partnerReferenceNo = partnerReferenceNoOf(opts.reference);
+
+  if (DOKU_SNAP_READY) {
+    const validityPeriod = wibTimestamp(
+      new Date(Date.now() + DOKU_QRIS_EXPIRY_MINUTES * 60_000)
+    );
+    const qrString = await snapGenerateQris({
+      partnerReferenceNo,
+      amount,
+      validityPeriod,
+    });
+    return {
+      trxId: partnerReferenceNo,
+      qrString,
+      expiresAt: new Date(Date.now() + DOKU_QRIS_EXPIRY_MINUTES * 60_000).toISOString(),
+    };
+  }
+
+  if (DOKU_CHECKOUT_READY) {
+    return checkoutCreateQris({ partnerReferenceNo, amount });
+  }
+
   const validityPeriod = wibTimestamp(
     new Date(Date.now() + DOKU_QRIS_EXPIRY_MINUTES * 60_000)
   );
-
-  const qrString = DOKU_SNAP_READY
-    ? await snapGenerateQris({ partnerReferenceNo, amount, validityPeriod })
-    : await mcpCreateQris({ partnerReferenceNo, amount, validityPeriod });
-
+  const qrString = await mcpCreateQris({ partnerReferenceNo, amount, validityPeriod });
   return {
     trxId: partnerReferenceNo,
     qrString,
@@ -610,12 +966,16 @@ export async function createQrisDokuPayment(opts: {
 /**
  * Cek status transaksi DOKU.
  * Jalur SNAP: transaksi tak dikenal (404) -> lempar 404 agar layar bayar
- * membuat kode baru. Jalur MCP (pencarian laporan): hasil kosong = belum ada
+ * membuat kode baru. Jalur CHECKOUT (Check Status API): 404 -> sama.
+ * Jalur MCP (pencarian laporan): hasil kosong = belum ada
  * catatan -> PENDING (QR tetap; jangan regenerasi tiap poll).
  */
 export async function getQrisDokuStatus(trxId: string): Promise<GatewayStatus> {
   if (DOKU_SNAP_READY) {
     return snapQueryStatus(partnerReferenceNoOf(trxId));
+  }
+  if (DOKU_CHECKOUT_READY) {
+    return checkoutQueryStatus(partnerReferenceNoOf(trxId));
   }
   return mcpQueryStatus(partnerReferenceNoOf(trxId));
 }
@@ -633,7 +993,9 @@ export type DokuCancelResult = {
 export async function cancelQrisDokuPayment(trxId: string): Promise<DokuCancelResult> {
   const partnerReferenceNo = partnerReferenceNoOf(trxId);
   if (!DOKU_SNAP_READY) {
-    return { cancelled: false, alreadyPaid: false, providerStatus: "mcp_no_cancel_tool" };
+    // Jalur CHECKOUT/MCP tidak punya cancel yang dipakai — QR/halaman bayar
+    // otomatis mati saat payment_due_date terlewat (sama dengan validityPeriod).
+    return { cancelled: false, alreadyPaid: false, providerStatus: "no_cancel_tool" };
   }
   try {
     // Cek dulu: sudah dibayar? Jangan mematikan QR yang barusan dibayar.
@@ -685,7 +1047,44 @@ export function verifyDokuWebhookSignature(opts: {
   return false;
 }
 
+/**
+ * Verifikasi signature NOTIFIKASI legacy (Non-SNAP / DOKU Checkout).
+ * Header: Client-Id, Request-Id, Request-Timestamp, Request-Target, Signature.
+ * Rumus: "HMACSHA256=" + Base64(HMAC-SHA256(secret,
+ *   "Client-Id:..\nRequest-Id:..\nRequest-Timestamp:..\nRequest-Target:..\nDigest:<base64(sha256(body))>"))
+ * Fail-closed: hanya signature yang benar diterima.
+ */
+export function verifyDokuLegacyWebhookSignature(opts: {
+  signature: string;
+  clientId?: string;
+  requestId: string;
+  timestamp: string;
+  target: string;
+  rawBody: string;
+}): boolean {
+  if (!DOKU_CLIENT_SECRET) return false;
+  const got = opts.signature.trim();
+  if (!got) return false;
+  const digest = createHash("sha256").update(opts.rawBody).digest("base64");
+  const parts = [
+    `Client-Id:${opts.clientId?.trim() || DOKU_CLIENT_ID}`,
+    `Request-Id:${opts.requestId}`,
+    `Request-Timestamp:${opts.timestamp}`,
+    `Request-Target:${opts.target.startsWith("/") ? opts.target : `/${opts.target}`}`,
+    `Digest:${digest}`,
+  ];
+  const expected = `HMACSHA256=${createHmac("sha256", DOKU_CLIENT_SECRET)
+    .update(parts.join("\n"))
+    .digest("base64")}`;
+  return expected.length === got.length && expected === got;
+}
+
 /** Label lingkungan untuk UI */
 export function dokuEnvironmentLabel(): string {
   return DOKU_IS_PRODUCTION ? "DOKU Produksi" : "DOKU Sandbox";
+}
+
+/** true bila jalur aktif adalah DOKU Checkout (halaman bayar, bukan QR string) */
+export function isDokuCheckoutPath(): boolean {
+  return !DOKU_SNAP_READY && DOKU_CHECKOUT_READY;
 }
