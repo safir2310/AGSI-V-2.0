@@ -25,6 +25,7 @@ import android.os.Message
 import android.print.PrintAttributes
 import android.print.PrintManager
 import android.provider.MediaStore
+import android.provider.Settings
 import android.util.Base64
 import android.util.Log
 import android.view.View
@@ -831,6 +832,33 @@ class MainActivity : AppCompatActivity() {
             Log.w(TAG, "Gagal membuka dialog cetak", e)
             resolveBridge(cbId, false, "perangkat tidak mendukung cetak")
         }
+    }
+
+    /**
+     * Buka layar pendaftaran biometrik Android — rantai fallback:
+     *  1. ACTION_BIOMETRIC_ENROLL (API 30+, wajah/sidik jari)
+     *  2. ACTION_FINGERPRINT_ENROLL (API 24–29)
+     *  3. Keamanan & layar kunci (semua versi)
+     * Android tidak mengizinkan pendaftaran biometrik langsung dari aplikasi,
+     * jadi deep-link ke Pengaturan adalah pintu tercepat yang tersedia.
+     */
+    fun openBiometricEnrollSettings() {
+        val candidates = mutableListOf<Intent>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            candidates += Intent(Settings.ACTION_BIOMETRIC_ENROLL)
+        }
+        @Suppress("DEPRECATION")
+        candidates += Intent(Settings.ACTION_FINGERPRINT_ENROLL)
+        candidates += Intent(Settings.ACTION_SECURITY_SETTINGS)
+        for (intent in candidates) {
+            try {
+                startActivity(intent)
+                return
+            } catch (_: Exception) {
+                // Perangkat tidak menyediakan layar ini — coba kandidat berikutnya
+            }
+        }
+        Toast.makeText(this, R.string.biometric_enroll_unavailable, Toast.LENGTH_LONG).show()
     }
 
     // ==================== Upload file (galeri & kamera) ====================

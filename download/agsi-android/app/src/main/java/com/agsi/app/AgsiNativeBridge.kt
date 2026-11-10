@@ -21,6 +21,9 @@ import org.json.JSONObject
  *   enableBiometric(cbId: String)   — verifikasi biometrik lalu aktifkan;
  *                                     hasil dilempar ke window.__agsiNativeResult
  *   disableBiometric(): Boolean     — matikan layar buka kunci (true)
+ *   openBiometricEnroll(): Boolean  — buka layar pendaftaran biometrik di
+ *                                     Pengaturan HP (wajah/sidik jari belum
+ *                                     terdaftar); true = pengaturan dibuka
  *   saveFile(cbId, base64, fileName, mimeType) — simpan file dari web (struk
  *                                     HTML / laporan CSV) ke folder Unduhan;
  *                                     hasil via window.__agsiNativeResult
@@ -72,6 +75,20 @@ class AgsiNativeBridge(
     @JavascriptInterface
     fun disableBiometric(): Boolean {
         AppLock.setEnabled(appContext, false)
+        return true
+    }
+
+    /**
+     * Buka layar pendaftaran biometrik sistem (Pengaturan HP) — dipakai panel
+     * Login Biometrik saat perangkat belum punya wajah/sidik jari terdaftar,
+     * sehingga pengguna tidak perlu mencari menu pengaturan secara manual.
+     * Android tidak mengizinkan pendaftaran biometrik langsung dari aplikasi,
+     * jadi ini pintu tercepat yang sah. Return false bila aplikasi tidak aktif.
+     */
+    @JavascriptInterface
+    fun openBiometricEnroll(): Boolean {
+        val activity = hostProvider() ?: return false
+        activity.main.post { activity.openBiometricEnrollSettings() }
         return true
     }
 
