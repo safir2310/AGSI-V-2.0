@@ -26,6 +26,10 @@
     <!-- Unduhan -->
     <string name="download_desc">Mengunduh berkas dari AGSI</string>
     <string name="download_started">Unduhan dimulai</string>
+    <string name="download_unsupported">Jenis unduhan ini tidak didukung aplikasi</string>
+
+    <!-- Simpan file dari web (struk & laporan) via jembatan AgsiNative -->
+    <string name="file_saved">Tersimpan di folder Unduhan: %1$s</string>
 
     <!-- Notifikasi -->
     <string name="notification_channel_name">Pesanan &amp; Notifikasi AGSI</string>

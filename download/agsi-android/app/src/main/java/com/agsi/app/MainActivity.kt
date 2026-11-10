@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -21,7 +22,10 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.print.PrintAttributes
+import android.print.PrintManager
 import android.provider.MediaStore
+import android.util.Base64
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -54,7 +58,9 @@ import androidx.core.content.FileProvider
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -107,6 +113,12 @@ class MainActivity : AppCompatActivity() {
     private var pendingCameraUri: Uri? = null
     private var pendingChooserParams: WebChromeClient.FileChooserParams? = null
 
+    // Simpan file dari web (SAF "Simpan ke" utk Android 8–9 & fallback 10+)
+    private var pendingSaveCbId: String? = null
+    private var pendingSaveBytes: ByteArray? = null
+    private var pendingSaveMime: String? = null
+    private var pendingSaveName: String? = null
+
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -132,6 +144,35 @@ class MainActivity : AppCompatActivity() {
 
     private val notifPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    /** Hasil dialog "Simpan ke" (SAF) — tulis file yang diminta web via bridge */
+    private val saveFileLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val cbId = pendingSaveCbId
+            val bytes = pendingSaveBytes
+            val mime = pendingSaveMime ?: "application/octet-stream"
+            val name = pendingSaveName ?: "agsi-file"
+            pendingSaveCbId = null
+            pendingSaveBytes = null
+            pendingSaveMime = null
+            pendingSaveName = null
+            if (cbId == null) return@registerForActivityResult
+            val uri = result.data?.data
+            if (result.resultCode != RESULT_OK || uri == null || bytes == null) {
+                // dibatalkan → web membiarkan senyap (tanpa notifikasi error)
+                resolveBridge(cbId, false, "dibatalkan")
+                return@registerForActivityResult
+            }
+            try {
+                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    ?: throw IOException("Tidak bisa membuka output stream")
+                Toast.makeText(this, getString(R.string.file_saved, name), Toast.LENGTH_LONG).show()
+                resolveBridge(cbId, true, name)
+            } catch (e: Exception) {
+                Log.w(TAG, "Gagal menulis file hasil dialog simpan", e)
+                resolveBridge(cbId, false, "gagal menulis file")
+            }
+        }
 
     // ==================== Lifecycle ====================
 
@@ -680,7 +721,115 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.download_started, Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Log.w(TAG, "Unduhan gagal — buka lewat aplikasi eksternal", e)
-            launchExternal(Uri.parse(url))
+            // URL blob: tidak bisa dibuka aplikasi eksternal mana pun — dulu
+            // fallback startActivity memunculkan toast "Tidak ada aplikasi yang
+            // bisa membuka tautan ini". File dari web kini lewat AgsiNative
+            // .saveFile, jadi jalur ini hanya jaring pengaman yang ramah.
+            if (url.startsWith("blob:")) {
+                Toast.makeText(this, R.string.download_unsupported, Toast.LENGTH_SHORT).show()
+            } else {
+                launchExternal(Uri.parse(url))
+            }
+        }
+    }
+
+    // ==================== Simpan file dari web & cetak (jembatan AgsiNative) ====================
+
+    /** Kirim hasil operasi bridge ke web: window.__agsiNativeResult({id, ok, message}) */
+    fun resolveBridge(cbId: String, ok: Boolean, message: String) {
+        val payload = JSONObject().apply {
+            put("id", cbId)
+            put("ok", ok)
+            put("message", message)
+        }
+        val script = "window.__agsiNativeResult && window.__agsiNativeResult(${payload})"
+        val wv = peekWebView()
+        wv?.post { wv.evaluateJavascript(script, null) }
+    }
+
+    /**
+     * Simpan file (base64 dari web) ke folder Unduhan.
+     *  - Android 10+ : MediaStore Downloads → Unduhan/AGSI, tanpa dialog,
+     *    plus toast konfirmasi.
+     *  - Android 8–9 : dialog "Simpan ke" (SAF ACTION_CREATE_DOCUMENT) —
+     *    tanpa izin penyimpanan.
+     */
+    fun saveFileToDownloads(cbId: String, base64: String, fileName: String, mimeType: String) {
+        val bytes = try {
+            Base64.decode(base64, Base64.DEFAULT)
+        } catch (e: Exception) {
+            Log.w(TAG, "Base64 dari web tidak valid", e)
+            resolveBridge(cbId, false, "data file tidak valid")
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 29) {
+            try {
+                val resolver = contentResolver
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/AGSI")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IOException("MediaStore menolak penyimpanan")
+                resolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    ?: throw IOException("Tidak bisa membuka output stream")
+                values.clear()
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+                Toast.makeText(this, getString(R.string.file_saved, fileName), Toast.LENGTH_LONG).show()
+                resolveBridge(cbId, true, fileName)
+            } catch (e: Exception) {
+                Log.w(TAG, "MediaStore gagal — pakai dialog Simpan-ke (SAF)", e)
+                launchSaveFileDialog(cbId, bytes, fileName, mimeType)
+            }
+        } else {
+            launchSaveFileDialog(cbId, bytes, fileName, mimeType)
+        }
+    }
+
+    /** Dialog "Simpan ke" (SAF) — tanpa izin penyimpanan, tersedia sejak API 19. */
+    private fun launchSaveFileDialog(cbId: String, bytes: ByteArray, fileName: String, mimeType: String) {
+        pendingSaveCbId = cbId
+        pendingSaveBytes = bytes
+        pendingSaveMime = mimeType
+        pendingSaveName = fileName
+        try {
+            saveFileLauncher.launch(
+                Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = mimeType
+                    putExtra(Intent.EXTRA_TITLE, fileName)
+                }
+            )
+        } catch (e: ActivityNotFoundException) {
+            pendingSaveCbId = null
+            pendingSaveBytes = null
+            pendingSaveMime = null
+            pendingSaveName = null
+            resolveBridge(cbId, false, "perangkat tidak menyediakan dialog simpan")
+        }
+    }
+
+    /**
+     * Dialog cetak sistem (PrintManager) di atas halaman web yang sedang tampil
+     * — pengganti window.print() yang diabaikan WebView. Kertas memakai aturan
+     * @media print halaman (hanya struk yang tercetak).
+     */
+    fun printPage(cbId: String, title: String) {
+        val wv = webView
+        if (wv == null) {
+            resolveBridge(cbId, false, "halaman tidak siap")
+            return
+        }
+        try {
+            val printManager = getSystemService(Context.PRINT_SERVICE) as PrintManager
+            printManager.print(title, wv.createPrintDocumentAdapter(title), PrintAttributes.Builder().build())
+            resolveBridge(cbId, true, "dialog cetak dibuka")
+        } catch (e: Exception) {
+            Log.w(TAG, "Gagal membuka dialog cetak", e)
+            resolveBridge(cbId, false, "perangkat tidak mendukung cetak")
         }
     }
 

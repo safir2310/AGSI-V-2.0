@@ -21,6 +21,11 @@ import org.json.JSONObject
  *   enableBiometric(cbId: String)   — verifikasi biometrik lalu aktifkan;
  *                                     hasil dilempar ke window.__agsiNativeResult
  *   disableBiometric(): Boolean     — matikan layar buka kunci (true)
+ *   saveFile(cbId, base64, fileName, mimeType) — simpan file dari web (struk
+ *                                     HTML / laporan CSV) ke folder Unduhan;
+ *                                     hasil via window.__agsiNativeResult
+ *   printPage(cbId, title)          — buka dialog cetak sistem (PrintManager)
+ *                                     di atas halaman web; hasil via callback
  *
  * Keamanan: bridge hanya dipasang pada WebView dengan allowlist domain AGSI
  * dan tidak mengekspos data rahasia. Metode biometrik hanya mengubah
@@ -70,14 +75,37 @@ class AgsiNativeBridge(
         return true
     }
 
-    private fun resolve(cbId: String, ok: Boolean, message: String) {
-        val payload = JSONObject().apply {
-            put("id", cbId)
-            put("ok", ok)
-            put("message", message)
+    /**
+     * Simpan file dari web (base64) ke folder Unduhan perangkat. WebView tidak
+     * mendukung unduhan `blob:` — tombol "Simpan" struk & "Ekspor" laporan di
+     * halaman admin memakai metode ini. Hasil dikirim balik via
+     * `window.__agsiNativeResult(cbId, ok, message)`.
+     */
+    @JavascriptInterface
+    fun saveFile(cbId: String, base64: String, fileName: String, mimeType: String) {
+        val activity = hostProvider() ?: return resolve(cbId, false, "aplikasi tidak aktif")
+        activity.main.post {
+            activity.saveFileToDownloads(
+                cbId,
+                base64,
+                fileName.ifBlank { "agsi-file" },
+                mimeType.ifBlank { "application/octet-stream" },
+            )
         }
-        val script = "window.__agsiNativeResult && window.__agsiNativeResult(${payload})"
-        val wv: WebView? = hostProvider()?.peekWebView()
-        wv?.post { wv.evaluateJavascript(script, null) }
+    }
+
+    /**
+     * Buka dialog cetak sistem (PrintManager) untuk halaman web yang sedang
+     * tampil — pengganti window.print() yang diabaikan WebView. Aturan
+     * @media print halaman tetap berlaku, jadi hanya struk yang tercetak.
+     */
+    @JavascriptInterface
+    fun printPage(cbId: String, title: String) {
+        val activity = hostProvider() ?: return resolve(cbId, false, "aplikasi tidak aktif")
+        activity.main.post { activity.printPage(cbId, title.ifBlank { "Struk AGSI" }) }
+    }
+
+    private fun resolve(cbId: String, ok: Boolean, message: String) {
+        hostProvider()?.resolveBridge(cbId, ok, message)
     }
 }
