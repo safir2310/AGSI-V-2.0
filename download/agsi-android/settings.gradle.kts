@@ -7,6 +7,9 @@ pluginManagement {
                 includeGroupByRegex("androidx.*")
             }
         }
+        // Mirror repo.maven.apache.org — meringankan error HTTP 429 (rate
+        // limit) saat jaringan sibuk. Fallback mavenCentral di bawah.
+        maven("https://maven.aliyun.com/repository/public")
         mavenCentral()
         gradlePluginPortal()
     }
@@ -16,8 +19,6 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
-        // Mirror cadangan — bantu koneksi di jaringan yang membatasi
-        // repo.maven.apache.org. Aman dihapus bila tidak dibutuhkan.
         maven("https://maven.aliyun.com/repository/public")
         mavenCentral()
     }

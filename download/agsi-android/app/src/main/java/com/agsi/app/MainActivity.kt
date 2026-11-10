@@ -25,6 +25,7 @@ import android.provider.MediaStore
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
 import android.webkit.PermissionRequest
@@ -135,7 +136,20 @@ class MainActivity : AppCompatActivity() {
     // ==================== Lifecycle ====================
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splash = installSplashScreen()
+        // Sentuhan animasi: splash keluar dengan zoom lembut + fade —
+        // transisi mulus dari logo 3D ke aplikasi (Android 12+; kompat
+        // <12 oleh core-splashscreen).
+        splash.setOnExitAnimationListener { provider ->
+            provider.view.animate()
+                .alpha(0f)
+                .scaleX(1.14f)
+                .scaleY(1.14f)
+                .setDuration(340L)
+                .setInterpolator(DecelerateInterpolator())
+                .withEndAction { provider.remove() }
+                .start()
+        }
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 

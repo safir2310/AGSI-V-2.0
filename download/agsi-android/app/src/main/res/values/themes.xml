@@ -14,10 +14,11 @@
         <item name="android:windowBackground">@color/white</item>
     </style>
 
-    <!-- Splash screen profesional dengan logo AGSI (topi koki + api) -->
+    <!-- Splash screen 3D — logo maskot ayam koki gaya 3D di latar putih,
+         digantikan tema utama dengan animasi keluar halus (MainActivity) -->
     <style name="Theme.AGSI.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/agsi_orange</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="windowSplashScreenBackground">@color/white</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_3d</item>
         <item name="postSplashScreenTheme">@style/Theme.AGSI</item>
     </style>
 </resources>

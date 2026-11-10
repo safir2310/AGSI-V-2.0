@@ -10,11 +10,17 @@ captures/
 .kotlin/
 
 # ==============================================================
-# RAHASIA — JANGAN PERNAH di-commit ke repository publik:
+# KEYSTORE TES — SENGAJA di-commit (repo privat).
+# Ini TEST KEY (lihat README bagian 5): dipakai agar build signed
+# bisa direproduksi di lingkungan CI/sandbox yang datanya mudah
+# hilang. Untuk rilis Play Store: buat keystore PRODUKSI baru,
+# jangan commit, dan simpan dengan aman.
 # ==============================================================
-keystore.properties
+!agsi-release.keystore
+!keystore.properties
 *.jks
 *.keystore
+!agsi-release.keystore
 *.pem
 *.p12
 
