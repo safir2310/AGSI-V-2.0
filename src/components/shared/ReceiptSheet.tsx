@@ -6,6 +6,12 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Download, Printer, X } from "lucide-react";
 import type { OrderData } from "@/lib/types";
 import { STORE_ADDRESS, STORE_PHONE } from "@/lib/store-info";
+import {
+  nativePrintPage,
+  nativePrintSupported,
+  nativeSaveFile,
+  nativeSaveSupported,
+} from "@/lib/native-file";
 
 /**
  * Sheet "Cetak Struk" (admin) — pratinjau struk gaya kertas termal lalu
@@ -256,6 +262,13 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
       "Simpan sebagai PDF" di dialog print otomatis bernama kode struk. */
   const printReceipt = () => {
     if (!order) return;
+    // Di aplikasi Android: window.print() diabaikan WebView — pakai dialog
+    // cetak sistem (PrintManager) lewat jembatan native. Aturan @media print
+    // tetap berlaku sehingga hanya struk yang tercetak.
+    if (nativePrintSupported()) {
+      void nativePrintPage(`Struk ${order.code}`);
+      return;
+    }
     try {
       const prevTitle = document.title;
       document.title = `Struk ${order.code}`;
@@ -279,6 +292,18 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
   const downloadReceipt = () => {
     if (!order || !d) return;
     const name = strukFileName(d.code);
+    // Di aplikasi Android: WebView tidak bisa mengunduh blob: (dulu berujung
+    // toast "Tidak ada aplikasi yang bisa membuka tautan ini") — tulis file
+    // langsung ke folder Unduhan lewat jembatan native.
+    if (nativeSaveSupported()) {
+      void nativeSaveFile(buildStrukFileHtml(d), name, "text/html").then((res) => {
+        if (!res.ok) return; // dibatalkan/gagal → tanpa umpan balik palsu
+        if (savedTimer.current) clearTimeout(savedTimer.current);
+        setSavedAs(name);
+        savedTimer.current = setTimeout(() => setSavedAs(null), 4000);
+      });
+      return;
+    }
     try {
       const blob = new Blob([buildStrukFileHtml(d)], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);

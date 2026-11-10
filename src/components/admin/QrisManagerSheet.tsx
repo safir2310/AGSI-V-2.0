@@ -23,6 +23,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/lib/api";
 import { useNoticeStore } from "@/lib/store";
+import { nativeSaveFile, nativeSaveSupported } from "@/lib/native-file";
 import { formatDateTime } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -287,11 +288,32 @@ export function QrisManagerSheet({ open, onClose }: QrisManagerSheetProps) {
         .join(";")
     );
     const csv = "\uFEFF" + head.map(esc).join(";") + "\n" + lines.join("\n");
+    const name = `qris-transaksi-${new Date().toISOString().slice(0, 10)}.csv`;
+    // Di aplikasi Android: unduhan blob: tidak didukung WebView — simpan file
+    // langsung ke folder Unduhan lewat jembatan native.
+    if (nativeSaveSupported()) {
+      void nativeSaveFile(csv, name, "text/csv").then((res) => {
+        if (res.ok) {
+          showNotice({
+            type: "success",
+            title: "CSV Terunduh ✓",
+            message: `${rows.length} transaksi QRIS diekspor ke berkas ${name} (folder Unduhan).`,
+          });
+        } else if (res.message !== "dibatalkan" && res.message !== "timeout") {
+          showNotice({
+            type: "error",
+            title: "Ekspor Gagal",
+            message: res.message || "Gagal menyimpan berkas CSV.",
+          });
+        }
+      });
+      return;
+    }
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `qris-transaksi-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = name;
     a.click();
     URL.revokeObjectURL(url);
     showNotice({

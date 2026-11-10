@@ -20,6 +20,7 @@ import { useNoticeStore } from "@/lib/store";
 import { apiFetch } from "@/lib/api";
 import { formatIDR } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { nativeSaveFile, nativeSaveSupported } from "@/lib/native-file";
 
 type ReportData = {
   summary: {
@@ -80,11 +81,32 @@ export function ReportsView() {
       ...data.daily.map((d) => [d.label, String(d.revenue), String(d.orders)]),
     ];
     const csv = rows.map((r) => r.join(";")).join("\n");
+    const name = `laporan-agsi-${days}-hari.csv`;
+    // Di aplikasi Android: unduhan blob: tidak didukung WebView — simpan file
+    // langsung ke folder Unduhan lewat jembatan native.
+    if (nativeSaveSupported()) {
+      void nativeSaveFile("\uFEFF" + csv, name, "text/csv").then((res) => {
+        if (res.ok) {
+          showNotice({
+            type: "success",
+            title: "Laporan Diekspor ✓",
+            message: `File ${name} tersimpan di folder Unduhan. Bisa dibuka di Excel / Google Sheets.`,
+          });
+        } else if (res.message !== "dibatalkan" && res.message !== "timeout") {
+          showNotice({
+            type: "error",
+            title: "Ekspor Gagal",
+            message: res.message || "Gagal menyimpan file laporan.",
+          });
+        }
+      });
+      return;
+    }
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `laporan-agsi-${days}-hari.csv`;
+    a.download = name;
     a.click();
     URL.revokeObjectURL(url);
     showNotice({
