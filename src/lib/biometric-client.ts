@@ -355,11 +355,18 @@ export function enableAppBiometric(): Promise<{ ok: boolean; message: string }> 
       __agsiNativeResult?: (payload: { id: string; ok: boolean; message: string }) => void;
     };
     const prev = w.__agsiNativeResult;
-    // Pengaman: jangan gantung selamanya bila aplikasi tidak membalas
+    // Pengaman: jangan gantung selamanya bila aplikasi tidak membalas.
+    // 20 detik cukup — bila dialog verifikasi native benar-benar muncul,
+    // ia muncul seketika; diam lebih lama = bug aplikasi lama (v1.2.1-) di
+    // mana BiometricPrompt gagal tampil tanpa memanggil balik.
     const timeout = setTimeout(() => {
       w.__agsiNativeResult = prev;
-      resolve({ ok: false, message: "Waktu tunggu habis. Tutup sheet lalu coba lagi ya." });
-    }, 120_000);
+      resolve({
+        ok: false,
+        message:
+          "Dialog verifikasi Face ID / sidik jari tidak muncul. Pastikan kamu memakai aplikasi AGSI versi terbaru (1.2.2+), lalu buka ulang aplikasi dan coba lagi.",
+      });
+    }, 20_000);
     w.__agsiNativeResult = (payload) => {
       if (!payload || payload.id !== cbId) {
         prev?.(payload);

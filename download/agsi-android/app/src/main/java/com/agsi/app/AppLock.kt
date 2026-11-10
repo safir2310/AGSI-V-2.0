@@ -112,6 +112,9 @@ object AppLock {
             .setSubtitle(subtitle)
             .setNegativeButtonText(negativeText)
             .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+            // Wajah (biometrik pasif) langsung terverifikasi tanpa konfirmasi
+            // tambahan — satu pindai cukup untuk buka kunci / aktivasi.
+            .setConfirmationRequired(false)
             .build()
         prompt.authenticate(info)
     }
