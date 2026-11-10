@@ -170,6 +170,10 @@ model Order {
   // Alasan penyedia utama ditolak (mis. "Access denied") — jejak transparansi
   // agar pemilik tahu QR tampilan berasal dari fallback uji, bukan penyedia nyata.
   qrisFallbackReason String?
+  // Deklarasi manual pembayaran QRIS statis oleh pelanggan/kasir
+  // (POST /api/orders/[id]/qris/declare). NULL = lunas lewat webhook
+  // gateway (verifikasi otomatis), bukan deklarasi manual.
+  qrisDeclaredAt DateTime?
   // ===== Jejak pelunasan =====
   paidAt        DateTime? // Waktu uang benar-benar masuk / tunai diterima
   paidVia       String? // AUTO (sistem QRIS) | CASH (kasir menerima tunai)
