@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">AYAM GEPREK SAMBAL IJO</string>
+    <string name="app_name">AGSI</string>
 
     <!-- Halaman offline -->
     <string name="offline_title">Koneksi Terputus</string>

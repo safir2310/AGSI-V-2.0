@@ -1,13 +1,17 @@
-<resources>
-    <!-- Tema aplikasi — edge-to-edge, bilah status transparan (oranye) -->
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Tema aplikasi — edge-to-edge dengan bilah status & navigasi PUTIH
+         (ikon sistem gelap). Pada Android 15+ warna bilah dari tema diabaikan
+         (edge-to-edge wajib), latar putih dicetak oleh windowBackground +
+         background root yang mengisi area inset. -->
     <style name="Theme.AGSI" parent="Theme.Material3.Light.NoActionBar">
         <item name="colorPrimary">@color/agsi_orange</item>
         <item name="colorOnPrimary">@color/white</item>
         <item name="colorSecondary">@color/agsi_green</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">@color/white</item>
+        <item name="android:navigationBarColor">@color/white</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowBackground">@color/agsi_orange</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">true</item>
+        <item name="android:windowBackground">@color/white</item>
     </style>
 
     <!-- Splash screen profesional dengan logo AGSI (topi koki + api) -->
