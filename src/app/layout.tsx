@@ -84,6 +84,18 @@ const ENV_GUARD_SCRIPT = `(function(){
   } catch (_) {}
 })();`;
 
+/** Penanda mode aplikasi Android AGSI: UA mengandung "AGSIAndroidApp" (dari
+ *  app/src/main/java/com/agsi/app/MainActivity.kt). Kelas dipasang SEBELUM
+ *  render supaya CSS mode aplikasi (.agsi-app di globals.css — antara lain
+ *  menurunkan tab navigasi bawah) tidak berkedip saat halaman dimuat. */
+const APP_MODE_SCRIPT = `(function(){
+  try {
+    if (/AGSIAndroidApp/i.test(navigator.userAgent)) {
+      document.documentElement.classList.add("agsi-app");
+    }
+  } catch (_) {}
+})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -93,6 +105,7 @@ export default function RootLayout({
     <html lang="id" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: ENV_GUARD_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: APP_MODE_SCRIPT }} />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}

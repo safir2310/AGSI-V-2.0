@@ -157,6 +157,15 @@
   .pb-nav-offset {
     padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
   }
+  /* ===== Mode aplikasi Android AGSI (WebView) =====
+     Kelas .agsi-app dipasang oleh skrip inline di <head> layout saat UA
+     mengandung "AGSIAndroidApp". Di dalam aplikasi tidak ada address bar,
+     jadi tab navigasi mengambang diturunkan sedikit — jarak bawah pill
+     dirapatkan dari 12px ke 4px supaya lebih dekat tepi layar (menyesuaikan
+     sistem bar HP). Browser biasa tidak terpengaruh. */
+  .agsi-app nav[data-app-nav] > div {
+    padding-bottom: 4px !important;
+  }
   /* Teks gradasi orange khas merek */
   .text-gradient-brand {
     background: linear-gradient(135deg, #C2410C 0%, #F97316 45%, #FB923C 100%);

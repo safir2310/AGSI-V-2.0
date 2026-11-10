@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- File sementara hasil jepretan kamera untuk input upload -->
+    <cache-path
+        name="camera"
+        path="images/" />
+</paths>

@@ -66,6 +66,7 @@ export function BottomNav({ variant, active, onSelect, pendingCount = 0 }: Botto
     <nav
       aria-label={variant === "customer" ? "Navigasi utama pelanggan" : "Navigasi utama admin"}
       className="pointer-events-none fixed inset-x-0 bottom-0 z-50"
+      data-app-nav=""
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <div className="pointer-events-auto mx-auto max-w-xl px-4 pb-3">

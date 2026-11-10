@@ -1,0 +1,22 @@
+*.iml
+.gradle/
+/local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild
+.cxx
+.kotlin/
+
+# ==============================================================
+# RAHASIA — JANGAN PERNAH di-commit ke repository publik:
+# ==============================================================
+keystore.properties
+*.jks
+*.keystore
+*.pem
+*.p12
+
+# Konfigurasi Firebase (berisi ID publik, tetap di-ignore sebagai kebiasaan aman)
+app/google-services.json

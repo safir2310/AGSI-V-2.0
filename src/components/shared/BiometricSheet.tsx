@@ -24,15 +24,20 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import {
+  appBiometricStatus,
+  disableAppBiometric,
+  enableAppBiometric,
   biometricEnvironment,
   deleteBiometricCredential,
   listBiometricCredentials,
   registerBiometric,
   setBiometricEmail,
+  type AppBiometricStatus,
   type BiometricCredentialInfo,
   type BiometricEnvStatus,
 } from "@/lib/biometric-client";
 import { useNoticeStore } from "@/lib/store";
+import { cn } from "@/lib/utils";
 import type { AppUser } from "@/lib/types";
 
 export type BiometricSheetProps = {
@@ -42,6 +47,157 @@ export type BiometricSheetProps = {
 };
 
 type Availability = "checking" | BiometricEnvStatus;
+
+/**
+ * Panel mode APLIKASI ANDROID — biometrik ditangani native aplikasi
+ * (BiometricPrompt: Face ID / sidik jari) lewat jembatan window.AgsiNative.
+ * Tampilannya mengikuti identitas sheet: kartu gradasi orange + tombol besar.
+ */
+function AppBiometricPanel() {
+  const showNotice = useNoticeStore((s) => s.show);
+  const [status, setStatus] = useState<AppBiometricStatus>(() => appBiometricStatus());
+  const [loading, setLoading] = useState(false);
+
+  const refresh = () => setStatus(appBiometricStatus());
+
+  const handleEnable = async () => {
+    setLoading(true);
+    try {
+      const res = await enableAppBiometric();
+      refresh();
+      if (res.ok) {
+        showNotice({
+          type: "success",
+          mascot: true,
+          title: "Biometrik Aktif! 🔒",
+          message:
+            "Berikutnya buka aplikasi AGSI cukup dengan pemindaian wajah (Face ID) atau sidik jari.",
+        });
+      } else if (res.message === "dibatalkan") {
+        showNotice({
+          type: "info",
+          title: "Dibatalkan",
+          message: "Aktivasi biometrik tidak jadi dilakukan. Coba lagi kapan saja ya.",
+        });
+      } else {
+        showNotice({
+          type: "error",
+          title: "Gagal Aktifkan",
+          message: res.message,
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDisable = () => {
+    showNotice({
+      type: "confirm",
+      title: "Matikan Masuk Biometrik?",
+      message:
+        "Aplikasi akan kembali dibuka tanpa layar buka kunci — sesi login tetap tersimpan. Kamu bisa mengaktifkannya lagi kapan saja di sini.",
+      actions: [
+        { label: "Batal" },
+        {
+          label: "Ya, Matikan",
+          variant: "destructive",
+          onClick: () => {
+            disableAppBiometric();
+            refresh();
+            showNotice({
+              type: "success",
+              title: "Biometrik Dimatikan",
+              message: "Layar buka kunci Face ID / sidik jari sudah dinonaktifkan di aplikasi.",
+            });
+          },
+        },
+      ],
+    });
+  };
+
+  if (status.available !== "ok") {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <div className="flex items-center gap-2 text-amber-700">
+          <TriangleAlert className="h-4 w-4 shrink-0" />
+          <p className="text-sm font-black">
+            {status.available === "not_enrolled" ? "Sensor Belum Terdaftar" : "Sensor Tidak Tersedia"}
+          </p>
+        </div>
+        <p className="mt-2 text-[12px] leading-relaxed text-amber-800">
+          {status.available === "not_enrolled"
+            ? "Daftarkan sidik jari / wajah di Pengaturan HP (Keamanan & layar kunci) terlebih dulu, lalu kembali ke aplikasi AGSI dan coba lagi."
+            : "Perangkat ini tidak memiliki sensor sidik jari / pemindaian wajah, jadi masuk biometrik tidak tersedia."}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Kartu status — dua metode: Face ID & Sidik Jari */}
+      <div className="rounded-2xl border border-orange-200 bg-gradient-to-b from-orange-50 to-white p-4 text-center">
+        <span className="mx-auto flex items-center justify-center -space-x-2">
+          <span className="z-10 flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-100 text-orange-600 ring-2 ring-white">
+            <ScanFace className="h-6 w-6" />
+          </span>
+          <span className="z-10 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-600 ring-2 ring-white">
+            <Fingerprint className="h-6 w-6" />
+          </span>
+        </span>
+        <p className="mt-3 text-sm font-black text-neutral-800">Face ID &amp; Sidik Jari</p>
+        <p
+          className={cn(
+            "mx-auto mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-black",
+            status.enabled
+              ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+              : "bg-neutral-100 text-neutral-500 ring-1 ring-neutral-200"
+          )}
+        >
+          <ShieldCheck className="h-3.5 w-3.5" />
+          {status.enabled ? "AKTIF — layar buka kunci menyala saat aplikasi dibuka" : "BELUM AKTIF"}
+        </p>
+        <p className="mt-2 text-[11px] leading-relaxed text-neutral-500">
+          Saat aktif, setiap aplikasi AGSI dibuka akan muncul layar buka kunci —
+          cukup pindai wajah atau sidik jari untuk masuk dengan sesi yang aman.
+          Kalau pindaiannya gagal, tetap bisa lanjut masuk dengan kata sandi.
+        </p>
+        <button
+          type="button"
+          onClick={status.enabled ? handleDisable : () => void handleEnable()}
+          disabled={loading}
+          className={cn(
+            "press-effect mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-black text-white shadow-lg transition disabled:opacity-60",
+            status.enabled
+              ? "bg-neutral-700 shadow-neutral-700/25 hover:bg-neutral-800"
+              : "bg-orange-600 shadow-orange-500/30 hover:bg-orange-700"
+          )}
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : status.enabled ? (
+            "Matikan Face ID / Sidik Jari"
+          ) : (
+            <>
+              <ScanFace className="h-5 w-5" /> Aktifkan Face ID / Sidik Jari
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Catatan keamanan */}
+      <div className="mt-4 flex items-start gap-2 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3.5">
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+        <p className="text-[11px] leading-relaxed text-emerald-800">
+          Aman: sidik jari / wajahmu <b>tidak pernah dikirim</b> ke server AGSI —
+          verifikasi terjadi langsung di perangkat (BiometricPrompt Android).
+          Statusnya tersimpan per perangkat dan bisa diubah kapan saja di sini.
+        </p>
+      </div>
+    </>
+  );
+}
 
 function formatTanggal(iso: string): string {
   try {
@@ -216,6 +372,8 @@ export function BiometricSheet({ open, onClose, user }: BiometricSheetProps) {
                 <div className="flex items-center justify-center gap-2 rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-8 text-sm font-semibold text-orange-700">
                   <Loader2 className="h-4 w-4 animate-spin" /> Memeriksa perangkat…
                 </div>
+              ) : availability === "app" ? (
+                <AppBiometricPanel />
               ) : availability === "embedded" ? (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                   <div className="flex items-center gap-2 text-amber-700">

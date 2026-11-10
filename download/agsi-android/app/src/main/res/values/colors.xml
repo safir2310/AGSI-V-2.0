@@ -1,0 +1,9 @@
+<resources>
+    <!-- Identitas AGSI: orange cerah + putih + hijau sambal -->
+    <color name="agsi_orange">#F97316</color>
+    <color name="agsi_orange_dark">#EA580C</color>
+    <color name="agsi_green">#16A34A</color>
+    <color name="white">#FFFFFF</color>
+    <color name="agsi_neutral_900">#1F2937</color>
+    <color name="agsi_neutral_600">#6B7280</color>
+</resources>

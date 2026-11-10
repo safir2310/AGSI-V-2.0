@@ -1,0 +1,19 @@
+<resources>
+    <!-- Tema aplikasi — edge-to-edge, bilah status transparan (oranye) -->
+    <style name="Theme.AGSI" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/agsi_orange</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/agsi_green</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">@color/agsi_orange</item>
+    </style>
+
+    <!-- Splash screen profesional dengan logo AGSI (topi koki + api) -->
+    <style name="Theme.AGSI.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/agsi_orange</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.AGSI</item>
+    </style>
+</resources>

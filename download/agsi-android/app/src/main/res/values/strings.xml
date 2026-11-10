@@ -1,0 +1,60 @@
+<resources>
+    <string name="app_name">AYAM GEPREK SAMBAL IJO</string>
+
+    <!-- Halaman offline -->
+    <string name="offline_title">Koneksi Terputus</string>
+    <string name="offline_message">Tidak dapat menghubungi server AGSI. Periksa koneksi internet Anda, lalu coba lagi.</string>
+    <string name="offline_server">Server AGSI sedang bermasalah. Coba lagi beberapa saat.</string>
+    <string name="offline_retry">Coba Lagi</string>
+    <string name="webview_recovered">Menyiapkan ulang tampilan…</string>
+
+    <!-- Popup pembayaran -->
+    <string name="popup_title">Jendela Pembayaran</string>
+
+    <!-- Upload file -->
+    <string name="file_chooser_title">Pilih foto</string>
+    <string name="file_chooser_none">Galeri/kamera tidak tersedia di perangkat ini</string>
+
+    <!-- Tautan eksternal -->
+    <string name="no_app_for_link">Tidak ada aplikasi yang bisa membuka tautan ini</string>
+
+    <!-- SSL -->
+    <string name="ssl_error_title">Koneksi Tidak Aman</string>
+    <string name="ssl_error_message">Sertifikat keamanan server tidak valid (kode %1$d). Untuk keamanan data Anda, halaman tidak dibuka. Periksa koneksi/Wi-Fi (mis. captive portal) lalu coba lagi.</string>
+    <string name="ssl_error_close">Tutup</string>
+
+    <!-- Unduhan -->
+    <string name="download_desc">Mengunduh berkas dari AGSI</string>
+    <string name="download_started">Unduhan dimulai</string>
+
+    <!-- Notifikasi -->
+    <string name="notification_channel_name">Pesanan &amp; Notifikasi AGSI</string>
+    <string name="notification_channel_desc">Notifikasi pesanan baru, status masakan, pembayaran, dan chat CS</string>
+
+    <!-- Layar buka kunci biometrik (Face ID / sidik jari) -->
+    <string name="lock_subtitle">Masuk cepat dengan sidik jari / wajah</string>
+    <string name="lock_verify">Verifikasi untuk membuka aplikasi</string>
+    <string name="lock_retry">Coba Verifikasi Lagi</string>
+    <string name="lock_password">Masuk dengan Kata Sandi</string>
+    <string name="lock_hint">Sesi login dilindungi kunci keamanan perangkat 🔒</string>
+    <string name="lock_failed_toast">Verifikasi belum berhasil — coba lagi atau masuk dengan kata sandi</string>
+    <string name="lock_prompt_title">Buka Aplikasi AGSI</string>
+    <string name="lock_prompt_subtitle">Verifikasi sidik jari atau wajah untuk melanjutkan</string>
+    <string name="lock_prompt_negative">Batal</string>
+    <string name="lock_password_confirm_title">Keluar dari Sesi Ini?</string>
+    <string name="lock_password_confirm_message">Lanjut masuk dengan kata sandi akan menghapus sesi login saat ini. Kamu perlu login ulang dengan email &amp; kode OTP.</string>
+    <string name="lock_password_confirm_ok">Ya, Masuk Ulang</string>
+    <string name="lock_password_confirm_cancel">Batal</string>
+
+    <!-- Tawaran & aktivasi biometrik -->
+    <string name="biometric_enabled_toast">Face ID / sidik jari aktif untuk aplikasi 🎉</string>
+    <string name="biometric_enable_prompt_title">Aktifkan Masuk Biometrik</string>
+    <string name="biometric_enable_prompt_subtitle">Verifikasi sidik jari / wajah untuk mengaktifkan layar buka kunci</string>
+    <string name="biometric_enable_prompt_negative">Batal</string>
+    <string name="biometric_offer_title">Masuk cepat dengan sidik jari?</string>
+    <string name="biometric_offer_message">Aktifkan layar buka kunci biometrik — berikutnya buka aplikasi cukup dengan Face ID / sidik jari, sesi loginmu tetap tersimpan aman. Bisa diubah kapan saja di Profil → Login Biometrik.</string>
+    <string name="biometric_offer_later">Nanti</string>
+    <string name="biometric_offer_enable">Aktifkan</string>
+    <string name="biometric_not_enrolled">Daftarkan sidik jari / wajah di Pengaturan HP (Keamanan &amp; Layar Kunci) terlebih dulu ya</string>
+    <string name="biometric_no_hardware">Perangkat ini tidak memiliki sensor sidik jari / wajah</string>
+</resources>

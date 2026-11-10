@@ -51,12 +51,15 @@ function detectEmbeddedFrame(): boolean {
   return true;
 }
 
-export type BiometricEnvStatus = "ok" | "embedded" | "insecure" | "unsupported";
+export type BiometricEnvStatus = "ok" | "embedded" | "insecure" | "unsupported" | "app";
 
 /** Periksa kesiapan lengkap perangkat + konteks halaman untuk WebAuthn. */
 export async function biometricEnvironment(): Promise<BiometricEnvStatus> {
   try {
     if (typeof window === "undefined") return "unsupported";
+    // Di dalam aplikasi Android AGSI (WebView), biometrik ditangani NATIVE
+    // lewat jembatan window.AgsiNative (BiometricPrompt) — bukan WebAuthn.
+    if (appBiometricBridge()) return "app";
     // WebAuthn hanya ada di secure context (HTTPS / localhost)
     if (!window.isSecureContext) return "insecure";
     if (detectEmbeddedFrame()) return "embedded";
@@ -75,6 +78,8 @@ export async function biometricAvailable(): Promise<boolean> {
 /** Pesan ramah per status lingkungan */
 export function biometricEnvMessage(status: BiometricEnvStatus): string {
   switch (status) {
+    case "app":
+      return "Kamu sedang memakai aplikasi Android AGSI — masuk biometrik di sini ditangani langsung oleh aplikasi (Face ID / sidik jari), bukan WebAuthn browser.";
     case "embedded":
       return "Aplikasi sedang dibuka di dalam jendela tersemat (mis. panel pratinjau), jadi browser memblokir dialog biometrik. Buka aplikasi di tab browser penuh (Chrome/Safari), login seperti biasa, lalu aktifkan biometrik dari menu Profil.";
     case "insecure":
@@ -277,6 +282,104 @@ export async function startBiometricAutofill(
     }
   } catch {
     // Pasif: batal / tidak didukung / tanpa passkey tersimpan → diam saja.
+  }
+}
+
+/* ================= MODE APLIKASI ANDROID (JEMBATAN NATIVE) =================
+ *
+ * Di dalam aplikasi Android AGSI, WebAuthn TIDAK tersedia (WebView tidak
+ * mendukung navigator.credentials) — tapi aplikasi menyediakan layar buka
+ * kunci biometrik NATIVE (BiometricPrompt: Face ID / sidik jari) yang jauh
+ * lebih mulus: sesi login tersimpan aman, dan setiap aplikasi dibuka cukup
+ * dipindai. Pengaturannya ada di Profil → Login Biometrik melalui bridge.
+ *
+ * Kontrak dengan app/src/main/java/com/agsi/app/AgsiNativeBridge.kt:
+ *  - AgsiNative.isBiometricAvailable(): "ok" | "not_enrolled" | "no_hardware"
+ *  - AgsiNative.isBiometricEnabled(): boolean
+ *  - AgsiNative.enableBiometric(cbId)  → hasil via window.__agsiNativeResult
+ *  - AgsiNative.disableBiometric(): boolean
+ */
+
+type AppBiometricBridge = {
+  isBiometricAvailable?: () => string;
+  isBiometricEnabled?: () => boolean;
+  enableBiometric?: (cbId: string) => void;
+  disableBiometric?: () => boolean;
+};
+
+/** Ambil jembatan biometrik native — hanya ada di aplikasi Android v1.1.0+ */
+function appBiometricBridge(): AppBiometricBridge | null {
+  if (typeof window === "undefined") return null;
+  const b = (window as unknown as { AgsiNative?: unknown }).AgsiNative;
+  if (!b || typeof b !== "object") return null;
+  const bridge = b as AppBiometricBridge;
+  // Guard versi: aplikasi lama (sebelum 1.1.0) tidak punya metode biometrik
+  if (typeof bridge.isBiometricAvailable !== "function") return null;
+  return bridge;
+}
+
+export type AppBiometricStatus = {
+  inApp: boolean;
+  available: "ok" | "not_enrolled" | "no_hardware";
+  enabled: boolean;
+};
+
+/** Status layar buka kunci biometrik di aplikasi (sinkron, tanpa await) */
+export function appBiometricStatus(): AppBiometricStatus {
+  const bridge = appBiometricBridge();
+  if (!bridge) return { inApp: false, available: "no_hardware", enabled: false };
+  let available: AppBiometricStatus["available"] = "no_hardware";
+  let enabled = false;
+  try {
+    available = (bridge.isBiometricAvailable?.() ?? "no_hardware") as AppBiometricStatus["available"];
+    enabled = bridge.isBiometricEnabled?.() ?? false;
+  } catch {
+    // bridge error → anggap tidak siap
+  }
+  return { inApp: true, available, enabled };
+}
+
+/** Aktifkan biometrik di aplikasi — dialog verifikasi native, hasil via callback */
+export function enableAppBiometric(): Promise<{ ok: boolean; message: string }> {
+  const bridge = appBiometricBridge();
+  const nativeEnable = bridge?.enableBiometric;
+  if (!nativeEnable) {
+    return Promise.resolve({
+      ok: false,
+      message: "Perbarui aplikasi AGSI ke versi terbaru untuk memakai fitur ini.",
+    });
+  }
+  return new Promise((resolve) => {
+    const cbId = `cb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const w = window as unknown as {
+      __agsiNativeResult?: (payload: { id: string; ok: boolean; message: string }) => void;
+    };
+    const prev = w.__agsiNativeResult;
+    // Pengaman: jangan gantung selamanya bila aplikasi tidak membalas
+    const timeout = setTimeout(() => {
+      w.__agsiNativeResult = prev;
+      resolve({ ok: false, message: "Waktu tunggu habis. Tutup sheet lalu coba lagi ya." });
+    }, 120_000);
+    w.__agsiNativeResult = (payload) => {
+      if (!payload || payload.id !== cbId) {
+        prev?.(payload);
+        return;
+      }
+      clearTimeout(timeout);
+      w.__agsiNativeResult = prev;
+      resolve({ ok: !!payload.ok, message: payload.message ?? "" });
+    };
+    nativeEnable(cbId);
+  });
+}
+
+/** Matikan biometrik di aplikasi (langsung, tanpa dialog) */
+export function disableAppBiometric(): boolean {
+  const bridge = appBiometricBridge();
+  try {
+    return bridge?.disableBiometric?.() ?? false;
+  } catch {
+    return false;
   }
 }
 

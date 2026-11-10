@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/agsi_orange">
+
+    <!-- Loading indicator tipis di atas halaman -->
+    <ProgressBar
+        android:id="@+id/progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="4dp"
+        android:max="100"
+        android:visibility="gone"
+        android:progressTint="@color/agsi_orange_dark"
+        android:progressBackgroundTint="@color/white" />
+
+    <FrameLayout
+        android:id="@+id/content_slot"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <!-- Halaman offline (jaringan terputus / server 5xx) -->
+        <LinearLayout
+            android:id="@+id/offline_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="32dp"
+            android:background="@color/white"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🍗"
+                android:textSize="56sp"
+                android:contentDescription="@string/offline_title" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/offline_title"
+                android:textColor="@color/agsi_neutral_900"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/offline_detail"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:text="@string/offline_message"
+                android:textColor="@color/agsi_neutral_600"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_retry"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:backgroundTint="@color/agsi_orange"
+                android:text="@string/offline_retry"
+                android:textColor="@color/white" />
+        </LinearLayout>
+
+        <!-- Overlay popup window.open (pembayaran) -->
+        <FrameLayout
+            android:id="@+id/popup_slot"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <!-- Layar buka kunci biometrik (Face ID / sidik jari) — menutupi semua -->
+    <FrameLayout
+        android:id="@+id/lock_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/lock_bg"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="32dp">
+
+            <ImageView
+                android:layout_width="104dp"
+                android:layout_height="104dp"
+                android:contentDescription="@string/app_name"
+                android:src="@mipmap/ic_launcher" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="@string/app_name"
+                android:textColor="@color/white"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/lock_subtitle"
+                android:textColor="#FFEDD5"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="32dp"
+                android:text="@string/lock_verify"
+                android:textColor="@color/white"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btn_lock_retry"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:backgroundTint="@color/white"
+                android:text="@string/lock_retry"
+                android:textColor="@color/agsi_orange_dark" />
+
+            <Button
+                android:id="@+id/btn_lock_password"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/lock_password"
+                android:textColor="@color/white" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="@string/lock_hint"
+                android:textColor="#FFD9AE"
+                android:textSize="11sp" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>
