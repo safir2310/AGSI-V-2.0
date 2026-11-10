@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   BarChart3,
@@ -62,6 +63,28 @@ export function BottomNav({ variant, active, onSelect, pendingCount = 0 }: Botto
   const prefersReduced = useReducedMotion();
   const cartCount = useCartStore((s) => s.items.reduce((sum, i) => sum + i.qty, 0));
 
+  // ===== SEMBUNYI-MUNCUL OTOMATIS MENGIKUTI ARAH SCROLL =====
+  // Scroll ke bawah → pill meluncur turun (menutupi ke balik Navigation Bar
+  // sistem di aplikasi, keluar layar di browser). Scroll ke atas → muncul
+  // lagi. Spring + opacity supaya geraknya terasa LANCAR & hidup.
+  const [hidden, setHidden] = useState(false);
+  const lastY = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (prefersReduced) return;
+    const onScroll = () => {
+      const y = window.scrollY;
+      // Acuan awal: event pertama hanya mencatat posisi (dy = 0)
+      const prev = lastY.current ?? y;
+      const dy = y - prev;
+      lastY.current = y;
+      if (dy > 5 && y > 90) setHidden(true);
+      else if (dy < -5) setHidden(false);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [prefersReduced]);
+
   return (
     <nav
       aria-label={variant === "customer" ? "Navigasi utama pelanggan" : "Navigasi utama admin"}
@@ -69,7 +92,22 @@ export function BottomNav({ variant, active, onSelect, pendingCount = 0 }: Botto
       data-app-nav=""
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
-      <div className="pointer-events-auto mx-auto max-w-xl px-4 pb-3">
+      <motion.div
+        initial={false}
+        animate={
+          prefersReduced
+            ? { y: 0, opacity: 1 }
+            : hidden
+              ? { y: 116, opacity: 0, scale: 0.96 }
+              : { y: 0, opacity: 1, scale: 1 }
+        }
+        transition={{ type: "spring", stiffness: 340, damping: 32 }}
+        className={cn(
+          "mx-auto max-w-xl px-4 pb-3",
+          hidden ? "pointer-events-none" : "pointer-events-auto"
+        )
+        }
+      >
         {/* ===== PILL KACA MENGAMBANG ===== */}
         <div
           className={cn(
@@ -98,7 +136,12 @@ export function BottomNav({ variant, active, onSelect, pendingCount = 0 }: Botto
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => onSelect(item.id)}
+                  onClick={() => {
+                    // Ganti tab → nav selalu muncul lagi & acuan scroll segar
+                    lastY.current = null;
+                    setHidden(false);
+                    onSelect(item.id);
+                  }}
                   aria-current={isActive ? "page" : undefined}
                   aria-label={item.label}
                   className="group relative flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-[1.6rem] px-0.5 outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
@@ -173,7 +216,7 @@ export function BottomNav({ variant, active, onSelect, pendingCount = 0 }: Botto
             })}
           </div>
         </div>
-      </div>
+      </motion.div>
     </nav>
   );
 }

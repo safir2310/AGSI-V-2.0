@@ -161,14 +161,14 @@
      Kelas .agsi-app dipasang oleh skrip inline di <head> layout saat UA
      mengandung "AGSIAndroidApp". Di dalam aplikasi tidak ada address bar:
      viewport web berakhir tepat di atas Navigation Bar sistem (padding
-     inset native), sehingga pill navigasi dibuat FIXED menempel RAPAT
-     (0px tanpa jarak) dengan Navigation Bar bawaan HP. Browser biasa
+     inset native). Pill navigasi diberi JARAK KECIL (8px) dari Navigation
+     Bar bawaan HP — tampak mengambang tapi tetap dekat. Browser biasa
      tidak terpengaruh. */
   .agsi-app nav[data-app-nav] {
     padding-bottom: 0px !important;
   }
   .agsi-app nav[data-app-nav] > div {
-    padding-bottom: 0px !important;
+    padding-bottom: 8px !important;
   }
   /* Teks gradasi orange khas merek */
   .text-gradient-brand {
