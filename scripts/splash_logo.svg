@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-45 -45 290 290" width="960" height="960">
+  <defs>
+    <radialGradient id="agsi-chicken-body" cx="36%" cy="28%" r="90%">
+      <stop offset="0%" stop-color="#FFD591"/>
+      <stop offset="26%" stop-color="#FDBA74"/>
+      <stop offset="62%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#E0570A"/>
+    </radialGradient>
+    <radialGradient id="agsi-chicken-head" cx="36%" cy="26%" r="92%">
+      <stop offset="0%" stop-color="#FFE6BD"/>
+      <stop offset="30%" stop-color="#FDBA74"/>
+      <stop offset="68%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#EA580C"/>
+    </radialGradient>
+    <linearGradient id="agsi-chicken-wing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#C2410C"/>
+    </linearGradient>
+    <linearGradient id="agsi-chicken-belly" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFBF5"/>
+      <stop offset="100%" stop-color="#FFEDD5"/>
+    </linearGradient>
+    <linearGradient id="agsi-chicken-hat" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E7EDF3"/>
+    </linearGradient>
+    <linearGradient id="agsi-chicken-beak" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FCD34D"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="agsi-chicken-wattle" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FB7185"/>
+      <stop offset="100%" stop-color="#E11D48"/>
+    </linearGradient>
+    <linearGradient id="agsi-chicken-green" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4ADE80"/>
+      <stop offset="100%" stop-color="#16A34A"/>
+    </linearGradient>
+    <linearGradient id="agsi-chicken-foot" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FBBF24"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <filter id="agsi-chicken-shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#9A3412" flood-opacity="0.28"/>
+    </filter>
+    <filter id="agsi-chicken-gloss" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+    <filter id="agsi-chicken-ground" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="5"/>
+    </filter>
+  </defs>
+
+  <!-- Grup utama + drop shadow (posisi statis, tanpa animasi mengambang) -->
+  <g filter="url(#agsi-chicken-shadow)">
+    <!-- TUBUH -->
+    <ellipse cx="100" cy="136" rx="50" ry="41" fill="url(#agsi-chicken-body)"/>
+    <!-- perut putih krem -->
+    <ellipse cx="100" cy="146" rx="30" ry="25" fill="url(#agsi-chicken-belly)"/>
+
+    <!-- kaki -->
+    <g fill="url(#agsi-chicken-foot)">
+      <path d="M84 166 q-8 0 -8 6 q0 5 8 5 q8 0 8 -6 q0 -5 -8 -5 z" transform="translate(0 4)"/>
+      <path d="M116 166 q-8 0 -8 6 q0 5 8 5 q8 0 8 -6 q0 -5 -8 -5 z" transform="translate(0 4)"/>
+    </g>
+
+    <!-- sayap kiri & kanan -->
+    <g>
+      <ellipse cx="57" cy="134" rx="15" ry="27" fill="url(#agsi-chicken-wing)" transform="rotate(14 57 134)"/>
+      <ellipse cx="143" cy="134" rx="15" ry="27" fill="url(#agsi-chicken-wing)" transform="rotate(-14 143 134)"/>
+      <ellipse cx="58" cy="128" rx="6" ry="12" fill="#FB923C" opacity="0.55" transform="rotate(14 58 128)"/>
+      <ellipse cx="142" cy="128" rx="6" ry="12" fill="#FB923C" opacity="0.55" transform="rotate(-14 142 128)"/>
+    </g>
+
+    <!-- ===== KEPALA (statis) ===== -->
+    <g>
+      <circle cx="100" cy="80" r="42" fill="url(#agsi-chicken-head)"/>
+      <ellipse cx="80" cy="56" rx="15" ry="9" fill="#FFFFFF" opacity="0.4" transform="rotate(-24 80 56)" filter="url(#agsi-chicken-gloss)"/>
+
+      <!-- topi koki (miring -7deg, sama seperti web) -->
+      <g transform="rotate(-7 100 44)">
+        <ellipse cx="100" cy="52" rx="27" ry="6" fill="#C2410C" opacity="0.28" filter="url(#agsi-chicken-gloss)"/>
+        <g fill="url(#agsi-chicken-hat)">
+          <circle cx="80" cy="34" r="13"/>
+          <circle cx="101" cy="26" r="16"/>
+          <circle cx="121" cy="35" r="12"/>
+          <path d="M72 40 q30 -22 58 0 l0 12 q-29 -12 -58 0 z"/>
+        </g>
+        <rect x="76" y="44" width="49" height="12" rx="6" fill="#FFFFFF"/>
+        <rect x="76" y="49" width="49" height="7" rx="3.5" fill="#EDF1F5"/>
+      </g>
+
+      <!-- mata terbuka (statis) -->
+      <ellipse cx="86" cy="78" rx="7" ry="7.5" fill="#451A03"/>
+      <circle cx="83.7" cy="75.5" r="2.4" fill="#FFFFFF"/>
+      <circle cx="88" cy="80.5" r="1" fill="#FFFFFF" opacity="0.7"/>
+      <ellipse cx="114" cy="78" rx="7" ry="7.5" fill="#451A03"/>
+      <circle cx="111.7" cy="75.5" r="2.4" fill="#FFFFFF"/>
+      <circle cx="116" cy="80.5" r="1" fill="#FFFFFF" opacity="0.7"/>
+
+      <!-- pipi -->
+      <ellipse cx="76" cy="90" rx="6.5" ry="4.5" fill="#F43F5E" opacity="0.3"/>
+      <ellipse cx="124" cy="90" rx="6.5" ry="4.5" fill="#F43F5E" opacity="0.3"/>
+
+      <!-- paruh -->
+      <path d="M91 86 L109 86 L100 95 Z" fill="url(#agsi-chicken-beak)"/>
+      <path d="M95 94 L105 94 L100 100 Z" fill="#D97706"/>
+      <path d="M91 86 L109 86 L100 95 Z" fill="none" stroke="#B45309" stroke-width="0.7" opacity="0.5"/>
+
+      <!-- pial (wattle) -->
+      <path d="M100 100 q5 3 4 8 q-1 5 -4 5 q-3 0 -4 -5 q-1 -5 4 -8 z" fill="url(#agsi-chicken-wattle)"/>
+    </g>
+
+    <!-- ===== SYAL HIJAU SAMBAL IJO ===== -->
+    <path d="M66 116 Q100 136 134 116 L134 126 Q100 148 66 126 Z" fill="url(#agsi-chicken-green)"/>
+    <path d="M66 116 Q100 136 134 116 L134 120 Q100 141 66 120 Z" fill="#22C55E" opacity="0.85"/>
+    <path d="M126 128 l14 10 l-10 1 l-2 9 z" fill="#16A34A"/>
+
+    <!-- kilau kecil di tubuh -->
+    <ellipse cx="70" cy="118" rx="8" ry="5" fill="#FFD591" opacity="0.6" transform="rotate(-28 70 118)"/>
+  </g>
+
+  <!-- bayangan lantai (statis) -->
+  <ellipse cx="100" cy="184" rx="42" ry="8" fill="#EA580C" opacity="0.22" filter="url(#agsi-chicken-ground)"/>
+</svg>

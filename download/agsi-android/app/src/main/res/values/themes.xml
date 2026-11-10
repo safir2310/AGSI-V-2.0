@@ -14,11 +14,13 @@
         <item name="android:windowBackground">@color/white</item>
     </style>
 
-    <!-- Splash screen 3D — logo maskot ayam koki gaya 3D di latar putih,
-         digantikan tema utama dengan animasi keluar halus (MainActivity) -->
+    <!-- Splash screen — ikon maskot ayam koki yang sama dengan halaman
+         login web (ChickenLogo), dirender ke PNG dengan padding transparan
+         agar aman dari pemotongan lingkaran. Latar putih + animasi keluar
+         halus (zoom & fade di MainActivity). -->
     <style name="Theme.AGSI.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/white</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_3d</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
         <item name="postSplashScreenTheme">@style/Theme.AGSI</item>
     </style>
 </resources>
