@@ -159,12 +159,16 @@
   }
   /* ===== Mode aplikasi Android AGSI (WebView) =====
      Kelas .agsi-app dipasang oleh skrip inline di <head> layout saat UA
-     mengandung "AGSIAndroidApp". Di dalam aplikasi tidak ada address bar,
-     jadi tab navigasi mengambang diturunkan sedikit — jarak bawah pill
-     dirapatkan dari 12px ke 4px supaya lebih dekat tepi layar (menyesuaikan
-     sistem bar HP). Browser biasa tidak terpengaruh. */
+     mengandung "AGSIAndroidApp". Di dalam aplikasi tidak ada address bar:
+     viewport web berakhir tepat di atas Navigation Bar sistem (padding
+     inset native), sehingga pill navigasi dibuat FIXED menempel RAPAT
+     (0px tanpa jarak) dengan Navigation Bar bawaan HP. Browser biasa
+     tidak terpengaruh. */
+  .agsi-app nav[data-app-nav] {
+    padding-bottom: 0px !important;
+  }
   .agsi-app nav[data-app-nav] > div {
-    padding-bottom: 4px !important;
+    padding-bottom: 0px !important;
   }
   /* Teks gradasi orange khas merek */
   .text-gradient-brand {
