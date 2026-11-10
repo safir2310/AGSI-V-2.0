@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Bar,
@@ -15,12 +16,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { CalendarRange, Coins, Loader2, RefreshCw, TrendingUp, UtensilsCrossed } from "lucide-react";
+import { CalendarRange, Coins, Download, Loader2, Printer, RefreshCw, TrendingUp, UtensilsCrossed } from "lucide-react";
 import { useNoticeStore } from "@/lib/store";
 import { apiFetch } from "@/lib/api";
 import { formatIDR } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { nativeSaveFile, nativeSaveSupported } from "@/lib/native-file";
+import { nativePrintPage, nativePrintSupported, nativeSaveFile, nativeSaveSupported } from "@/lib/native-file";
 
 type ReportData = {
   summary: {
@@ -52,6 +53,182 @@ const STATUS_LABELS: Record<string, string> = {
   COMPLETED: "Selesai",
   CANCELLED: "Dibatalkan",
 };
+
+/** ===== PORTAL CETAK LAPORAN =====
+ *  Layout khusus KERTAS — tidak pernah tampil di layar (class "hidden";
+ *  hanya muncul saat mencetak lewat aturan @media print di globals.css).
+ *  Lebih andal daripada mencetak layar langsung: grafik Recharts diganti
+ *  tabel, warna hitam-putih agar aman di semua printer/PDF.
+ *
+ *  Di aplikasi Android dicetak via dialog cetak sistem (AgsiNative.printPage,
+ *  jalur sama dengan tombol cetak struk), di browser biasa via window.print().
+ *  Keduanya menawarkan "Simpan sebagai PDF" — jadi laporan bisa langsung
+ *  terunduh ke penyimpanan. */
+type LaporanPrintProps = { data: ReportData; days: number };
+
+function LaporanPrintPortal({ data, days }: LaporanPrintProps) {
+  const s = data.summary;
+  const sekarang = new Date();
+  const dicetak = sekarang.toLocaleString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const mulai = new Date(sekarang.getTime() - days * 86_400_000).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  const sampai = sekarang.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  const kategoriTotal = data.categoryRevenue.reduce((a, k) => a + k.value, 0) || 1;
+  const totalHarian = data.daily.reduce((a, d) => a + d.revenue, 0);
+  const totalPesananHarian = data.daily.reduce((a, d) => a + d.orders, 0);
+  const statusAktif = Object.entries(data.statusCount).filter(([, n]) => n > 0);
+
+  const th = "border border-neutral-300 bg-neutral-100 px-2 py-1 text-left text-[10px] font-black uppercase tracking-wide";
+  const td = "border border-neutral-300 px-2 py-1 align-top";
+
+  return createPortal(
+    <div aria-hidden="true" className="laporan-print-portal hidden font-sans text-black">
+      <div className="p-[2mm] text-[11px] leading-snug">
+        {/* Kepala */}
+        <div className="mb-3 border-b-2 border-black pb-2">
+          <p className="text-[16px] font-black">AGSI — Ayam Geprek Sambal Ijo</p>
+          <p className="text-[12px] font-bold">
+            Laporan Penjualan · {mulai} – {sampai} ({days} hari)
+          </p>
+          <p className="text-[9px] text-neutral-600">Dicetak: {dicetak}</p>
+        </div>
+
+        {/* Ringkasan */}
+        <table className="mb-4 w-full border-collapse">
+          <tbody>
+            <tr>
+              <td className={td}>
+                <b>Total Pendapatan</b>
+                <br />
+                {formatIDR(s.revenueTotal)}
+              </td>
+              <td className={td}>
+                <b>Rata-rata / Pesanan</b>
+                <br />
+                {formatIDR(s.avgOrder)}
+              </td>
+            </tr>
+            <tr>
+              <td className={td}>
+                <b>Total Pesanan</b>
+                <br />
+                {s.ordersTotal} pesanan · {s.completedCount} selesai
+              </td>
+              <td className={td}>
+                <b>Lainnya</b>
+                <br />
+                {s.cancelledCount} dibatalkan · {s.customerCount} pelanggan
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* Pendapatan harian */}
+        <p className="mb-1 text-[12px] font-black">Pendapatan Harian</p>
+        <table className="mb-4 w-full border-collapse">
+          <thead>
+            <tr>
+              <th className={th}>Tanggal</th>
+              <th className={th}>Pendapatan</th>
+              <th className={th}>Pesanan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.daily.map((d) => (
+              <tr key={d.label}>
+                <td className={td}>{d.label}</td>
+                <td className={td}>{formatIDR(d.revenue)}</td>
+                <td className={td}>{d.orders}</td>
+              </tr>
+            ))}
+            <tr>
+              <td className={td + " font-black"}>Total</td>
+              <td className={td + " font-black"}>{formatIDR(totalHarian)}</td>
+              <td className={td + " font-black"}>{totalPesananHarian}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {/* Menu terlaris */}
+        {(data.topProducts ?? []).length > 0 && (
+          <>
+            <p className="mb-1 text-[12px] font-black">Menu Terlaris</p>
+            <table className="mb-4 w-full border-collapse">
+              <thead>
+                <tr>
+                  <th className={th + " w-8"}>#</th>
+                  <th className={th}>Menu</th>
+                  <th className={th}>Qty</th>
+                  <th className={th}>Pendapatan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.topProducts.map((p, i) => (
+                  <tr key={p.name}>
+                    <td className={td}>{i + 1}</td>
+                    <td className={td}>{p.name}</td>
+                    <td className={td}>{p.qty}x</td>
+                    <td className={td}>{formatIDR(p.revenue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {/* Pendapatan per kategori */}
+        {(data.categoryRevenue ?? []).length > 0 && (
+          <>
+            <p className="mb-1 text-[12px] font-black">Pendapatan per Kategori</p>
+            <table className="mb-4 w-full border-collapse">
+              <tbody>
+                {data.categoryRevenue.map((k) => (
+                  <tr key={k.name}>
+                    <td className={td}>{k.name}</td>
+                    <td className={td}>{formatIDR(k.value)}</td>
+                    <td className={td}>{Math.round((k.value / kategoriTotal) * 100)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {/* Status pesanan */}
+        {statusAktif.length > 0 && (
+          <>
+            <p className="mb-1 text-[12px] font-black">Status Pesanan</p>
+            <table className="mb-4 w-full border-collapse">
+              <tbody>
+                <tr>
+                  {statusAktif.map(([status, n]) => (
+                    <td key={status} className={td}>
+                      <b>{n}</b> · {STATUS_LABELS[status] ?? status}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </>
+        )}
+
+        <p className="mt-2 text-[9px] text-neutral-500">
+          Dibuat otomatis oleh aplikasi AGSI — dokumen laporan internal.
+        </p>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 export function ReportsView() {
   const prefersReduced = useReducedMotion();
@@ -117,6 +294,19 @@ export function ReportsView() {
   };
 
   const s = data?.summary;
+
+  /** Cetak laporan — aplikasi: dialog cetak sistem Android (PrintManager,
+   *  bisa "Simpan sebagai PDF" → langsung terunduh ke penyimpanan);
+   *  browser: window.print(). Kertas memakai portal .laporan-print-portal
+   *  yang sudah terpasang di body sejak data laporan tersedia. */
+  const printReport = () => {
+    if (!data) return;
+    if (nativePrintSupported()) {
+      void nativePrintPage(`Laporan AGSI ${days} Hari`);
+    } else {
+      window.print();
+    }
+  };
 
   return (
     <div className="px-4 pt-[calc(0.75rem+env(safe-area-inset-top,0px))]">
@@ -301,12 +491,26 @@ export function ReportsView() {
         </div>
       </motion.section>
 
-      <button
-        onClick={exportCsv}
-        className="press-effect mt-4 mb-1 w-full rounded-2xl bg-gradient-to-r from-orange-600 to-orange-500 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-orange-500/30 hover:brightness-105"
-      >
-        ⬇️ Ekspor Laporan (CSV)
-      </button>
+      {/* Simpan & cetak */}
+      <div className="mt-4 mb-1 grid grid-cols-2 gap-2">
+        <button
+          onClick={exportCsv}
+          disabled={!data}
+          className="press-effect flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-orange-600 to-orange-500 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-orange-500/30 hover:brightness-105 disabled:opacity-60"
+        >
+          <Download className="h-4 w-4" /> Simpan (CSV)
+        </button>
+        <button
+          onClick={printReport}
+          disabled={!data}
+          className="press-effect flex items-center justify-center gap-2 rounded-2xl bg-neutral-800 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-neutral-800/25 hover:bg-neutral-900 disabled:opacity-60"
+        >
+          <Printer className="h-4 w-4" /> Cetak (PDF)
+        </button>
+      </div>
+
+      {/* Layout kertas — tersembunyi di layar, tampil saat mencetak */}
+      {data && <LaporanPrintPortal data={data} days={days} />}
     </div>
   );
 }

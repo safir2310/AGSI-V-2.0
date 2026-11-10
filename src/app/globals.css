@@ -230,16 +230,19 @@
   }
 }
 
-/* ===== CETAK STRUK (ReceiptSheet) =====
-   Pratinjau struk dicetak via window.print() TANPA iframe (iframe memicu
-   SecurityError lintas-origin di lingkungan preview yang berjalan di dalam
-   frame). Saat mencetak: seluruh aplikasi disembunyikan, hanya portal struk
-   (elemen langsung <body>) yang tampil di kertas. */
+/* ===== CETAK STRUK (ReceiptSheet) & LAPORAN (ReportsView) =====
+   Pratinjau struk/laporan dicetak via window.print() TANPA iframe (iframe
+   memicu SecurityError lintas-origin di lingkungan preview yang berjalan di
+   dalam frame). Saat mencetak: seluruh aplikasi disembunyikan, hanya portal
+   struk / portal laporan (elemen langsung <body>) yang tampil di kertas.
+   Di aplikasi Android kedua tombol cetak memakai dialog cetak sistem
+   (PrintManager via jembatan AgsiNative) — aturan yang sama berlaku. */
 @media print {
-  body > *:not(.struk-print-portal) {
+  body > *:not(.struk-print-portal):not(.laporan-print-portal) {
     display: none !important;
   }
-  .struk-print-portal {
+  .struk-print-portal,
+  .laporan-print-portal {
     display: block !important;
     position: static !important;
   }

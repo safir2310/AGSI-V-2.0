@@ -298,6 +298,7 @@ export async function startBiometricAutofill(
  *  - AgsiNative.isBiometricEnabled(): boolean
  *  - AgsiNative.enableBiometric(cbId)  → hasil via window.__agsiNativeResult
  *  - AgsiNative.disableBiometric(): boolean
+ *  - AgsiNative.openBiometricEnroll(): boolean — buka pendaftaran di Pengaturan HP
  */
 
 type AppBiometricBridge = {
@@ -305,6 +306,7 @@ type AppBiometricBridge = {
   isBiometricEnabled?: () => boolean;
   enableBiometric?: (cbId: string) => void;
   disableBiometric?: () => boolean;
+  openBiometricEnroll?: () => boolean;
 };
 
 /** Ambil jembatan biometrik native — hanya ada di aplikasi Android v1.1.0+ */
@@ -378,6 +380,22 @@ export function enableAppBiometric(): Promise<{ ok: boolean; message: string }> 
     };
     nativeEnable(cbId);
   });
+}
+
+/** Buka layar pendaftaran biometrik Android (Pengaturan HP) — dipakai saat
+ *  perangkat belum punya wajah/sidik jari terdaftar, jadi pengguna tidak
+ *  perlu mencari menu pengaturan secara manual. Android tidak mengizinkan
+ *  pendaftaran langsung dari aplikasi, jadi ini pintu tercepat yang sah.
+ *  Return false bila aplikasi lama (sebelum 1.2.6) atau gagal membuka. */
+export function openAppBiometricEnroll(): boolean {
+  const bridge = appBiometricBridge();
+  const open = bridge?.openBiometricEnroll;
+  if (typeof open !== "function") return false;
+  try {
+    return !!open.call(bridge);
+  } catch {
+    return false;
+  }
 }
 
 /** Matikan biometrik di aplikasi (langsung, tanpa dialog) */

@@ -30,6 +30,7 @@ import {
   biometricEnvironment,
   deleteBiometricCredential,
   listBiometricCredentials,
+  openAppBiometricEnroll,
   registerBiometric,
   setBiometricEmail,
   type AppBiometricStatus,
@@ -59,6 +60,35 @@ function AppBiometricPanel() {
   const [loading, setLoading] = useState(false);
 
   const refresh = () => setStatus(appBiometricStatus());
+
+  /** Saat pengguna kembali dari Pengaturan HP (setelah mendaftarkan wajah /
+   *  sidik jari), periksa ulang status otomatis — panel langsung berubah ke
+   *  tombol "Aktifkan" tanpa perlu menutup-buka sheet. */
+  useEffect(() => {
+    const onReturn = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onReturn);
+    window.addEventListener("focus", onReturn);
+    return () => {
+      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("focus", onReturn);
+    };
+  }, []);
+
+  /** Daftarkan wajah / sidik jari — langsung buka Pengaturan HP via bridge */
+  const handleEnroll = () => {
+    const ok = openAppBiometricEnroll();
+    if (!ok) {
+      // Aplikasi lama (< 1.2.6) atau gagal membuka pengaturan → panduan manual
+      showNotice({
+        type: "info",
+        title: "Daftar Lewat Pengaturan HP",
+        message:
+          "Perbarui aplikasi AGSI ke versi terbaru (1.2.6+), atau daftarkan wajah / sidik jari lewat Pengaturan HP → Keamanan & layar kunci, lalu kembali ke sini.",
+      });
+    }
+  };
 
   const handleEnable = async () => {
     setLoading(true);
@@ -117,18 +147,38 @@ function AppBiometricPanel() {
   };
 
   if (status.available !== "ok") {
+    // Belum ada wajah/sidik jari terdaftar di HP → sediakan tombol yang
+    // langsung membuka layar pendaftaran biometrik (jembatan native).
+    if (status.available === "not_enrolled") {
+      return (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-center gap-2 text-amber-700">
+            <TriangleAlert className="h-4 w-4 shrink-0" />
+            <p className="text-sm font-black">Sensor Belum Terdaftar</p>
+          </div>
+          <p className="mt-2 text-[12px] leading-relaxed text-amber-800">
+            Belum ada wajah / sidik jari yang terdaftar di HP ini. Tap tombol di
+            bawah — layar pendaftaran biometrik HP langsung terbuka. Setelah
+            mendaftar, kembali ke aplikasi AGSI dan aktivasi bisa dilanjutkan.
+          </p>
+          <button
+            type="button"
+            onClick={handleEnroll}
+            className="press-effect mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-amber-500 text-sm font-black text-white shadow-lg shadow-amber-500/30 transition hover:bg-amber-600"
+          >
+            <ScanFace className="h-5 w-5" /> Daftarkan Wajah / Sidik Jari
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
         <div className="flex items-center gap-2 text-amber-700">
           <TriangleAlert className="h-4 w-4 shrink-0" />
-          <p className="text-sm font-black">
-            {status.available === "not_enrolled" ? "Sensor Belum Terdaftar" : "Sensor Tidak Tersedia"}
-          </p>
+          <p className="text-sm font-black">Sensor Tidak Tersedia</p>
         </div>
         <p className="mt-2 text-[12px] leading-relaxed text-amber-800">
-          {status.available === "not_enrolled"
-            ? "Daftarkan sidik jari / wajah di Pengaturan HP (Keamanan & layar kunci) terlebih dulu, lalu kembali ke aplikasi AGSI dan coba lagi."
-            : "Perangkat ini tidak memiliki sensor sidik jari / pemindaian wajah, jadi masuk biometrik tidak tersedia."}
+          Perangkat ini tidak memiliki sensor sidik jari / pemindaian wajah, jadi masuk biometrik tidak tersedia.
         </p>
       </div>
     );
