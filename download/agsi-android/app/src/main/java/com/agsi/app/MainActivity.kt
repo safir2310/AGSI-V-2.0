@@ -42,7 +42,6 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -69,7 +68,6 @@ import java.util.Locale
  *  • Link WhatsApp/tel/mailto/intent dibuka di aplikasi eksternal
  *  • Tombol kembali Android = navigasi riwayat WebView
  *  • Halaman offline + tombol coba lagi + auto-retry saat internet kembali
- *  • Loading indicator saat halaman dimuat
  *  • Popup window.open (pembayaran) ditangani dalam overlay aman
  *  • Deep link pembayaran (intent:// e-wallet) diluncurkan ke app tujuan
  *  • Jembatan JS "AgsiNative" untuk registrasi push FCM
@@ -93,7 +91,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var popupSlot: FrameLayout
     private lateinit var offlineView: LinearLayout
     private lateinit var offlineDetail: TextView
-    private lateinit var progressBar: ProgressBar
     private lateinit var lockView: FrameLayout
 
     private var webView: WebView? = null
@@ -147,7 +144,6 @@ class MainActivity : AppCompatActivity() {
         popupSlot = findViewById(R.id.popup_slot)
         offlineView = findViewById(R.id.offline_view)
         offlineDetail = findViewById(R.id.offline_detail)
-        progressBar = findViewById(R.id.progress)
         lockView = findViewById(R.id.lock_view)
 
         findViewById<Button>(R.id.btn_retry).setOnClickListener { loadSite() }
@@ -328,8 +324,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val wv = webView ?: return
-        progressBar.progress = 5
-        progressBar.visibility = View.VISIBLE
         wv.loadUrl(url ?: SiteConfig.BASE_URL)
     }
 
@@ -376,7 +370,6 @@ class MainActivity : AppCompatActivity() {
         offlineView.visibility = View.VISIBLE
         offlineDetail.text = detail?.takeIf { it.isNotBlank() }
             ?: getString(R.string.offline_message)
-        progressBar.visibility = View.GONE
     }
 
     private fun hideOffline() {
@@ -798,13 +791,10 @@ class MainActivity : AppCompatActivity() {
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
             super.onPageStarted(view, url, favicon)
             hideOffline()
-            progressBar.progress = 5
-            progressBar.visibility = View.VISIBLE
         }
 
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
-            progressBar.visibility = View.GONE
             // Tawaran masuk biometrik — sedikit ditunda agar halaman selesai
             // dulu merender (dialog muncul di atas halaman yang sudah siap).
             if (url != null && SiteConfig.isAllowedHost(Uri.parse(url).host)) {
@@ -865,11 +855,6 @@ class MainActivity : AppCompatActivity() {
     // ==================== WebChromeClient ====================
 
     private inner class SiteWebChromeClient : WebChromeClient() {
-
-        override fun onProgressChanged(view: WebView?, newProgress: Int) {
-            progressBar.progress = newProgress
-            progressBar.visibility = if (newProgress >= 100) View.GONE else View.VISIBLE
-        }
 
         override fun onCreateWindow(
             view: WebView?,
