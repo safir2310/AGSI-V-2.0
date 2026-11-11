@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ChickenBadge, ChickenLogoDefs } from "@/components/logo/ChickenLogo";
 import { BottomNav } from "@/components/nav/BottomNav";
 import { SplashScreen } from "@/components/shared/SplashScreen";
+import { AppUpdateBanner } from "@/components/shared/AppUpdateBanner";
 import { CenterNotice } from "@/components/shared/CenterNotice";
 import { ConsentPopup } from "@/components/shared/ConsentPopup";
 import { MemberCardSheet } from "@/components/shared/MemberCardSheet";
@@ -216,6 +217,11 @@ export function AppShell() {
       <AnimatePresence>
         {showSplash && <SplashScreen key="splash" onDone={() => setShowSplash(false)} />}
       </AnimatePresence>
+
+      {/* ===== BANNER PEMBARUAN APLIKASI (hanya di aplikasi Android versi lama) =====
+          Tombol Perbarui mengunduh /agsi-app.apk lewat DownloadManager — setelah
+          selesai, ketuk notifikasinya untuk memasang (data & login tetap aman). */}
+      <AppUpdateBanner />
 
       {!isFullS && (
         <header className="sticky top-0 z-40 border-b border-orange-100 bg-white/85 backdrop-blur-xl pt-safe">

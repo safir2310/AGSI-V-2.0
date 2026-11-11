@@ -85,7 +85,7 @@ function AppBiometricPanel() {
         type: "info",
         title: "Daftar Lewat Pengaturan HP",
         message:
-          "Perbarui aplikasi AGSI ke versi terbaru (1.2.6+), atau daftarkan wajah / sidik jari lewat Pengaturan HP → Keamanan & layar kunci, lalu kembali ke sini.",
+          "Perbarui dulu aplikasinya: tap banner \"Pembaruan Tersedia\" di halaman utama, atau buka /unduh di Chrome HP ini. Setelah aplikasi v1.2.6+ terpasang, tombol ini langsung membuka layar pendaftaran wajah / sidik jari — atau daftarkan manual lewat Pengaturan HP → Keamanan & layar kunci.",
       });
     }
   };

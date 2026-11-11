@@ -22,6 +22,7 @@ import { apiFetch } from "@/lib/api";
 import { formatIDR } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { nativePrintPage, nativePrintSupported, nativeSaveFile, nativeSaveSupported } from "@/lib/native-file";
+import { isAgsiApp, pesanPerluPembaruan } from "@/lib/app-release";
 
 type ReportData = {
   summary: {
@@ -279,6 +280,16 @@ export function ReportsView() {
       });
       return;
     }
+    // Di aplikasi Android TANPA jembatan simpan (APK < 1.2.5): unduhan blob:
+    // tidak pernah jalan di WebView — beri tahu pembaruan, jangan diam.
+    if (isAgsiApp()) {
+      showNotice({
+        type: "info",
+        title: "Butuh Pembaruan Aplikasi",
+        message: pesanPerluPembaruan("Ekspor laporan", "1.2.5"),
+      });
+      return;
+    }
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -303,9 +314,19 @@ export function ReportsView() {
     if (!data) return;
     if (nativePrintSupported()) {
       void nativePrintPage(`Laporan AGSI ${days} Hari`);
-    } else {
-      window.print();
+      return;
     }
+    // Di aplikasi Android TANPA jembatan cetak (APK < 1.2.5): window.print()
+    // diabaikan WebView — beri tahu pembaruan, jangan diam.
+    if (isAgsiApp()) {
+      showNotice({
+        type: "info",
+        title: "Butuh Pembaruan Aplikasi",
+        message: pesanPerluPembaruan("Cetak laporan", "1.2.5"),
+      });
+      return;
+    }
+    window.print();
   };
 
   return (

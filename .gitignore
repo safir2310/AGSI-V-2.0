@@ -77,3 +77,6 @@ download/vercel-env-copy-paste.txt
 upload/
 tool-results
 .tools/
+
+# APK disalin saat build oleh scripts/copy-apk.mjs — jangan di-commit
+public/agsi-app.apk

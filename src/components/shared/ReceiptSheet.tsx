@@ -6,12 +6,14 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Download, Printer, X } from "lucide-react";
 import type { OrderData } from "@/lib/types";
 import { STORE_ADDRESS, STORE_PHONE } from "@/lib/store-info";
+import { isAgsiApp, pesanPerluPembaruan } from "@/lib/app-release";
 import {
   nativePrintPage,
   nativePrintSupported,
   nativeSaveFile,
   nativeSaveSupported,
 } from "@/lib/native-file";
+import { useNoticeStore } from "@/lib/store";
 
 /**
  * Sheet "Cetak Struk" (admin) — pratinjau struk gaya kertas termal lalu
@@ -232,6 +234,7 @@ type ReceiptSheetProps = {
 
 export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
   const prefersReduced = useReducedMotion();
+  const showNotice = useNoticeStore((s) => s.show);
   /** Nama file terakhir yang tersimpan — ditampilkan sbg umpan balik singkat */
   const [savedAs, setSavedAs] = useState<string | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -269,6 +272,16 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
       void nativePrintPage(`Struk ${order.code}`);
       return;
     }
+    // Di aplikasi Android TANPA jembatan cetak (APK < 1.2.5): jangan diam —
+    // WebView mengabaikan window.print() sehingga terasa "tombol mati".
+    if (isAgsiApp()) {
+      showNotice({
+        type: "info",
+        title: "Butuh Pembaruan Aplikasi",
+        message: pesanPerluPembaruan("Cetak struk", "1.2.5"),
+      });
+      return;
+    }
     try {
       const prevTitle = document.title;
       document.title = `Struk ${order.code}`;
@@ -301,6 +314,16 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
         if (savedTimer.current) clearTimeout(savedTimer.current);
         setSavedAs(name);
         savedTimer.current = setTimeout(() => setSavedAs(null), 4000);
+      });
+      return;
+    }
+    // Di aplikasi Android TANPA jembatan simpan (APK < 1.2.5): unduhan blob:
+    // tidak pernah jalan di WebView — beri tahu pembaruan, jangan diam.
+    if (isAgsiApp()) {
+      showNotice({
+        type: "info",
+        title: "Butuh Pembaruan Aplikasi",
+        message: pesanPerluPembaruan("Simpan struk", "1.2.5"),
       });
       return;
     }
