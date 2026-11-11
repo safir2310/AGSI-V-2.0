@@ -617,6 +617,16 @@ export function QrisPaySheet({
                   </p>
                 )}
 
+                {/* Catatan kanal cadangan (jalur DOKU Checkout): kanal QRIS akun
+                    belum aktif — halaman bayar memakai kanal aktif akun.
+                    Jujur satu baris tanpa detail galat teknis. */}
+                {info?.paymentUrl && info.fallbackReason && info.provider?.startsWith("doku") && (
+                  <p className="mt-1.5 rounded-xl bg-amber-50 px-3 py-2 text-center text-[10px] font-semibold leading-snug text-amber-700 ring-1 ring-amber-200">
+                    Kanal QRIS toko sedang tidak aktif — pilih kanal pembayaran
+                    yang tersedia (e-wallet/dompet digital aktif toko) di halaman DOKU.
+                  </p>
+                )}
+
                 {/* ===== KARTU STATUS VERIFIKASI OTOMATIS (khusus kasir/POS) =====
                     Detail teknis pemantauan TIDAK ditampilkan ke pelanggan —
                     pelanggan cukup melihat QR + penjelasan singkat satu baris
@@ -668,24 +678,41 @@ export function QrisPaySheet({
                   </div>
                 )}
 
-                {/* ===== TRANSPARANSI FALLBACK — QR uji lokal karena penyedia ditolak =====
-                    Bila penyedia nyata (Casaku/Midtrans) menolak/mati, QR yang
-                    tampil berasal dari gateway bawaan (uji lokal). Alasan
-                    teknis HANYA untuk kasir/POS — pelanggan tidak perlu tahu
-                    detail galat penyedia pembayaran. */}
+                {/* ===== TRANSPARANSI FALLBACK — alasan halaman bayar bukan kanal yang diminta =====
+                    Dua kemungkinan: (1) jalur DOKU — kanal QRIS/e-wallet akun
+                    belum aktif sehingga halaman bayar memakai kanal aktif
+                    lain akun (pembayaran tetap asli & terverifikasi otomatis);
+                    (2) penyedia nyata (Casaku/Midtrans) ditolak/mati sehingga
+                    QR berasal dari gateway bawaan (uji lokal). Alasan teknis
+                    HANYA untuk kasir/POS — pelanggan tidak perlu tahu detail. */}
                 {isPos && info?.fallbackReason && info.mode === "GATEWAY" && (
-                  <div className="mt-3.5 flex items-start gap-2 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
-                    <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-black text-amber-700">
-                        QR uji lokal — penyedia QRIS belum terhubung dari server ini
-                      </p>
-                      <p className="mt-0.5 break-words text-[10px] leading-snug text-amber-700/85">
-                        Alasan: {info.fallbackReason} — Admin dapat mengetes koneksi penyedia
-                        lewat <strong className="font-bold">Pengaturan Toko ▸ Gateway QRIS</strong>.
-                      </p>
+                  info.provider?.startsWith("doku") ? (
+                    <div className="mt-3.5 flex items-start gap-2 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+                      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-black text-amber-700">
+                          Kanal QRIS DOKU belum aktif — bayar via kanal aktif akun
+                        </p>
+                        <p className="mt-0.5 break-words text-[10px] leading-snug text-amber-700/85">
+                          {info.fallbackReason} Pembayaran tetap terjadi di halaman DOKU dan
+                          tetap terverifikasi otomatis — pesanan lunas sendiri begitu dana masuk.
+                        </p>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="mt-3.5 flex items-start gap-2 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200">
+                      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-black text-amber-700">
+                          QR uji lokal — penyedia QRIS belum terhubung dari server ini
+                        </p>
+                        <p className="mt-0.5 break-words text-[10px] leading-snug text-amber-700/85">
+                          Alasan: {info.fallbackReason} — Admin dapat mengetes koneksi penyedia
+                          lewat <strong className="font-bold">Pengaturan Toko ▸ Gateway QRIS</strong>.
+                        </p>
+                      </div>
+                    </div>
+                  )
                 )}
 
                 {/* ===== TRANSPARANSI MODE LOKAL — verifikasi otomatis BELUM berjalan =====

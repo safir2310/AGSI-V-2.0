@@ -12,16 +12,34 @@ pelanggan **langsung diarahkan** ke pembayaran itu — tanpa memilih-milih VA/re
 paylater. Di halaman itu tersaji kode QRIS dinamis yang bisa dipindai aplikasi
 **e-wallet / m-Banking apa pun** (GoPay, DANA, OVO, ShopeePay, LinkAja, dll).
 
-- Jalur aktif: DOKU Checkout legacy (`POST /checkout/v1/payment`), sama seperti
-  sebelumnya — verifikasi otomatis (polling Check Status + webhook) tidak berubah.
-- Bila kanal QRIS akun DOKU **belum diaktifkan**, DOKU menolak 400
-  "PLEASE USE ANOTHER PAYMENT METHOD" → adapter otomatis mencoba SEKALI lagi
-  **tanpa filter**, sehingga pelanggan tetap mendapat halaman bayar (semua kanal
-  aktif). Tidak ada gangguan layanan.
-- Agar pengalaman QRIS e-wallet penuh, aktifkan kanal **QRIS** di dashboard DOKU
-  (Configuration / Payment Settings ▸ QR Payment) — lihat langkah aktivasi di §3.
-- Metode **E-Wallet** tetap seperti semula: halaman bayar difilter ke kanal
-  e-wallet (DOKU Wallet, DANA, OVO, ShopeePay, LinkAja + VA DOKU cadangan).
+### 0.1 TANGGA KANAL — perbaikan "PAYMENT CHANNEL IS INACTIVE" (HTTP 400)
+
+Bila kanal QRIS akun DOKU **belum diaktifkan**, DOKU menolak 400
+`PAYMENT CHANNEL IS INACTIVE`. Dulu pesan ini tidak tertangkap (pencocokan lama
+hanya mencari kata "payment method") sehingga seluruh pembayaran gagal dan layar
+menampilkan "Verifikasi otomatis belum berjalan" (mode LOCAL). Sekarang adapter
+**turun tangga kanal** otomatis — pembayaran tetap berjalan:
+
+1. `["QRIS"]` — langsung ke pembayaran QRIS e-wallet DOKU (bila kanal aktif).
+2. Ditolak → filter kanal e-wallet (DOKU Wallet, DANA, OVO, ShopeePay, LinkAja
+   + VA DOKU cadangan).
+3. Masih ditolak → **tanpa filter** — halaman bayar menampilkan SEMUA kanal
+   aktif akun; pelanggan tetap bisa membayar dan verifikasi otomatis
+   (polling Check Status + webhook) tetap berjalan.
+
+Setiap penurunan tingkat dicatat di `fallbackReason` dan ditampilkan di layar
+pembayaran (kartu amber di POS + catatan satu baris untuk pelanggan). Invoice
+duplikat tetap dicoba ulang dengan suffix unik pada tingkat filter yang sama.
+Bila SEMUA tingkat ditolak (tidak ada kanal aktif sama sekali), pesan galat kini
+memuat panduan aktivasi: *"Aktifkan QRIS/e-wallet di dashboard DOKU
+(Configuration ▸ Payment Settings) atau hubungi DOKU."*
+
+- Jalur aktif: DOKU Checkout legacy (`POST /checkout/v1/payment`) — verifikasi
+  otomatis (polling Check Status + webhook) tidak berubah.
+- Metode **E-Wallet** (aplikasi pelanggan & **POS kasir**) juga memakai tangga
+  yang sama: filter e-wallet → tanpa filter bila ditolak. Tombol **👛 E-Wallet**
+  dan **📱 QRIS** di kasir mengikuti saklar *QRIS* di Pengaturan Toko (default
+  aktif) dan mengalir lewat jalur DOKU yang sama.
 
 ## 1. Status integrasi saat ini (hasil pengujian nyata)
 

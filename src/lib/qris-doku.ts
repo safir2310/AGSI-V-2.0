@@ -81,12 +81,27 @@ export const DOKU_EWALLET_CHANNEL_TYPES = [
  * memilih-milih kanal VA/retail/paylater). Halaman DOKU lalu menampilkan
  * kode QRIS dinamis yang bisa dipindai aplikasi E-WALLET apa pun
  * (GoPay, DANA, OVO, ShopeePay, LinkAja, m-Banking) — itulah "QRIS
- * e-wallet DOKU". Bila kanal QRIS akun belum diaktifkan DOKU, DOKU
- * menolak 400 "PLEASE USE ANOTHER PAYMENT METHOD" — checkoutCreateQris
- * otomatis mencoba SEKALI lagi tanpa filter supaya pelanggan tetap
- * mendapat halaman bayar (semua kanal aktif) tanpa gangguan.
+ * e-wallet DOKU".
+ *
+ * Bila kanal QRIS akun belum diaktifkan DOKU, DOKU menolak 400
+ * "PAYMENT CHANNEL IS INACTIVE" — checkoutCreateQris OTOMATIS TURUN
+ * TANGGA: coba filter kanal e-wallet, lalu tanpa filter (semua kanal
+ * aktif akun), sehingga pelanggan tetap mendapat halaman bayar yang
+ * BERFUNGSI dan verifikasi otomatis tetap berjalan (lihat
+ * checkoutCreateQris).
  */
 export const DOKU_QRIS_CHANNEL_TYPES = ["QRIS"];
+
+/**
+ * Pesan galat DOKU "kanal pembayaran ditolak": filter yang diminta
+ * berisi kanal yang BELUM AKTIF di akun merchant. Pesan teramati produksi:
+ *   "PAYMENT CHANNEL IS INACTIVE"  (filter ["QRIS"] saat kanal QRIS
+ *                                   belum diaktifkan DOKU)
+ *   "PLEASE USE ANOTHER PAYMENT METHOD"  (varian lama)
+ * plus varian snake_case ("PAYMENT_METHOD_NOT_ACTIVE", dsb.).
+ * Pencocokan TIDAK tergantung huruf besar/kecil maupun pemisah kata.
+ */
+const CHANNEL_REJECTED_RE = /payment[-_ ]?(channel|method)/i;
 
 // ============================================================
 //  Utilitas bersama
@@ -798,25 +813,14 @@ function dokuCallbackUrl(orderId?: string): string {
   return `${DOKU_CHECKOUT_CALLBACK_BASE}/`;
 }
 
-/**
- * Buat pesanan DOKU Checkout (jalur legacy produksi).
- * Halaman bayar menampilkan semua kanal AKTIF merchant (QRIS, VA, retail,
- * e-money, paylater) — sesuai konfigurasi akun DOKU. `channelTypes` bila
- * diisi memfilter halaman bayar ke kanal tertentu (mis. pesanan e-wallet
- * atau kanal QRIS e-wallet — docs DOKU: satu kanal = langsung diarahkan ke
- * pembayaran itu); bila filter ditolak DOKU (semua kanal diminta belum
- * aktif), di-retry SEKALI tanpa filter supaya pelanggan tetap dapat halaman
- * bayar.
- * Status tetap diverifikasi otomatis (polling Check Status + webhook legacy).
- */
-async function checkoutCreateQris(opts: {
+/** Payload Checkout lengkap untuk SATU percobaan (invoice bisa + suffix) */
+function checkoutPayload(opts: {
   partnerReferenceNo: string;
   amount: number;
   channelTypes?: string[];
-  /** ID pesanan aplikasi — untuk callback_url in-app /pay/<orderId> */
   callbackRef?: string;
-}): Promise<GatewayTransaction> {
-  const payload = {
+}): Record<string, unknown> {
+  return {
     order: {
       invoice_number: opts.partnerReferenceNo,
       amount: opts.amount,
@@ -842,54 +846,112 @@ async function checkoutCreateQris(opts: {
     },
     customer: { name: "Pelanggan AGSI", email: "pos@agsi.co.id" },
   };
-
-  let body: Record<string, unknown>;
-  let partnerRef = opts.partnerReferenceNo;
-  try {
-    body = await legacyPost("/checkout/v1/payment", payload);
-  } catch (err) {
-    // Filter kanal ditolak (semua kanal yang diminta belum aktif di akun)
-    // -> sekali lagi TANPA filter: halaman bayar menampilkan semua kanal aktif.
-    //    Pesan DOKU bisa "PLEASE USE ANOTHER PAYMENT METHOD" maupun varian
-    //    lain yang memuat "payment method" — tangkap keduanya.
-    const msg = (err instanceof Error ? err.message : "").toLowerCase();
-    if (opts.channelTypes && msg.includes("payment method")) {
-      const unfiltered = {
-        ...payload,
-        payment: { ...payload.payment },
-      };
-      delete (unfiltered.payment as Record<string, unknown>).payment_method_types;
-      body = await legacyPost("/checkout/v1/payment", unfiltered);
-      return finishCheckoutCreate(body, opts.partnerReferenceNo);
-    }
-    // Invoice duplikat (kode dibuat ulang setelah kedaluwarsa) -> sekali
-    // coba lagi dengan suffix unik agar pelanggan tetap dapat halaman bayar.
-    if (
-      (err instanceof QrisGatewayError && err.status === 400) ||
-      msg.includes("invoice") ||
-      msg.includes("duplicate") ||
-      msg.includes("exist")
-    ) {
-      const retryPayload = {
-        ...payload,
-        order: {
-          ...payload.order,
-          invoice_number: `${opts.partnerReferenceNo}-${Date.now().toString(36)}`,
-        },
-      };
-      partnerRef = retryPayload.order.invoice_number;
-      body = await legacyPost("/checkout/v1/payment", retryPayload);
-      return finishCheckoutCreate(body, partnerRef);
-    }
-    throw err;
-  }
-  return finishCheckoutCreate(body, opts.partnerReferenceNo);
 }
 
-/** Urai respons Checkout sukses -> GatewayTransaction */
+/**
+ * Buat pesanan DOKU Checkout (jalur legacy produksi).
+ *
+ * TANGGA KANAL — fallback transparan (dicatat di fallbackReason layar
+ * bayar), bukan galat mati. DOKU menolak 400 "PAYMENT CHANNEL IS INACTIVE"
+ * bila SEMUA kanal dalam filter belum aktif di akun merchant:
+ *   1) Filter pesanan — QRIS => ["QRIS"] (langsung ke pembayaran QRIS
+ *      e-wallet DOKU); EWALLET => daftar kanal e-wallet.
+ *   2) Ditolak & filter-nya QRIS => coba filter kanal e-wallet
+ *      (DOKU Wallet, DANA, OVO, ShopeePay, LinkAja + VA DOKU cadangan).
+ *   3) Masih ditolak => TANPA filter — halaman bayar menampilkan SEMUA
+ *      kanal aktif akun, pelanggan tetap bisa membayar, verifikasi
+ *      otomatis (polling Check Status + webhook) tetap berjalan.
+ * Invoice duplikat (kode dibuat ulang setelah kedaluwarsa) dicoba ulang
+ * dengan suffix unik pada TINGKAT FILTER YANG SAMA.
+ */
+async function checkoutCreateQris(opts: {
+  partnerReferenceNo: string;
+  amount: number;
+  channelTypes?: string[];
+  /** ID pesanan aplikasi — untuk callback_url in-app /pay/<orderId> */
+  callbackRef?: string;
+}): Promise<GatewayTransaction> {
+  type ChannelStep = { channelTypes?: string[]; note: string | null };
+  const steps: ChannelStep[] = [];
+  const requested = opts.channelTypes;
+  const isQrisOnly =
+    !!requested && requested.length === 1 && requested[0] === DOKU_QRIS_CHANNEL_TYPES[0];
+  if (requested && requested.length > 0) {
+    steps.push({ channelTypes: requested, note: null });
+    if (isQrisOnly) {
+      steps.push({
+        channelTypes: DOKU_EWALLET_CHANNEL_TYPES,
+        note: "Kanal QRIS akun DOKU belum aktif — halaman bayar memakai kanal e-wallet aktif akun (DOKU Wallet/DANA/OVO/ShopeePay/LinkAja + VA DOKU).",
+      });
+    }
+  }
+  steps.push({
+    note: "Kanal yang diminta belum aktif di akun DOKU — halaman bayar menampilkan semua kanal aktif akun.",
+  });
+
+  let partnerRef = opts.partnerReferenceNo;
+  let lastError: unknown = null;
+  for (const step of steps) {
+    // Maks 2 percobaan per tingkat: percobaan kedua hanya untuk invoice
+    // duplikat (suffix unik) — penolakan kanal langsung turun tangga.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const payload = checkoutPayload({
+        partnerReferenceNo: partnerRef,
+        amount: opts.amount,
+        ...(step.channelTypes ? { channelTypes: step.channelTypes } : {}),
+        ...(opts.callbackRef ? { callbackRef: opts.callbackRef } : {}),
+      });
+      try {
+        const body = await legacyPost("/checkout/v1/payment", payload);
+        return finishCheckoutCreate(body, partnerRef, step.note);
+      } catch (err) {
+        lastError = err;
+        const msg = err instanceof Error ? err.message : "";
+        if (CHANNEL_REJECTED_RE.test(msg)) {
+          // Kanal ditolak — suffix tidak membantu; turun satu tingkat tangga
+          break;
+        }
+        // Invoice duplikat (atau 400 tanpa pesan dikenal) -> sekali coba
+        // lagi dengan suffix unik pada tingkat filter yang sama.
+        const duplicate =
+          /invoice|duplicate|exist|already/i.test(msg) ||
+          (err instanceof QrisGatewayError && err.status === 400);
+        if (attempt === 0 && duplicate) {
+          partnerRef = `${opts.partnerReferenceNo}-${Date.now().toString(36)}`;
+          continue;
+        }
+        break;
+      }
+    }
+    // Lanjut ke tingkat berikutnya HANYA bila penyebabnya penolakan kanal;
+    // galat lain (401/timeout/jaringan) tidak ada gunanya dicoba ulang.
+    const lastMsg = lastError instanceof Error ? lastError.message : "";
+    if (!CHANNEL_REJECTED_RE.test(lastMsg)) break;
+  }
+
+  if (
+    lastError instanceof QrisGatewayError &&
+    CHANNEL_REJECTED_RE.test(lastError.message)
+  ) {
+    // Semua tingkat kanal ditolak — tidak ada kanal aktif yang bisa melayani.
+    // Pesan jujur + panduan aktivasi untuk pemilik toko.
+    throw new QrisGatewayError(
+      `${lastError.message}. Kanal pembayaran akun DOKU belum aktif — aktifkan QRIS/e-wallet di dashboard DOKU (Configuration ▸ Payment Settings) atau hubungi DOKU, lalu coba lagi.`
+    );
+  }
+  throw lastError ?? new QrisGatewayError("DOKU Checkout gagal membuat halaman bayar.");
+}
+
+/**
+ * Urai respons Checkout sukses -> GatewayTransaction.
+ * `fallbackNote` diisi bila halaman bayar diperoleh lewat penurunan
+ * tingkat kanal (tangga QRIS -> e-wallet -> tanpa filter) — ditampilkan
+ * di layar pembayaran agar kasir/pemilik tahu kanal QRIS belum aktif.
+ */
 function finishCheckoutCreate(
   body: Record<string, unknown>,
-  partnerReferenceNo: string
+  partnerReferenceNo: string,
+  fallbackNote: string | null = null
 ): GatewayTransaction {
   const paymentUrl = findPaymentUrl(body);
   if (!paymentUrl) {
@@ -935,6 +997,7 @@ function finishCheckoutCreate(
     trxId: partnerReferenceNo,
     paymentUrl,
     expiresAt: expiresAt ?? undefined,
+    ...(fallbackNote ? { fallbackReason: fallbackNote } : {}),
   };
 }
 
