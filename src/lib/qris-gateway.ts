@@ -193,8 +193,10 @@ export async function createQrisGatewayPayment(opts: {
   reference: string;
   /** "EWALLET": halaman bayar DOKU difilter ke kanal e-wallet (DOKU Wallet,
    *  DANA, OVO, ShopeePay, LinkAja + VA DOKU cadangan — sesuai kanal aktif).
+   *  "QRIS": pelanggan LANGSUNG diarahkan ke pembayaran QRIS e-wallet DOKU
+   *  (kanal "QRIS" — pindai pakai e-wallet/m-Banking apa pun).
    *  Diabaikan penyedia non-DOKU (QRIS tetap QR string biasa). */
-  channelMode?: "EWALLET";
+  channelMode?: "EWALLET" | "QRIS";
   /** ID pesanan aplikasi — redirect setelah bayar diarahkan ke halaman
    *  IN-APP /pay/<id> (bukan halaman lain). Dipakai jalur DOKU Checkout. */
   callbackRef?: string;

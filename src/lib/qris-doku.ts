@@ -74,6 +74,20 @@ export const DOKU_EWALLET_CHANNEL_TYPES = [
   "VIRTUAL_ACCOUNT_DOKU",
 ];
 
+/**
+ * Kanal checkout untuk pesanan QRIS — QRIS E-WALLET DOKU.
+ * Satu kanal saja: "QRIS" (docs DOKU: bila HANYA SATU payment method
+ * dikirim, pelanggan LANGSUNG diarahkan ke pembayaran itu — tanpa
+ * memilih-milih kanal VA/retail/paylater). Halaman DOKU lalu menampilkan
+ * kode QRIS dinamis yang bisa dipindai aplikasi E-WALLET apa pun
+ * (GoPay, DANA, OVO, ShopeePay, LinkAja, m-Banking) — itulah "QRIS
+ * e-wallet DOKU". Bila kanal QRIS akun belum diaktifkan DOKU, DOKU
+ * menolak 400 "PLEASE USE ANOTHER PAYMENT METHOD" — checkoutCreateQris
+ * otomatis mencoba SEKALI lagi tanpa filter supaya pelanggan tetap
+ * mendapat halaman bayar (semua kanal aktif) tanpa gangguan.
+ */
+export const DOKU_QRIS_CHANNEL_TYPES = ["QRIS"];
+
 // ============================================================
 //  Utilitas bersama
 // ============================================================
@@ -788,9 +802,11 @@ function dokuCallbackUrl(orderId?: string): string {
  * Buat pesanan DOKU Checkout (jalur legacy produksi).
  * Halaman bayar menampilkan semua kanal AKTIF merchant (QRIS, VA, retail,
  * e-money, paylater) — sesuai konfigurasi akun DOKU. `channelTypes` bila
- * diisi memfilter halaman bayar ke kanal tertentu (mis. pesanan e-wallet);
- * bila filter ditolak DOKU (semua kanal diminta belum aktif), di-retry SEKALI
- * tanpa filter supaya pelanggan tetap dapat halaman bayar.
+ * diisi memfilter halaman bayar ke kanal tertentu (mis. pesanan e-wallet
+ * atau kanal QRIS e-wallet — docs DOKU: satu kanal = langsung diarahkan ke
+ * pembayaran itu); bila filter ditolak DOKU (semua kanal diminta belum
+ * aktif), di-retry SEKALI tanpa filter supaya pelanggan tetap dapat halaman
+ * bayar.
  * Status tetap diverifikasi otomatis (polling Check Status + webhook legacy).
  */
 async function checkoutCreateQris(opts: {
@@ -834,8 +850,10 @@ async function checkoutCreateQris(opts: {
   } catch (err) {
     // Filter kanal ditolak (semua kanal yang diminta belum aktif di akun)
     // -> sekali lagi TANPA filter: halaman bayar menampilkan semua kanal aktif.
+    //    Pesan DOKU bisa "PLEASE USE ANOTHER PAYMENT METHOD" maupun varian
+    //    lain yang memuat "payment method" — tangkap keduanya.
     const msg = (err instanceof Error ? err.message : "").toLowerCase();
-    if (opts.channelTypes && msg.includes("please use another payment method")) {
+    if (opts.channelTypes && msg.includes("payment method")) {
       const unfiltered = {
         ...payload,
         payment: { ...payload.payment },
@@ -985,7 +1003,10 @@ async function checkoutQueryStatus(
  * juga sebagai partnerReferenceNo / invoice number di DOKU.
  *
  * channelMode "EWALLET": halaman bayar DOKU difilter ke kanal e-wallet
- * (lihat DOKU_EWALLET_CHANNEL_TYPES). Tanpa channelMode: semua kanal aktif.
+ * (lihat DOKU_EWALLET_CHANNEL_TYPES).
+ * channelMode "QRIS": pelanggan LANGSUNG diarahkan ke pembayaran QRIS
+ * e-wallet DOKU — satu kanal "QRIS" saja (lihat DOKU_QRIS_CHANNEL_TYPES).
+ * Tanpa channelMode: semua kanal aktif.
  *
  * Prioritas jalur:
  *   1) SNAP MPM (kalau MID terpasang) — QR string langsung
@@ -995,7 +1016,9 @@ async function checkoutQueryStatus(
 export async function createQrisDokuPayment(opts: {
   amount: number;
   reference: string;
-  channelMode?: "EWALLET";
+  /** "EWALLET": halaman bayar difilter kanal e-wallet.
+   *  "QRIS": langsung ke pembayaran QRIS e-wallet DOKU (kanal "QRIS"). */
+  channelMode?: "EWALLET" | "QRIS";
   /** ID pesanan aplikasi — callback_url DOKU diarahkan ke /pay/<id> (in-app) */
   callbackRef?: string;
 }): Promise<GatewayTransaction> {
@@ -1027,7 +1050,9 @@ export async function createQrisDokuPayment(opts: {
       amount,
       ...(opts.channelMode === "EWALLET"
         ? { channelTypes: DOKU_EWALLET_CHANNEL_TYPES }
-        : {}),
+        : opts.channelMode === "QRIS"
+          ? { channelTypes: DOKU_QRIS_CHANNEL_TYPES }
+          : {}),
       ...(opts.callbackRef ? { callbackRef: opts.callbackRef } : {}),
     });
   }

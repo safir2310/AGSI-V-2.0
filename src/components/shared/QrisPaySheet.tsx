@@ -595,9 +595,17 @@ export function QrisPaySheet({
                 </p>
                 {info?.paymentUrl ? (
                   <p className="mt-1 text-center text-[11px] leading-relaxed text-neutral-500">
-                    Tekan tombol di bawah — <strong className="font-bold text-neutral-700">halaman pembayaran DOKU terbuka langsung di dalam aplikasi ini</strong>{" "}
-                    (tanpa pindah aplikasi/tab lain), lalu pilih QRIS / e-wallet / Virtual Account
-                    favoritmu. Kode QR di atas dipakai bila membayar dari HP lain.
+                    {order.method === "EWALLET" ? (
+                      <>
+                        Tekan tombol di bawah — <strong className="font-bold text-neutral-700">halaman pembayaran DOKU terbuka langsung di dalam aplikasi ini</strong>{" "}
+                        (tanpa pindah aplikasi/tab lain), lalu pilih e-wallet favoritmu. Kode QR di atas dipakai bila membayar dari HP lain.
+                      </>
+                    ) : (
+                      <>
+                        Tekan tombol di bawah — <strong className="font-bold text-neutral-700">pembayaran QRIS e-wallet DOKU terbuka langsung di dalam aplikasi ini</strong>{" "}
+                        (tanpa pindah aplikasi/tab lain), lalu pindai kode QRIS-nya pakai <strong className="font-bold text-neutral-700">GoPay, DANA, OVO, ShopeePay, LinkAja, atau m-Banking apa pun</strong>. Kode QR di atas dipakai bila membayar dari HP lain.
+                      </>
+                    )}
                   </p>
                 ) : (
                   <p className="mt-1 text-center text-[11px] leading-relaxed text-neutral-500">
@@ -643,7 +651,7 @@ export function QrisPaySheet({
                           {order.method === "EWALLET"
                             ? "pilih e-wallet di halaman DOKU (DOKU Wallet, DANA, OVO, ShopeePay — sesuai kanal aktif akun)"
                             : info.paymentUrl
-                              ? "selesaikan pembayaran di halaman DOKU (kanal aktif akun DOKU); status dicek otomatis"
+                              ? "QRIS e-wallet DOKU langsung terbuka — pelanggan pindai pakai e-wallet/m-Banking apa pun; status dicek otomatis"
                               : "scan pakai DANA / GoPay / OVO / ShopeePay / m-Banking mana pun"}
                         </p>
                       ) : info?.provider?.startsWith("dana") ? (
@@ -769,7 +777,7 @@ export function QrisPaySheet({
                       <Wallet className="h-4 w-4" />
                       {order.method === "EWALLET"
                         ? "Bayar dengan E-Wallet (DOKU)"
-                        : "Buka Halaman Pembayaran DOKU"}
+                        : "Bayar QRIS E-Wallet (DOKU)"}
                     </span>
                     <span className="text-[9px] font-bold tracking-wide text-red-100">
                       terbuka di dalam aplikasi — tanpa pindah halaman lain

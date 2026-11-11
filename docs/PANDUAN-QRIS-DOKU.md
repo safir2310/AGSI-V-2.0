@@ -4,6 +4,25 @@
 > Midtrans). Selama kanal QRIS akun DOKU belum aktif, aplikasi otomatis jatuh ke
 > gateway bawaan (mode uji) sehingga QRIS **tetap jalan** tanpa gangguan.
 
+## 0. Update terbaru — pembayaran QRIS memakai QRIS E-WALLET DOKU
+
+Pesan dengan metode **QRIS** kini membuat checkout DOKU dengan filter SATU kanal:
+`payment_method_types: ["QRIS"]`. Sesuai docs DOKU, bila hanya satu kanal dikirim,
+pelanggan **langsung diarahkan** ke pembayaran itu — tanpa memilih-milih VA/retail/
+paylater. Di halaman itu tersaji kode QRIS dinamis yang bisa dipindai aplikasi
+**e-wallet / m-Banking apa pun** (GoPay, DANA, OVO, ShopeePay, LinkAja, dll).
+
+- Jalur aktif: DOKU Checkout legacy (`POST /checkout/v1/payment`), sama seperti
+  sebelumnya — verifikasi otomatis (polling Check Status + webhook) tidak berubah.
+- Bila kanal QRIS akun DOKU **belum diaktifkan**, DOKU menolak 400
+  "PLEASE USE ANOTHER PAYMENT METHOD" → adapter otomatis mencoba SEKALI lagi
+  **tanpa filter**, sehingga pelanggan tetap mendapat halaman bayar (semua kanal
+  aktif). Tidak ada gangguan layanan.
+- Agar pengalaman QRIS e-wallet penuh, aktifkan kanal **QRIS** di dashboard DOKU
+  (Configuration / Payment Settings ▸ QR Payment) — lihat langkah aktivasi di §3.
+- Metode **E-Wallet** tetap seperti semula: halaman bayar difilter ke kanal
+  e-wallet (DOKU Wallet, DANA, OVO, ShopeePay, LinkAja + VA DOKU cadangan).
+
 ## 1. Status integrasi saat ini (hasil pengujian nyata)
 
 API key DOKU yang disetel di `.env` / Vercel (`DOKU_API_KEY`, berawalan
