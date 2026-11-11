@@ -15,14 +15,9 @@
  *  2. User-Agent suffix " AGSIAndroidApp/<versi>" yang ditempel aplikasi
  */
 
-/** Versi APK terbaru yang tersaji di /agsi-app.apk (sinkron dgn download/) */
-export const LATEST_APP_VERSION = "1.2.6";
-
-/** Lokasi APK di situs — diunduh lewat DownloadManager aplikasi (v1.1.0+) */
-export const APK_URL = "/agsi-app.apk";
-
-/** Halaman panduan unduh (fallback bila unduhan in-app tidak jalan) */
-export const UNDUH_PAGE_URL = "/unduh";
+/** Konstanta versi tinggal di modul polos agar halaman server bisa impor */
+export { LATEST_APP_VERSION, APK_URL, UNDUH_PAGE_URL } from "./app-version";
+import { LATEST_APP_VERSION, UNDUH_PAGE_URL } from "./app-version";
 
 /** Bandingkan dua versi "x.y.z" → -1 / 0 / 1 */
 export function compareVersions(a: string, b: string): number {

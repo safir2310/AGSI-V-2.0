@@ -117,6 +117,8 @@ export const useNoticeStore = create<NoticeState>((set) => ({
  * Sheet chat CS dipasang GLOBAL di AppShell supaya popup notifikasi
  * ("💬 Pesan baru dari CS") bisa langsung membuka chat dari halaman mana pun.
  * chatUnreadTick naik tiap chat ditutup → badge di halaman profil ikut menyegarkan.
+ * chatUnread = jumlah chat belum dibaca (dipoll ChatNotifWatcher) → dipakai
+ * badge lonceng notifikasi di header & komponen lain tanpa polling sendiri.
  */
 type UiState = {
   chatOpen: boolean;
@@ -126,12 +128,17 @@ type UiState = {
   openChat: (targetUserId?: string) => void;
   closeChat: () => void;
   chatUnreadTick: number;
+  /** Jumlah chat belum dibaca (CS↔pelanggan) — badge lonceng header */
+  chatUnread: number;
+  setChatUnread: (n: number) => void;
 };
 
 export const useUiStore = create<UiState>((set) => ({
   chatOpen: false,
   chatTargetUserId: null,
   chatUnreadTick: 0,
+  chatUnread: 0,
+  setChatUnread: (n) => set((s) => (s.chatUnread === n ? s : { chatUnread: n })),
   openChat: (targetUserId) =>
     set({ chatOpen: true, chatTargetUserId: targetUserId ?? null }),
   closeChat: () =>

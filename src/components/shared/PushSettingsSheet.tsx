@@ -21,7 +21,9 @@ import {
   disableWebPush,
   enableWebPush,
   fetchPushConfig,
+  getNativePollingEnabled,
   readPushStatus,
+  setNativePolling,
   type PushConfig,
   type PushStatus,
 } from "@/lib/push-client";
@@ -47,23 +49,33 @@ type SheetState = {
   loading: boolean;
   busy: "enable" | "disable" | "test" | null;
   error: string | null;
+  /** status layanan notifikasi latar belakang di aplikasi Android (null = bukan app) */
+  polling: boolean | null;
 };
 
 export function PushSettingsSheet({ open, onClose, user }: { open: boolean; onClose: () => void; user: AppUser }) {
   const prefersReduced = useReducedMotion();
   const showNotice = useNoticeStore((s) => s.show);
-  const [st, setSt] = useState<SheetState>({ config: null, status: null, loading: false, busy: null, error: null });
+  const [st, setSt] = useState<SheetState>({
+    config: null,
+    status: null,
+    loading: false,
+    busy: null,
+    error: null,
+    polling: null,
+  });
 
   const isAdmin = user.role === "ADMIN" || user.role === "OWNER";
 
   const refresh = useCallback(async () => {
     setSt((s) => ({ ...s, loading: true, error: null }));
     try {
-      const [config, status] = await Promise.all([
+      const [config, status, polling] = await Promise.all([
         fetchPushConfig().catch(() => null),
         readPushStatus(),
+        Promise.resolve(getNativePollingEnabled()),
       ]);
-      setSt((s) => ({ ...s, config, status, loading: false }));
+      setSt((s) => ({ ...s, config, status, polling, loading: false }));
     } catch {
       setSt((s) => ({ ...s, loading: false, error: "Tidak dapat menghubungi server." }));
     }
@@ -149,6 +161,22 @@ export function PushSettingsSheet({ open, onClose, user }: { open: boolean; onCl
       setSt((s) => ({ ...s, busy: null }));
     }
   }, [showNotice]);
+
+  /** Saklar notifikasi latar belakang (hanya aplikasi Android v1.2.7+) */
+  const togglePolling = useCallback(() => {
+    const next = !(st.polling ?? true);
+    if (setNativePolling(next)) {
+      setSt((s) => ({ ...s, polling: next }));
+      showNotice({
+        type: "success",
+        autoCloseMs: 4200,
+        title: next ? "Notifikasi Latar Belakang Aktif ✓" : "Notifikasi Latar Belakang Mati",
+        message: next
+          ? "Pesanan baru, update status & chat tetap muncul sebagai notifikasi layar walau aplikasi ditutup."
+          : "Notifikasi di luar aplikasi dimatikan. Notifikasi saat aplikasi terbuka tetap berjalan.",
+      });
+    }
+  }, [st.polling, showNotice]);
 
   // ===== Turunan status tampilan =====
   const status = st.status;
@@ -297,15 +325,60 @@ export function PushSettingsSheet({ open, onClose, user }: { open: boolean; onCl
                           : "Belum dikonfigurasi (isi .env FIREBASE_* — lihat PUSH_SETUP.md)",
                         ok: serverOk ? true : "warn",
                       })}
+
+                      {/* Notifikasi latar belakang — hanya di aplikasi Android v1.2.7+ */}
+                      {status?.native && st.polling !== null && (
+                        <>
+                          <div className="h-px bg-neutral-200/70" />
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className={cn(
+                                "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
+                                st.polling ? "bg-green-600 text-white" : "bg-neutral-200 text-neutral-500"
+                              )}
+                            >
+                              <BellRing className="h-4 w-4" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[12px] font-black text-neutral-800">
+                                Notifikasi Latar Belakang
+                              </p>
+                              <p className="text-[10px] leading-snug text-neutral-500">
+                                {st.polling
+                                  ? "Aktif — pesanan, update & chat muncul walau aplikasi ditutup"
+                                  : "Mati — notifikasi hanya saat aplikasi terbuka"}
+                              </p>
+                            </div>
+                            <button
+                              onClick={togglePolling}
+                              role="switch"
+                              aria-checked={st.polling}
+                              aria-label="Saklar notifikasi latar belakang"
+                              className={cn(
+                                "press-effect relative h-6 w-11 shrink-0 rounded-full transition-colors",
+                                st.polling ? "bg-orange-600" : "bg-neutral-300"
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all",
+                                  st.polling ? "left-[22px]" : "left-0.5"
+                                )}
+                              />
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
                   {/* Petunjuk aplikasi native */}
                   {status?.native && (
                     <div className="mb-4 rounded-2xl border border-green-200 bg-green-50/70 p-4 text-[11px] leading-relaxed text-green-800">
-                      Kamu memakai <b>aplikasi Android native AGSI</b>. Notifikasi heads-up dikelola langsung oleh
-                      aplikasi (FCM) — tidak perlu mengaktifkan apa pun di sini. Pastikan notifikasi Android untuk
-                      aplikasi diizinkan & hemat baterai dimatikan agar banner muncul segera.
+                      Kamu memakai <b>aplikasi Android native AGSI</b>. Notifikasi pesanan &amp; chat dikirim
+                      langsung oleh aplikasi — muncul di layar <b>walau aplikasi ditutup</b> (layanan latar
+                      belakang). Pastikan izin notifikasi Android diizinkan &amp; hemat baterai dimatikan agar
+                      banner muncul segera. Bisa dimatikan lewat saklar &quot;Notifikasi Latar Belakang&quot; di atas.
                     </div>
                   )}
 

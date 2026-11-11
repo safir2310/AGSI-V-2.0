@@ -122,6 +122,21 @@ class AgsiNativeBridge(
         activity.main.post { activity.printPage(cbId, title.ifBlank { "Struk AGSI" }) }
     }
 
+    /**
+     * Saklar NOTIFIKASI LATAR BELAKANG dari halaman web (Profil → Notifikasi
+     * Push). true = layanan pemantau (NotifPollerService) berjalan sehingga
+     * notifikasi pesanan/chat tetap muncul walau aplikasi ditutup.
+     */
+    @JavascriptInterface
+    fun setNotifPolling(enabled: Boolean): Boolean {
+        NotifPollerService.setEnabled(appContext, enabled)
+        return true
+    }
+
+    /** Status saklar notifikasi latar belakang (default: aktif). */
+    @JavascriptInterface
+    fun isNotifPollingEnabled(): Boolean = NotifPollerService.isEnabled(appContext)
+
     private fun resolve(cbId: String, ok: Boolean, message: String) {
         hostProvider()?.resolveBridge(cbId, ok, message)
     }

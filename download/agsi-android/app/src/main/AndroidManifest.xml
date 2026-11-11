@@ -10,6 +10,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Masuk biometrik: Face ID / sidik jari (layar buka kunci AppLock) -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Notifikasi di luar aplikasi: layanan pemantau latar belakang -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <uses-feature
         android:name="android.hardware.camera"
@@ -51,6 +56,27 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- Pemantau notifikasi latar belakang (tanpa FCM): polling ringan
+             API AGSI tiap ±45 detik selama aplikasi ditutup — pesanan baru,
+             update status & chat muncul sebagai notifikasi layar. -->
+        <service
+            android:name=".NotifPollerService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Notifikasi realtime pesanan, update status dan chat AGSI saat aplikasi di latar belakang" />
+        </service>
+
+        <!-- Nyalakan ulang pemantau notifikasi setelah HP direstart -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"

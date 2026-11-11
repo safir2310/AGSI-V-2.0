@@ -22,6 +22,12 @@ class AgsiApp : Application() {
         /** ID channel — sinkron dengan src/lib/push.ts (ANDROID_CHANNEL_ID) */
         const val CHANNEL_ORDERS = "agsi_orders"
 
+        /** Channel chat CS (pesanan & chat dipisah agar bisa diatur sendiri) */
+        const val CHANNEL_CHAT = "agsi_chat"
+
+        /** Channel notifikasi minimal untuk layanan pemantau latar belakang */
+        const val CHANNEL_SERVICE = "agsi_service"
+
         /** true bila ada Activity yang tampil di depan */
         @Volatile
         var isForeground = false
@@ -56,7 +62,7 @@ class AgsiApp : Application() {
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = getSystemService(NotificationManager::class.java) ?: return
-        val channel = NotificationChannel(
+        val orders = NotificationChannel(
             CHANNEL_ORDERS,
             getString(R.string.notification_channel_name),
             NotificationManager.IMPORTANCE_HIGH,
@@ -65,6 +71,29 @@ class AgsiApp : Application() {
             enableVibration(true)
             vibrationPattern = longArrayOf(0, 250, 150, 250)
         }
-        nm.createNotificationChannel(channel)
+        nm.createNotificationChannel(orders)
+
+        val chat = NotificationChannel(
+            CHANNEL_CHAT,
+            getString(R.string.channel_chat_name),
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = getString(R.string.channel_chat_desc)
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 200, 120, 200)
+        }
+        nm.createNotificationChannel(chat)
+
+        // Channel MINIMAL — notifikasi "layanan berjalan" harus senyap &
+        // berada di bawah daftar notifikasi (wajib ada utk foreground service)
+        val service = NotificationChannel(
+            CHANNEL_SERVICE,
+            getString(R.string.channel_service_name),
+            NotificationManager.IMPORTANCE_MIN,
+        ).apply {
+            description = getString(R.string.channel_service_desc)
+            setShowBadge(false)
+        }
+        nm.createNotificationChannel(service)
     }
 }

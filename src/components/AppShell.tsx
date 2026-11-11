@@ -32,7 +32,7 @@ import { hasValidConsent } from "@/lib/data-policy";
 import { hasValidTerms } from "@/lib/app-terms";
 import type { AppUser } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Coins } from "lucide-react";
+import { Bell, Coins } from "lucide-react";
 
 function isAdminRole(role?: string | null) {
   return role === "ADMIN" || role === "OWNER";
@@ -53,6 +53,7 @@ export function AppShell() {
   const chatOpen = useUiStore((s) => s.chatOpen);
   const chatTargetUserId = useUiStore((s) => s.chatTargetUserId);
   const closeChat = useUiStore((s) => s.closeChat);
+  const chatUnread = useUiStore((s) => s.chatUnread);
   const splashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ===== Buka "kunci" audio browser pada interaksi pertama (suara notifikasi) =====
@@ -238,23 +239,44 @@ export function AppShell() {
                 </p>
               </div>
             </div>
-            {user &&
-              (user.role === "CUSTOMER" ? (
-                /* Klik teks "Member" di kanan atas → buka kartu member lengkap
-                   (saldo poin sengaja TIDAK ditampilkan di header — lihat di kartu) */
+            {user && (
+              <div className="flex items-center gap-2">
+                {/* 🔔 LONCENG NOTIFIKASI — badge chat belum dibaca (dipoll
+                    ChatNotifWatcher); klik membuka chat CS dari mana saja. */}
                 <button
-                  onClick={() => setMemberOpen(true)}
-                  aria-label="Buka kartu member"
-                  className="press-effect flex items-center gap-1.5 rounded-full bg-orange-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-orange-700 ring-1 ring-orange-200 transition hover:bg-orange-100 hover:ring-orange-300"
+                  onClick={() => useUiStore.getState().openChat()}
+                  aria-label={
+                    chatUnread > 0
+                      ? `${chatUnread} pesan chat belum dibaca — buka chat`
+                      : "Notifikasi & chat"
+                  }
+                  className="press-effect relative flex h-9 w-9 items-center justify-center rounded-full bg-orange-50 ring-1 ring-orange-200 transition hover:bg-orange-100 hover:ring-orange-300"
                 >
-                  <Coins className="h-3 w-3" />
-                  Member
+                  <Bell className="h-4.5 w-4.5 text-orange-700" />
+                  {chatUnread > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-white shadow-md">
+                      {chatUnread > 99 ? "99+" : chatUnread}
+                    </span>
+                  )}
                 </button>
-              ) : (
-                <span className="rounded-full bg-orange-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-orange-700 ring-1 ring-orange-200">
-                  {isAdminRole(user.role) ? "Admin" : "Kasir"}
-                </span>
-              ))}
+                {user.role === "CUSTOMER" ? (
+                  /* Klik teks "Member" di kanan atas → buka kartu member lengkap
+                     (saldo poin sengaja TIDAK ditampilkan di header — lihat di kartu) */
+                  <button
+                    onClick={() => setMemberOpen(true)}
+                    aria-label="Buka kartu member"
+                    className="press-effect flex items-center gap-1.5 rounded-full bg-orange-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-orange-700 ring-1 ring-orange-200 transition hover:bg-orange-100 hover:ring-orange-300"
+                  >
+                    <Coins className="h-3 w-3" />
+                    Member
+                  </button>
+                ) : (
+                  <span className="rounded-full bg-orange-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-orange-700 ring-1 ring-orange-200">
+                    {isAdminRole(user.role) ? "Admin" : "Kasir"}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </header>
       )}

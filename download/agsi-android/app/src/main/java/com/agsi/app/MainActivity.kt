@@ -217,6 +217,10 @@ class MainActivity : AppCompatActivity() {
         // Ambil & daftarkan token FCM (anonim dulu; terikat akun setelah login
         // lewat jembatan AgsiNative — kontrak src/components/shared/PushBridge.tsx)
         PushRegistrar.fetchAndRegisterLater(this)
+        // Layanan pemantau notifikasi latar belakang — pesanan baru, update
+        // status & chat tetap muncul sebagai notifikasi layar walau aplikasi
+        // ditutup (bisa dimatikan dari Profil → Notifikasi Push).
+        NotifPollerService.startIfEnabled(this)
         // Layar buka kunci biometrik — hanya saat aplikasi benar-benar baru
         // dibuka (bukan rotasi/rekreasi) dan sesi login masih tersimpan.
         maybeShowLockGate(savedInstanceState == null)

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAppStore, useNoticeStore, useUiStore, type NoticeType } from "@/lib/store";
+import { useOrdersStore } from "@/lib/hooks";
 import { formatIDR, type AppUser, type OrderData } from "@/lib/types";
 import { playAgsiChat, playAgsiOrder, playAgsiStatus } from "@/lib/sound";
 
@@ -71,6 +72,10 @@ export function AdminNewOrderWatcher({ user }: { user: AppUser }) {
         for (const o of orders) seen.add(o.id);
         if (fresh.length === 0) return;
         for (const o of fresh) notified.add(o.id);
+
+        // Segarkan daftar pesanan → badge tab "Pesanan" di navigasi bawah
+        // langsung menyala tanpa menunggu refresh manual.
+        void useOrdersStore.getState().load("all");
 
         // 🔔 SUARA KHAS AGSI — nyaring
         playAgsiOrder();
@@ -214,6 +219,9 @@ export function CustomerNotifWatcher({ user }: { user: AppUser }) {
                 changes.push(o);
             }
             if (changes.length > 0) {
+              // Segarkan daftar pesanan → badge tab "Pesanan" & daftar ikut segar
+              void useOrdersStore.getState().load("mine");
+
               playAgsiStatus();
               const n = statusNotif(changes[0]);
               showNotice({
@@ -269,6 +277,8 @@ export function ChatNotifWatcher({ user }: { user: AppUser }) {
         if (!alive || !res.ok) return;
         const data = await res.json();
         const unread = typeof data.unread === "number" ? data.unread : 0;
+        // Simpan ke store global → badge lonceng notifikasi di header menyala
+        useUiStore.getState().setChatUnread(unread);
         const chatOpen = useUiStore.getState().chatOpen;
         // Sedang membuka chat → pesan dianggap dibaca, jangan bunyi
         if (prevUnread !== null && unread > prevUnread && !chatOpen) {

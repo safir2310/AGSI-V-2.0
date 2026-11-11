@@ -34,6 +34,12 @@
     <!-- Notifikasi -->
     <string name="notification_channel_name">Pesanan &amp; Notifikasi AGSI</string>
     <string name="notification_channel_desc">Notifikasi pesanan baru, status masakan, pembayaran, dan chat CS</string>
+    <string name="channel_chat_name">Pesan Chat</string>
+    <string name="channel_chat_desc">Pesan baru dari CS AGSI dan pesan pelanggan baru</string>
+    <string name="channel_service_name">Layanan Latar Belakang</string>
+    <string name="channel_service_desc">Menjaga notifikasi pesanan &amp; chat tetap berjalan walau aplikasi ditutup</string>
+    <string name="notif_service_title">Notifikasi AGSI aktif</string>
+    <string name="notif_service_text">Pesanan &amp; chat dipantau di latar belakang — banner muncul walau aplikasi ditutup</string>
 
     <!-- Layar buka kunci biometrik (Face ID / sidik jari) -->
     <string name="lock_subtitle">Masuk cepat dengan sidik jari / wajah</string>

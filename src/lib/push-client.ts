@@ -148,6 +148,49 @@ export async function registerNativeTokenIfPresent(): Promise<boolean> {
   return true;
 }
 
+/* ================= NOTIFIKASI LATAR BELAKANG (aplikasi Android) =================
+ *
+ * Aplikasi AGSI (v1.2.7+) menjalankan layanan pemantau latar belakang
+ * (NotifPollerService): pesanan baru, update status & chat tetap muncul
+ * sebagai notifikasi layar walau aplikasi ditutup — tanpa perlu kredensial
+ * Firebase. Status & saklarnya dibuka lewat jembatan AgsiNative; di browser
+ * biasa fungsi ini mengembalikan null/false (baris UI disembunyikan).
+ */
+
+type PollingBridge = {
+  setNotifPolling?: (enabled: boolean) => boolean;
+  isNotifPollingEnabled?: () => boolean;
+};
+
+function appPollingBridge(): PollingBridge | null {
+  if (typeof window === "undefined") return null;
+  const b = (window as unknown as { AgsiNative?: unknown }).AgsiNative;
+  if (!b || typeof b !== "object") return null;
+  return b as PollingBridge;
+}
+
+/** true/false = status layanan; null = bukan aplikasi / versi terlalu lama */
+export function getNativePollingEnabled(): boolean | null {
+  const bridge = appPollingBridge();
+  if (typeof bridge?.isNotifPollingEnabled !== "function") return null;
+  try {
+    return !!bridge.isNotifPollingEnabled?.();
+  } catch {
+    return null;
+  }
+}
+
+/** Ubah saklar notifikasi latar belakang di aplikasi. false = gagal/versi lama. */
+export function setNativePolling(on: boolean): boolean {
+  const bridge = appPollingBridge();
+  if (typeof bridge?.setNotifPolling !== "function") return false;
+  try {
+    return !!bridge.setNotifPolling?.(on);
+  } catch {
+    return false;
+  }
+}
+
 /* ================= WEB PUSH (Chrome dsb.) ================= */
 
 /** Inisialisasi Firebase Web (lazy, sekali) → instance Messaging + helper SDK */
