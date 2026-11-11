@@ -18,6 +18,9 @@ import { formatIDR } from "@/lib/types";
 /** ID channel Android — WAJIB sama dengan di aplikasi native (android/…) */
 export const ANDROID_CHANNEL_ID = "agsi_orders";
 
+/** Channel khusus chat CS — aplikasi native membuat channel "agsi_chat" */
+export const ANDROID_CHAT_CHANNEL_ID = "agsi_chat";
+
 export type PushKind = "new_order" | "order_paid" | "order_status" | "chat" | "test";
 
 export type PushPayload = {
@@ -49,7 +52,8 @@ function buildMessage(p: PushPayload, token: string): FcmMessage {
       priority: "HIGH",
       ttl: "3600s",
       notification: {
-        channel_id: ANDROID_CHANNEL_ID,
+        // chat tampil di channel "Chat CS" terpisah agar bisa diatur sendiri
+        channel_id: p.kind === "chat" ? ANDROID_CHAT_CHANNEL_ID : ANDROID_CHANNEL_ID,
         sound: "default",
         tag: p.tag ?? "agsi",
         // click_action default → launcher activity; URL dibaca aplikasi dari data.url

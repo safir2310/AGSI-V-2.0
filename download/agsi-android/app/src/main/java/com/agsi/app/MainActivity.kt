@@ -371,8 +371,12 @@ class MainActivity : AppCompatActivity() {
     // ==================== Muat halaman & offline ====================
 
     private fun navUrlFromIntent(intent: Intent?): String? {
-        val path = intent?.getStringExtra(EXTRA_NAV_URL)?.trim() ?: return null
-        if (path.isEmpty()) return null
+        // EXTRA_NAV_URL = tap notifikasi lokal (PushService/NotifPollerService);
+        // "url" = data payload FCM yang ditampilkan sistem saat app di latar
+        // belakang (auto-display) — keduanya membuka halaman yang dituju.
+        val path = intent?.getStringExtra(EXTRA_NAV_URL)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: intent?.getStringExtra("url")?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return null
         if (path.startsWith("http")) return path
         return SiteConfig.BASE_URL + if (path.startsWith("/")) path else "/$path"
     }

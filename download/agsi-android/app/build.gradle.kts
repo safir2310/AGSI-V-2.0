@@ -28,11 +28,15 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.agsi.app"
+        // ⚠ applicationId WAJIB sama dengan package_name di
+        // app/google-services.json (registrasi Firebase project
+        // agsi-pos-491c8) agar token FCM bisa diterbitkan.
+        // namespace (paket kode Kotlin) tetap com.agsi.app.
+        applicationId = "com.agsi.pos"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.2.7"
+        versionCode = 11
+        versionName = "1.2.8"
 
         // URL website yang dibungkus — dari gradle.properties (WEB_APP_URL)
         val webAppUrl = (project.findProperty("WEB_APP_URL") as String?)

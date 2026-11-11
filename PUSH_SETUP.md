@@ -41,10 +41,14 @@ banner **heads-up** (melayang di atas layar) di Android, baik lewat
 2. Di dalam project, daftarkan **dua aplikasi**:
 
    **A. Aplikasi Android** (ikon robot 🤖)
-   - Android package name: **`com.agsi.pos`**
+   - Android package name: **`com.agsi.pos`** — WAJIB sama dengan
+     `applicationId` di `download/agsi-android/app/build.gradle.kts`;
+     kalau berbeda, FCM menolak menerbitkan token.
    - Nickname: `AGSI POS` → Register
-   - Download **`google-services.json`** → simpan ke **`android/app/google-services.json`**
-   - (Langkah "tambah SDK" boleh dilewati — proyek `android/` sudah berisi semua)
+   - Download **`google-services.json`** → simpan ke
+     **`download/agsi-android/app/google-services.json`**
+     (berkas ini gitignored — cukup ada di folder build)
+   - (Langkah "tambah SDK" boleh dilewati — proyek Android sudah berisi semua)
 
    **B. Aplikasi Web** (ikon `</>`)
    - Nickname: `AGSI Web` → Register
@@ -53,6 +57,11 @@ banner **heads-up** (melayang di atas layar) di Android, baik lewat
 3. **Kredensial pengiriman (server)** — Project settings ⚙ ▸ tab
    **Service accounts** ▸ **Generate new private key** ▸ Download JSON.
    Ambil 3 nilai: `project_id`, `client_email`, `private_key`.
+   Untuk **produksi (Vercel)**: masukkan sebagai Environment Variables
+   `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`
+   (plus config web di bawah) lewat dashboard Vercel → Settings → Environment
+   Variables, lalu redeploy. Untuk **dev lokal**, simpan JSON service account
+   ke `upload/` lalu jalankan `node scripts/apply-firebase-env.mjs`.
 
 4. **(Opsional tapi disarankan) VAPID key** — Project settings ▸
    **Cloud Messaging** ▸ tab **Web Push certificates** ▸ Generate key pair.
@@ -106,11 +115,18 @@ Cek keberhasilan: buka `GET /api/push/config` — harus
    heads-up muncul saat aplikasi ditutup/minimalkan.
 
 ### B. Aplikasi Android native
-1. Buka folder `android/` di **Android Studio** → tunggu Gradle sync.
-2. Set `WEB_APP_URL` di `android/gradle.properties`
-   (`http://10.0.2.2:3000` untuk emulator, atau domain produksi).
-3. **Build ▸ Build APK(s)** → install di HP → buka → izinkan notifikasi.
+1. Pastikan `google-services.json` ada di `download/agsi-android/app/`.
+2. Set `WEB_APP_URL` di `download/agsi-android/gradle.properties`
+   (domain produksi sudah terisi).
+3. `./gradlew assembleRelease` (atau buka folder itu di Android Studio →
+   Build ▸ Build APK(s)) → install di HP → buka → izinkan notifikasi.
 4. Login di WebView — token otomatis terikat akun (role pelanggan/kasir/admin).
+
+> 📱 **Catatan penggantian package**: mulai v1.2.8 identitas aplikasi adalah
+> `com.agsi.pos` (sebelumnya `com.agsi.app` di v1.2.4–v1.2.7) agar cocok
+> dengan registrasi Firebase. Instal lama tidak tertimpa otomatis — hapus
+> dulu ikon "AGSI" yang lama bila ada dua ikon setelah memasang v1.2.8.
+> Sesi login tersimpan di dalam aplikasi, jadi perlu login ulang sekali.
 
 ---
 
@@ -164,4 +180,5 @@ Tips memastikan heads-up tampil:
 - `public/firebase-messaging-sw.js` — service worker web push
 - `src/lib/push-client.ts`, `src/components/shared/PushSettingsSheet.tsx`,
   `src/components/shared/PushBridge.tsx`
-- `android/` (zip: `download/agsi-android.zip`) — aplikasi Android native
+- `download/agsi-android/` — aplikasi Android native (FCM SDK + service)
+- `download/AGSI-release-*.apk` — APK rilis siap pasang (juga tersaji di `/agsi-app.apk`)
