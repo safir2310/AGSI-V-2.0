@@ -113,6 +113,11 @@ export type OrderData = {
   distanceKm: number | null;
   /** ongkir Rp1.000/km — kelipatan jarak (0 bila bukan DELIVERY) */
   deliveryFee: number;
+  /** ===== Pelacakan kurir (DELIVERY) — null = kurir belum berangkat ===== */
+  courierName?: string | null;
+  courierPhone?: string | null;
+  /** waktu kurir berangkat dari toko (ISO) — penanda "sedang diantar" */
+  onTheWayAt?: string | null;
   voucherCode: string | null;
   voucherDiscount: number;
   total: number;

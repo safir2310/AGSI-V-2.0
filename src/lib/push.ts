@@ -242,6 +242,29 @@ export async function notifyOrderStatus(orderId: string, status: string): Promis
 }
 
 /**
+ * 🛵 Kurir AGSI berangkat membawa pesanan antar → push ke pelanggan pemilik
+ * pesanan. Pemicu: staff menekan "Serahkan ke Kurir" (PUT /api/orders/[id]
+ * dengan courierName) — onTheWayAt terisi, fitur Lacak Kurir ikut menyala.
+ */
+export async function notifyCourierOnTheWay(orderId: string): Promise<void> {
+  try {
+    const o = await db.order.findUnique({ where: { id: orderId } });
+    if (!o || !o.userId || !o.courierName) return;
+    const kontak = o.courierPhone ? ` Hubungi kurir: ${o.courierPhone}.` : "";
+    await sendToTokens(await tokensOfUser(o.userId), {
+      kind: "order_status",
+      title: "🛵 Pesanan Sedang Diantar!",
+      body: `${o.code} sedang diantar kurir ${o.courierName}.${kontak} Pantau di Profil ▸ Lacak Kurir AGSI ya!`,
+      url: "/orders",
+      orderId: o.id,
+      tag: `order-${o.id}`,
+    });
+  } catch (err) {
+    console.error("[push] notifyCourierOnTheWay gagal:", err);
+  }
+}
+
+/**
  * 💬 Chat CS — push ke pihak lawan bicara:
  *   - pelanggan/kasir kirim pesan → admin & owner (petugas CS)
  *   - admin/owner membalas → pelanggan pemilik utas

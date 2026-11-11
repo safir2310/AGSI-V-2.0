@@ -73,6 +73,7 @@ class NotifPollerService : Service() {
         private const val KEY_STATE = "order_state"
         private const val KEY_CHAT = "chat_unread"
         private const val KEY_FCM_ACTIVE = "fcm_active"
+        private const val KEY_FCM_CHECKED_AT = "fcm_checked_at"
 
         private const val NOTIF_SERVICE_ID = 42001
 
@@ -100,7 +101,19 @@ class NotifPollerService : Service() {
         }
 
         fun startIfEnabled(ctx: Context) {
-            if (isEnabled(ctx)) start(ctx)
+            if (!isEnabled(ctx)) return
+            val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            // Push FCM kini mekanisme UTAMA. Bila pemeriksaan terakhir
+            // menyatakan FCM aktif di server DAN perangkat punya token FCM,
+            // layanan pemantau tidak perlu jalan (tanpa notifikasi layanan,
+            // tanpa polling) — hemat baterai. Cek ulang tiap 6 jam agar bila
+            // FCM di server dimatikan, pemantau bangun lagi sendiri.
+            val fcmActive = prefs.getBoolean(KEY_FCM_ACTIVE, false)
+            if (fcmActive && PushRegistrar.cachedToken(ctx).isNotBlank()) {
+                val last = prefs.getLong(KEY_FCM_CHECKED_AT, 0L)
+                if (System.currentTimeMillis() - last < 6 * 60 * 60_000L) return
+            }
+            start(ctx)
         }
 
         fun start(ctx: Context) {
@@ -190,12 +203,26 @@ class NotifPollerService : Service() {
 
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-        // ---- FCM aktif di server? → padamkan notifikasi lokal (hindari dobel) ----
+        // ---- FCM aktif di server? → push FCM yang bekerja; kalau perangkat
+        // punya token, layanan pemantau HENTIKAN DIRI (tidak ada notifikasi
+        // ganda, tanpa notifikasi "layanan berjalan", hemat baterai). Bila
+        // FCM aktif di server tapi perangkat TIDAK punya token (GMS hilang),
+        // pemantau tetap jalan sebagai penyelamat notifikasi.
         if (pollCount % FCM_CHECK_EVERY == 1) {
             val (_, cfg) = getJson("/api/push/config", cookie)
             val active = cfg?.optBoolean("configured", false) == true
-            prefs.edit().putBoolean(KEY_FCM_ACTIVE, active).apply()
-            if (active) Log.i(TAG, "FCM aktif di server — notifikasi lokal dipadamkan")
+            prefs.edit()
+                .putBoolean(KEY_FCM_ACTIVE, active)
+                .putLong(KEY_FCM_CHECKED_AT, System.currentTimeMillis())
+                .apply()
+            if (active && PushRegistrar.cachedToken(this).isNotBlank()) {
+                Log.i(TAG, "FCM aktif di server & token perangkat tersedia — layanan pemantau berhenti")
+                stopped = true
+                handler.removeCallbacks(tick)
+                stopSelf()
+                return
+            }
+            if (active) Log.i(TAG, "FCM aktif di server — notifikasi lokal dipadamkan (token kosong, pemantau lanjut)")
         }
         val fcmActive = prefs.getBoolean(KEY_FCM_ACTIVE, false)
 
@@ -461,10 +488,14 @@ class NotifPollerService : Service() {
     }
 
     /** Sekali seumur hidup: minta pengecualian hemat baterai agar polling
-     *  tidak ditunda Doze (dialog sistem; hanya saat aplikasi di depan). */
+     *  tidak ditunda Doze (dialog sistem; hanya saat aplikasi di depan).
+     *  Tidak diminta bila FCM aktif — pemantau akan berhenti sendiri. */
     private fun maybeRequestBatteryExemption() {
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (prefs.getBoolean(KEY_BATTERY_ASKED, false)) return
+        if (prefs.getBoolean(KEY_FCM_ACTIVE, false) &&
+            PushRegistrar.cachedToken(this).isNotBlank()
+        ) return
         if (!AgsiApp.isForeground) return
         prefs.edit().putBoolean(KEY_BATTERY_ASKED, true).apply()
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager

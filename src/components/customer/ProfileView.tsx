@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import {
   BadgeCheck,
   Bell,
+  Bike,
   ChevronRight,
   ClipboardList,
   Coins,
@@ -32,6 +33,7 @@ import { BannerSettingsSheet } from "@/components/admin/BannerSettingsSheet";
 import { QrisManagerSheet } from "@/components/admin/QrisManagerSheet";
 import { LegalSheet } from "@/components/shared/LegalSheet";
 import { PushSettingsSheet } from "@/components/shared/PushSettingsSheet";
+import { CourierTrackingSheet } from "@/components/customer/CourierTrackingSheet";
 import { readPushStatus, type PushStatus } from "@/lib/push-client";
 import { listBiometricCredentials } from "@/lib/biometric-client";
 import { apiFetch } from "@/lib/api";
@@ -76,6 +78,7 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const [policyOpen, setPolicyOpen] = useState(false);
   const [pushOpen, setPushOpen] = useState(false);
   const [bioOpen, setBioOpen] = useState(false);
+  const [courierOpen, setCourierOpen] = useState(false);
   const [bioCount, setBioCount] = useState(0);
   const [pushStatus, setPushStatus] = useState<PushStatus | null>(null);
   const [chatUnread, setChatUnread] = useState(0);
@@ -88,6 +91,12 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const spent = orders
     .filter((o) => o.status === "COMPLETED")
     .reduce((s, o) => s + o.total, 0);
+  // Pesanan ANTAR milik akun ini yang sedang berjalan (badge Lacak Kurir).
+  // Hanya untuk pelanggan — daftar pesanan staff berisi SEMUA pesanan toko.
+  const activeDeliveries = isAdmin
+    ? 0
+    : orders.filter((o) => o.type === "DELIVERY" && ["PENDING", "PREPARING", "READY"].includes(o.status))
+        .length;
 
   /** Ambil jumlah pesan chat yang belum dibaca (untuk badge menu).
    *  Selain saat buka & saat chat ditutup (chatUnreadTick), badge juga
@@ -227,6 +236,17 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
     onClick: () => setPushOpen(true),
   };
 
+  const courierMenu: MenuItem = {
+    icon: Bike,
+    label: "Lacak Kurir AGSI",
+    desc:
+      activeDeliveries > 0
+        ? `${activeDeliveries} pesanan antar sedang berjalan — pantau kurirnya`
+        : "Pantau kurir pesanan antarmu — status, kontak & rute",
+    onClick: () => setCourierOpen(true),
+    badge: activeDeliveries,
+  };
+
   const policyMenu: MenuItem = {
     icon: FileText,
     label: "Syarat & Kebijakan Aplikasi",
@@ -269,6 +289,7 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
         policyMenu,
         { icon: Monitor, label: "Buka Mode POS Kasir", desc: "Tampilan desktop/tablet untuk transaksi", onClick: () => go("pos") },
         { icon: ClipboardList, label: "Kelola Pesanan", desc: "Pantau & proses pesanan masuk", onClick: () => go("orders") },
+        courierMenu,
         helpMenu,
         aboutMenu,
       ]
@@ -276,6 +297,7 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
         { icon: PenLine, label: "Edit Profil", desc: "Ubah nama, no. HP, & password", onClick: () => setEditOpen(true) },
         { icon: MessageCircle, label: "Chat CS AGSI", desc: chatUnread > 0 ? `${chatUnread} balasan baru dari CS` : "Tanya stok, pesanan, & poin member", onClick: openChat, badge: chatUnread },
         { icon: ClipboardList, label: "Riwayat Pesanan", desc: `${orders.length} pesanan telah dibuat`, onClick: () => go("orders") },
+        courierMenu,
         pushMenu,
         bioMenu,
         policyMenu,
@@ -425,6 +447,9 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
 
       {/* Sheet notifikasi push FCM — semua role (web + status aplikasi Android) */}
       <PushSettingsSheet open={pushOpen} onClose={() => setPushOpen(false)} user={user} />
+
+      {/* Sheet Lacak Kurir AGSI — pantau pesanan antar berjalan (kurir, kontak, rute) */}
+      <CourierTrackingSheet open={courierOpen} onClose={() => setCourierOpen(false)} />
 
       {/* Sheet login biometrik WebAuthn — semua role */}
       <BiometricSheet open={bioOpen} onClose={() => setBioOpen(false)} user={user} />

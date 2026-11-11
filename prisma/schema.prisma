@@ -183,6 +183,13 @@ model Order {
   deliveryArea  String? // gampong tujuan (snapshot dari daftar area Pidie 24151)
   distanceKm    Float? // perkiraan jarak toko→alamat (km)
   deliveryFee   Int         @default(0) // ongkir Rp1.000/km — kelipatan jarak (dihitung server)
+  // ===== Pelacakan kurir AGSI (type DELIVERY) =====
+  // Staff menekan "Serahkan ke Kurir" saat pesanan READY → data kurir
+  // tersimpan & onTheWayAt menjadi penanda "sedang diantar" untuk fitur
+  // Lacak Kurir di Profil pelanggan. NULL = kurir belum berangkat.
+  courierName  String? // nama kurir AGSI yang mengantar
+  courierPhone String? // no. HP kurir (opsional — tombol telepon/WA)
+  onTheWayAt   DateTime? // waktu kurir berangkat dari toko
   // Voucher yang dipakai (snapshot kode + besaran potongan)
   voucherCode   String?
   voucherDiscount Int       @default(0)

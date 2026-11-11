@@ -9,6 +9,7 @@ import {
   CheckCheck,
   ChefHat,
   ClipboardList,
+  Loader2,
   MessageCircle,
   Phone,
   Printer,
@@ -17,6 +18,7 @@ import {
   ShoppingBag,
   Ticket,
   Utensils,
+  X,
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,6 +45,11 @@ export function AdminOrdersView() {
   const [filter, setFilter] = useState<string>("ALL");
   const [updating, setUpdating] = useState<string | null>(null);
   const [receiptOrder, setReceiptOrder] = useState<OrderData | null>(null);
+  /** Dialog "Serahkan ke Kurir" — pesanan antar yang siap diantar */
+  const [courierOrder, setCourierOrder] = useState<OrderData | null>(null);
+  const [courierName, setCourierName] = useState("");
+  const [courierPhone, setCourierPhone] = useState("");
+  const [dispatching, setDispatching] = useState(false);
   /** Buka chat CS dengan pelanggan pemilik pesanan ini (utas langsung terbuka) */
   const openChat = useUiStore((s) => s.openChat);
 
@@ -135,6 +142,42 @@ export function AdminOrdersView() {
       showNotice({ type: "error", title: "Koneksi Bermasalah", message: "Tidak dapat menghubungi server." });
     } finally {
       setUpdating(null);
+    }
+  };
+
+  /** Serahkan pesanan antar ke kurir → onTheWayAt terisi, pelanggan dapat
+   *  push "sedang diantar" + fitur Lacak Kurir di Profil menyala */
+  const dispatchCourier = async () => {
+    if (!courierOrder) return;
+    if (!courierName.trim()) {
+      showNotice({ type: "error", title: "Nama Kurir Kosong", message: "Isi nama kurir dulu ya." });
+      return;
+    }
+    setDispatching(true);
+    try {
+      const res = await apiFetch(`/api/orders/${courierOrder.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courierName: courierName.trim(), courierPhone: courierPhone.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showNotice({ type: "error", title: "Gagal Menugaskan Kurir", message: data.error ?? "Coba lagi." });
+        return;
+      }
+      showNotice({
+        type: "success",
+        title: "Kurir Berangkat 🛵",
+        message: `${courierName.trim()} membawa pesanan ${courierOrder.code}. Pelanggan dapat notifikasi & bisa melacak di Profil.`,
+      });
+      setCourierOrder(null);
+      setCourierName("");
+      setCourierPhone("");
+      await load("all", true);
+    } catch {
+      showNotice({ type: "error", title: "Koneksi Bermasalah", message: "Tidak dapat menghubungi server." });
+    } finally {
+      setDispatching(false);
     }
   };
 
@@ -268,6 +311,24 @@ export function AdminOrdersView() {
                           : ""}
                       </p>
                     )}
+                    {o.type === "DELIVERY" && o.courierName && (
+                      <p className="flex items-center gap-1.5 rounded-lg bg-green-50 px-2.5 py-1.5 text-[11px] font-bold text-green-700 ring-1 ring-green-100">
+                        <Bike className="h-3.5 w-3.5 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">
+                          Diantar oleh {o.courierName}
+                          {o.courierPhone ? ` • ${o.courierPhone}` : ""}
+                        </span>
+                        {o.courierPhone && (
+                          <a
+                            href={`tel:${o.courierPhone.replace(/[^+\d]/g, "")}`}
+                            aria-label={`Telepon kurir ${o.courierName}`}
+                            className="press-effect flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-600 text-white"
+                          >
+                            <Phone className="h-3 w-3" />
+                          </a>
+                        )}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-between gap-2 border-t border-orange-50 px-4 py-2.5">
@@ -349,42 +410,61 @@ export function AdminOrdersView() {
                           )}
                         </Button>
                       ) : null}
-                      {nexts.map((next) => (
-                        <Button
-                          key={next}
-                          size="sm"
-                          disabled={updating === o.id}
-                          onClick={() => advance(o.id, next)}
-                          className={cn(
-                            "press-effect h-8 flex-1 rounded-xl text-[11px] font-bold",
-                            next === "CANCELLED"
-                              ? "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
-                              : next === "COMPLETED"
-                                ? "bg-green-600 hover:bg-green-700"
-                                : "bg-orange-600 hover:bg-orange-700"
-                          )}
-                        >
-                          {updating === o.id ? (
-                            "Memperbarui…"
-                          ) : next === "PREPARING" ? (
-                            <>
-                              <ChefHat className="h-3.5 w-3.5" /> Masak
-                            </>
-                          ) : next === "READY" ? (
-                            <>
-                              <ArrowRight className="h-3.5 w-3.5" /> Siap
-                            </>
-                          ) : next === "COMPLETED" ? (
-                            <>
-                              <CheckCheck className="h-3.5 w-3.5" /> Selesai
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="h-3.5 w-3.5" /> Batalkan
-                            </>
-                          )}
-                        </Button>
-                      ))}
+                      {nexts.map((next) =>
+                        // Pesanan ANTAR yang sudah Siap tapi kurir belum berangkat:
+                        // wajib lewat "Serahkan ke Kurir" dulu (data kurir + notifikasi
+                        // pelanggan) — bukan langsung Selesai.
+                        next === "COMPLETED" && o.type === "DELIVERY" && !o.onTheWayAt ? (
+                          <Button
+                            key="courier"
+                            size="sm"
+                            disabled={updating === o.id}
+                            onClick={() => {
+                              setCourierOrder(o);
+                              setCourierName(o.courierName ?? "");
+                              setCourierPhone(o.courierPhone ?? "");
+                            }}
+                            className="press-effect h-8 flex-1 rounded-xl bg-orange-600 text-[11px] font-bold hover:bg-orange-700"
+                          >
+                            <Bike className="h-3.5 w-3.5" /> Serahkan ke Kurir
+                          </Button>
+                        ) : (
+                          <Button
+                            key={next}
+                            size="sm"
+                            disabled={updating === o.id}
+                            onClick={() => advance(o.id, next)}
+                            className={cn(
+                              "press-effect h-8 flex-1 rounded-xl text-[11px] font-bold",
+                              next === "CANCELLED"
+                                ? "bg-neutral-200 text-neutral-600 hover:bg-neutral-300"
+                                : next === "COMPLETED"
+                                  ? "bg-green-600 hover:bg-green-700"
+                                  : "bg-orange-600 hover:bg-orange-700"
+                            )}
+                          >
+                            {updating === o.id ? (
+                              "Memperbarui…"
+                            ) : next === "PREPARING" ? (
+                              <>
+                                <ChefHat className="h-3.5 w-3.5" /> Masak
+                              </>
+                            ) : next === "READY" ? (
+                              <>
+                                <ArrowRight className="h-3.5 w-3.5" /> Siap
+                              </>
+                            ) : next === "COMPLETED" ? (
+                              <>
+                                <CheckCheck className="h-3.5 w-3.5" /> {o.type === "DELIVERY" ? "Sampai Tujuan" : "Selesai"}
+                              </>
+                            ) : (
+                              <>
+                                <XCircle className="h-3.5 w-3.5" /> Batalkan
+                              </>
+                            )}
+                          </Button>
+                        )
+                      )}
                     </div>
                   )}
                 </motion.article>
@@ -399,6 +479,100 @@ export function AdminOrdersView() {
 
       {/* ===== SHEET CETAK STRUK ===== */}
       <ReceiptSheet open={!!receiptOrder} order={receiptOrder} onClose={() => setReceiptOrder(null)} />
+
+      {/* ===== DIALOG SERAHKAN KE KURIR (pesanan antar) ===== */}
+      <AnimatePresence>
+        {courierOrder && (
+          <motion.div
+            key="courier-dialog"
+            initial={prefersReduced ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={prefersReduced ? undefined : { opacity: 0 }}
+            className="fixed inset-0 z-[95] flex items-end justify-center bg-neutral-900/70 backdrop-blur-sm sm:items-center sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Serahkan ke kurir"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !dispatching) setCourierOrder(null);
+            }}
+          >
+            <motion.div
+              initial={prefersReduced ? false : { y: 48, scale: 0.97 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={prefersReduced ? undefined : { y: 48, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 380, damping: 34 }}
+              className="w-full max-w-sm overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+            >
+              <header className="flex items-center gap-3 bg-gradient-to-r from-orange-700 via-orange-600 to-orange-500 px-5 py-4 text-white">
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/20 ring-1 ring-white/30">
+                  <Bike className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-black tracking-wide">Serahkan ke Kurir AGSI</p>
+                  <p className="truncate text-[11px] font-semibold text-orange-100">Pesanan {courierOrder.code}</p>
+                </div>
+                <button
+                  onClick={() => setCourierOrder(null)}
+                  aria-label="Tutup"
+                  disabled={dispatching}
+                  className="press-effect flex h-9 w-9 items-center justify-center rounded-full bg-white/15 hover:bg-white/30"
+                >
+                  <X className="h-4.5 w-4.5" />
+                </button>
+              </header>
+              <div className="space-y-3 px-5 py-4">
+                <p className="rounded-xl bg-orange-50 px-3 py-2 text-[11px] leading-relaxed text-orange-800">
+                  Kurir berangkat → pelanggan otomatis dapat notifikasi &amp; bisa melacak di Profil ▸ Lacak Kurir AGSI.
+                </p>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-neutral-500">
+                    Nama Kurir *
+                  </span>
+                  <input
+                    value={courierName}
+                    onChange={(e) => setCourierName(e.target.value)}
+                    placeholder="mis. Budiman"
+                    maxLength={60}
+                    autoFocus
+                    className="w-full rounded-xl border border-orange-200 px-3 py-2.5 text-sm font-semibold text-neutral-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-neutral-500">
+                    No. HP Kurir (opsional)
+                  </span>
+                  <input
+                    value={courierPhone}
+                    onChange={(e) => setCourierPhone(e.target.value)}
+                    placeholder="mis. 0822xxxxxxx"
+                    inputMode="tel"
+                    maxLength={20}
+                    className="w-full rounded-xl border border-orange-200 px-3 py-2.5 text-sm font-semibold text-neutral-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
+                </label>
+              </div>
+              <div className="flex gap-2 border-t border-orange-100 px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+                <Button
+                  variant="outline"
+                  disabled={dispatching}
+                  onClick={() => setCourierOrder(null)}
+                  className="h-11 flex-1 rounded-xl border-neutral-200 text-sm font-bold text-neutral-600"
+                >
+                  Batal
+                </Button>
+                <Button
+                  disabled={dispatching || !courierName.trim()}
+                  onClick={() => void dispatchCourier()}
+                  className="press-effect h-11 flex-[2] rounded-xl bg-orange-600 text-sm font-black text-white hover:bg-orange-700 disabled:opacity-60"
+                >
+                  {dispatching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bike className="h-4 w-4" />}
+                  {dispatching ? "Menugaskan…" : "Kurir Berangkat 🛵"}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

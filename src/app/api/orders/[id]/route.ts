@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
 import { ORDER_STATUS_FLOW } from "@/lib/types";
 import { awardPointsForOrderCompletion } from "@/lib/points";
-import { notifyOrderStatus } from "@/lib/push";
+import { notifyOrderStatus, notifyCourierOnTheWay } from "@/lib/push";
 import { isDigitalPayment } from "@/lib/payments";
 
 type Params = { params: Promise<{ id: string }> };
@@ -53,6 +53,39 @@ export async function PUT(req: NextRequest, { params }: Params) {
         data: { paymentStatus: "PAID", paidAt: new Date(), paidVia: "CASH" },
         include: { items: true },
       });
+      return NextResponse.json({ order: updated });
+    }
+
+    // ===== Serahkan pesanan ANTAR ke kurir AGSI (fitur Lacak Kurir) =====
+    // Staff mengisi nama kurir (no. HP opsional) saat pesanan READY →
+    // onTheWayAt terisi sebagai penanda "sedang diantar"; status pesanan
+    // tetap READY (Selesai = tiba di tujuan). Bisa diulang bila kurir ganti.
+    if (body?.courierName !== undefined) {
+      const courierName = String(body.courierName ?? "").trim().slice(0, 60);
+      if (!courierName) {
+        return NextResponse.json({ error: "Nama kurir wajib diisi." }, { status: 400 });
+      }
+      const order = await db.order.findUnique({ where: { id } });
+      if (!order) {
+        return NextResponse.json({ error: "Pesanan tidak ditemukan." }, { status: 404 });
+      }
+      if (order.type !== "DELIVERY") {
+        return NextResponse.json({ error: "Fitur kurir hanya untuk pesanan antar." }, { status: 400 });
+      }
+      if (order.status !== "READY") {
+        return NextResponse.json(
+          { error: "Kurir berangkat setelah pesanan Siap. Tandai Siap dulu ya." },
+          { status: 400 }
+        );
+      }
+      const courierPhone = String(body.courierPhone ?? "").trim().slice(0, 20) || null;
+      const updated = await db.order.update({
+        where: { id },
+        data: { courierName, courierPhone, onTheWayAt: new Date() },
+        include: { items: true },
+      });
+      // 🔔 Push ke pelanggan: pesanan sedang diantar kurir X
+      void notifyCourierOnTheWay(id);
       return NextResponse.json({ order: updated });
     }
 
