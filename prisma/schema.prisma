@@ -21,7 +21,7 @@ model User {
   passwordHash String
   name         String
   phone        String?
-  role         String             @default("CUSTOMER") // CUSTOMER | ADMIN | OWNER | CASHIER
+  role         String             @default("CUSTOMER") // CUSTOMER | ADMIN | OWNER | CASHIER | COURIER
   points       Int                @default(0)
   // Kode member 8 digit — di-scan lewat barcode di kartu member
   memberCode   String?            @unique
@@ -190,6 +190,17 @@ model Order {
   courierName  String? // nama kurir AGSI yang mengantar
   courierPhone String? // no. HP kurir (opsional — tombol telepon/WA)
   onTheWayAt   DateTime? // waktu kurir berangkat dari toko
+  // ===== Akun kurir (role COURIER) yang ditugaskan =====
+  // Terisi saat staff menugaskan AKUN kurir (bukan cuma nama bebas) —
+  // akun kurir itu bisa melihat pesanan ini di beranda kurirnya lengkap
+  // dengan alamat akurat & pin GPS rumah pelanggan. NULL = kurir luar
+  // (dijalankan tanpa akun, hanya nama).
+  courierUserId String? // id User role COURIER yang bertugas
+  // ===== Pin GPS lokasi rumah pelanggan (type DELIVERY) =====
+  // Pelanggan menempel pin lokasi saat checkout (opsional, presisi) —
+  // kurir membuka link Google Maps langsung ke titik ini.
+  deliveryLat   Float? // lintang pin GPS (-90..90)
+  deliveryLng   Float? // bujur pin GPS (-90..180)
   // Voucher yang dipakai (snapshot kode + besaran potongan)
   voucherCode   String?
   voucherDiscount Int       @default(0)

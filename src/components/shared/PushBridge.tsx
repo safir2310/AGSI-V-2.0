@@ -51,6 +51,8 @@ export function PushBridge({ user }: { user: AppUser }) {
       else playAgsiStatus();
 
       const isError = kind === "order_status" && /dibatalkan/i.test(d.title);
+      // Kurir: notifikasi tugas antaran membuka beranda kurir, bukan daftar pesanan
+      const isCourierTask = kind === "courier_task";
       const actions =
         kind === "chat"
           ? [
@@ -59,8 +61,9 @@ export function PushBridge({ user }: { user: AppUser }) {
             ]
           : [
               {
-                label: "Lihat Pesanan",
-                onClick: () => useAppStore.getState().go("orders"),
+                label: isCourierTask ? "Buka Tugas" : "Lihat Pesanan",
+                onClick: () =>
+                  useAppStore.getState().go(isCourierTask && user.role === "COURIER" ? "kurir" : "orders"),
               },
               { label: "Tutup" },
             ];
@@ -76,7 +79,7 @@ export function PushBridge({ user }: { user: AppUser }) {
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
-  }, [showNotice]);
+  }, [showNotice, user.role]);
 
   return null;
 }

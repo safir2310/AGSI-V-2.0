@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
 import { ORDER_STATUS_FLOW } from "@/lib/types";
 import { awardPointsForOrderCompletion } from "@/lib/points";
-import { notifyOrderStatus, notifyCourierOnTheWay } from "@/lib/push";
+import { notifyOrderStatus, notifyCourierOnTheWay, notifyCourierAssigned } from "@/lib/push";
 import { isDigitalPayment } from "@/lib/payments";
 
 type Params = { params: Promise<{ id: string }> };
@@ -57,11 +57,33 @@ export async function PUT(req: NextRequest, { params }: Params) {
     }
 
     // ===== Serahkan pesanan ANTAR ke kurir AGSI (fitur Lacak Kurir) =====
-    // Staff mengisi nama kurir (no. HP opsional) saat pesanan READY →
-    // onTheWayAt terisi sebagai penanda "sedang diantar"; status pesanan
-    // tetap READY (Selesai = tiba di tujuan). Bisa diulang bila kurir ganti.
-    if (body?.courierName !== undefined) {
-      const courierName = String(body.courierName ?? "").trim().slice(0, 60);
+    // Staff menugaskan kurir saat pesanan READY → onTheWayAt terisi sebagai
+    // penanda "sedang diantar"; status pesanan tetap READY (Selesai = tiba
+    // di tujuan). Bisa diulang bila kurir ganti.
+    // Dua mode penugasan:
+    //  a) courierUserId = id AKUN KURIR (role COURIER) → nama & no. HP diambil
+    //     dari akun; kurir otomatis melihat pesanan ini (alamat akurat + pin
+    //     GPS rumah pelanggan) di beranda kurirnya + push FCM tugas baru.
+    //  b) courierName bebas (kurir luar tanpa akun) — perilaku lama.
+    if (body?.courierUserId !== undefined || body?.courierName !== undefined) {
+      let courierName: string | null = body?.courierName != null ? String(body.courierName).trim().slice(0, 60) : null;
+      let courierPhone: string | null = body?.courierPhone != null ? String(body.courierPhone).trim().slice(0, 20) : null;
+      let courierUserId: string | null = null;
+
+      if (body?.courierUserId) {
+        const courier = await db.user.findUnique({
+          where: { id: String(body.courierUserId) },
+          select: { id: true, name: true, phone: true, role: true },
+        });
+        if (!courier || courier.role !== "COURIER") {
+          return NextResponse.json({ error: "Akun kurir tidak ditemukan." }, { status: 404 });
+        }
+        courierUserId = courier.id;
+        // Nama & HP selalu dari akun — konsisten di Lacak Kurir pelanggan
+        courierName = courier.name;
+        courierPhone = courier.phone ?? courierPhone;
+      }
+
       if (!courierName) {
         return NextResponse.json({ error: "Nama kurir wajib diisi." }, { status: 400 });
       }
@@ -78,14 +100,17 @@ export async function PUT(req: NextRequest, { params }: Params) {
           { status: 400 }
         );
       }
-      const courierPhone = String(body.courierPhone ?? "").trim().slice(0, 20) || null;
       const updated = await db.order.update({
         where: { id },
-        data: { courierName, courierPhone, onTheWayAt: new Date() },
+        data: { courierName, courierPhone, courierUserId, onTheWayAt: new Date() },
         include: { items: true },
       });
       // 🔔 Push ke pelanggan: pesanan sedang diantar kurir X
       void notifyCourierOnTheWay(id);
+      // 🔔 Push ke AKUN KURIR yang ditugaskan: tugas antar baru
+      if (courierUserId) {
+        void notifyCourierAssigned(id);
+      }
       return NextResponse.json({ order: updated });
     }
 

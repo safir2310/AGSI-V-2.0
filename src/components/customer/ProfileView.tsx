@@ -16,6 +16,7 @@ import {
   Megaphone,
   MessageCircle,
   Monitor,
+  Palette,
   PenLine,
   QrCode,
   ScanFace,
@@ -28,9 +29,11 @@ import { EditProfileSheet } from "@/components/shared/EditProfileSheet";
 import { BiometricSheet } from "@/components/shared/BiometricSheet";
 import { AdminsSheet } from "@/components/admin/AdminsSheet";
 import { CashiersSheet } from "@/components/admin/CashiersSheet";
+import { KurirsSheet } from "@/components/admin/KurirsSheet";
 import { StoreSettingsSheet } from "@/components/admin/StoreSettingsSheet";
 import { BannerSettingsSheet } from "@/components/admin/BannerSettingsSheet";
 import { QrisManagerSheet } from "@/components/admin/QrisManagerSheet";
+import { PosterGeneratorSheet } from "@/components/admin/PosterGeneratorSheet";
 import { LegalSheet } from "@/components/shared/LegalSheet";
 import { PushSettingsSheet } from "@/components/shared/PushSettingsSheet";
 import { CourierTrackingSheet } from "@/components/customer/CourierTrackingSheet";
@@ -70,10 +73,12 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const chatUnreadTick = useUiStore((s) => s.chatUnreadTick);
   const [editOpen, setEditOpen] = useState(false);
   const [cashiersOpen, setCashiersOpen] = useState(false);
+  const [kurirsOpen, setKurirsOpen] = useState(false);
   const [adminsOpen, setAdminsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bannerOpen, setBannerOpen] = useState(false);
   const [qrisOpen, setQrisOpen] = useState(false);
+  const [posterOpen, setPosterOpen] = useState(false);
   const [qrisDesc, setQrisDesc] = useState<string | null>(null);
   const [policyOpen, setPolicyOpen] = useState(false);
   const [pushOpen, setPushOpen] = useState(false);
@@ -263,6 +268,13 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
         { icon: PenLine, label: "Edit Profil", desc: "Ubah nama, no. HP, & password", onClick: () => setEditOpen(true) },
         { icon: MessageCircle, label: "Chat Pelanggan (CS)", desc: chatUnread > 0 ? `${chatUnread} pesan pelanggan belum dibalas` : "Layani pertanyaan pelanggan lewat chat", onClick: openChat, badge: chatUnread },
         { icon: UserPlus, label: "Kelola Kasir", desc: "Tambah & atur akun kasir POS", onClick: () => setCashiersOpen(true) },
+        { icon: Bike, label: "Kelola Kurir", desc: "Akun kurir antaran — tugas & lokasi rumah pelanggan", onClick: () => setKurirsOpen(true) },
+        {
+          icon: Palette,
+          label: "Generator Poster & Banner",
+          desc: "Bikin poster, banner promosi & spanduk otomatis — tinggal unduh",
+          onClick: () => setPosterOpen(true),
+        },
         { icon: ShieldCheck, label: "Kelola Admin", desc: "Tambah admin baru & atur akses owner/admin", onClick: () => setAdminsOpen(true) },
         {
           icon: Settings2,
@@ -337,11 +349,13 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
                   ? "bg-white text-orange-700"
                   : user.role === "CASHIER"
                     ? "bg-amber-400 text-amber-900"
-                    : "bg-green-500/95 text-white"
+                    : user.role === "COURIER"
+                      ? "bg-emerald-400 text-emerald-900"
+                      : "bg-green-500/95 text-white"
               )}
             >
-              {isAdmin ? <ShieldCheck className="h-3 w-3" /> : user.role === "CASHIER" ? <Store className="h-3 w-3" /> : null}
-              {isAdmin ? "Owner / Admin" : user.role === "CASHIER" ? "Kasir POS" : "Pelanggan"}
+              {isAdmin ? <ShieldCheck className="h-3 w-3" /> : user.role === "CASHIER" ? <Store className="h-3 w-3" /> : user.role === "COURIER" ? <Bike className="h-3 w-3" /> : null}
+              {isAdmin ? "Owner / Admin" : user.role === "CASHIER" ? "Kasir POS" : user.role === "COURIER" ? "Kurir Antaran" : "Pelanggan"}
             </span>
           </div>
         </div>
@@ -410,6 +424,8 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
         onUpdated={onUserUpdate}
       />
       {isAdmin && <CashiersSheet open={cashiersOpen} onClose={() => setCashiersOpen(false)} />}
+      {/* Sheet kelola kurir — akun kurir antaran pesanan (admin/owner) */}
+      {isAdmin && <KurirsSheet open={kurirsOpen} onClose={() => setKurirsOpen(false)} />}
       {/* Sheet kelola admin — daftar/tambah/edit/hapus akun admin & owner */}
       {isAdmin && (
         <AdminsSheet
@@ -441,6 +457,8 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
       )}
       {/* Sheet pengelola QRIS — dana masuk, status & tanggal transaksi (admin/owner) */}
       {isAdmin && <QrisManagerSheet open={qrisOpen} onClose={() => setQrisOpen(false)} />}
+      {/* Sheet generator poster/banner promosi/spanduk (admin/owner) */}
+      {isAdmin && <PosterGeneratorSheet open={posterOpen} onClose={() => setPosterOpen(false)} />}
       {/* Sheet syarat & kebijakan aplikasi — semua role; setuju di sini
           langsung menyinkronkan status ke AppShell (popup gate hilang) */}
       <LegalSheet open={policyOpen} onClose={() => setPolicyOpen(false)} user={user} onAccepted={onUserUpdate} />

@@ -25,6 +25,7 @@ import { VouchersView } from "@/components/admin/VouchersView";
 import { AdminOrdersView } from "@/components/admin/AdminOrdersView";
 import { ReportsView } from "@/components/admin/ReportsView";
 import { PosView } from "@/components/pos/PosView";
+import { CourierHomeView } from "@/components/courier/CourierHomeView";
 import { countPending, loadVouchersFor, refreshSettings, useOrdersStore, useProductsStore } from "@/lib/hooks";
 import { useAppStore, useCartStore, useNoticeStore, useUiStore, type AppView } from "@/lib/store";
 import { apiFetch, clearAuthToken, SESSION_EXPIRED_EVENT } from "@/lib/api";
@@ -70,9 +71,17 @@ export function AppShell() {
         if (data.user) {
           const u = data.user as AppUser;
           setUser(u);
-          go(u.role === "CASHIER" ? "pos" : isAdminRole(u.role) ? "dashboard" : "home");
+          go(
+            u.role === "CASHIER"
+              ? "pos"
+              : u.role === "COURIER"
+                ? "kurir"
+                : isAdminRole(u.role)
+                  ? "dashboard"
+                  : "home"
+          );
           loadProducts();
-          loadOrders(isAdminRole(u.role) || u.role === "CASHIER" ? "all" : "mine");
+          loadOrders(isAdminRole(u.role) || ["CASHIER", "COURIER"].includes(u.role) ? "all" : "mine");
           loadVouchersFor(u);
           // Saklar layanan toko (antar & QRIS) — dipakai keranjang & POS
           void refreshSettings();
@@ -113,9 +122,17 @@ export function AppShell() {
     (u: AppUser) => {
       setUser(u);
       clearCart();
-      go(u.role === "CASHIER" ? "pos" : isAdminRole(u.role) ? "dashboard" : "home");
+      go(
+        u.role === "CASHIER"
+          ? "pos"
+          : u.role === "COURIER"
+            ? "kurir"
+            : isAdminRole(u.role)
+              ? "dashboard"
+              : "home"
+      );
       loadProducts();
-      loadOrders(isAdminRole(u.role) || u.role === "CASHIER" ? "all" : "mine", true);
+      loadOrders(isAdminRole(u.role) || ["CASHIER", "COURIER"].includes(u.role) ? "all" : "mine", true);
       loadVouchersFor(u);
       // Saklar layanan toko (antar & QRIS) — dipakai keranjang & POS
       void refreshSettings();
@@ -156,14 +173,21 @@ export function AppShell() {
     setUser(u);
   }, []);
 
-  // Peran kasir selalu di POS; role lain bisa membuka POS dari profil
-  const effectiveView: AppView = !user ? "auth" : user.role === "CASHIER" ? "pos" : view;
+  // Peran kasir selalu di POS; kurir selalu di beranda kurir (tanpa nav —
+  // tampilan penuh seperti POS); role lain bebas berpindah.
+  const effectiveView: AppView = !user
+    ? "auth"
+    : user.role === "CASHIER"
+      ? "pos"
+      : user.role === "COURIER"
+        ? "kurir"
+        : view;
 
-  // Navigasi bawah hanya untuk pelanggan & admin (bukan POS, bukan halaman auth)
+  // Navigasi bawah hanya untuk pelanggan & admin (bukan POS/kurir/auth)
   const navVariant =
-    !!user && booted && effectiveView !== "pos" && isAdminRole(user.role)
+    !!user && booted && effectiveView !== "pos" && effectiveView !== "kurir" && isAdminRole(user.role)
       ? "admin"
-      : !!user && booted && effectiveView !== "pos" && user.role === "CUSTOMER"
+      : !!user && booted && effectiveView !== "pos" && effectiveView !== "kurir" && user.role === "CUSTOMER"
         ? "customer"
         : null;
 
@@ -172,6 +196,9 @@ export function AppShell() {
     switch (effectiveView) {
       case "pos":
         return <PosView user={user} go={go} onLogout={handleLogout} />;
+      // Kurir — beranda tugas antaran (alamat akurat + pin GPS pelanggan)
+      case "kurir":
+        return <CourierHomeView user={user} go={go} onLogout={handleLogout} />;
       // Pelanggan
       case "home":
         return <HomeView go={go} />;
@@ -197,7 +224,7 @@ export function AppShell() {
     }
   };
 
-  const isFullS = effectiveView === "pos" || !user;
+  const isFullS = effectiveView === "pos" || effectiveView === "kurir" || !user;
 
   return (
     <div className="min-h-dvh bg-white">
@@ -272,7 +299,7 @@ export function AppShell() {
                   </button>
                 ) : (
                   <span className="rounded-full bg-orange-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-orange-700 ring-1 ring-orange-200">
-                    {isAdminRole(user.role) ? "Admin" : "Kasir"}
+                    {isAdminRole(user.role) ? "Admin" : user.role === "CASHIER" ? "Kasir" : user.role === "COURIER" ? "Kurir" : "Staff"}
                   </span>
                 )}
               </div>

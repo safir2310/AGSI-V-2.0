@@ -150,6 +150,21 @@ export async function POST(req: NextRequest) {
             .join(", ")
         : addressDetail || null;
 
+    // ===== Pin GPS lokasi rumah pelanggan (opsional, type DELIVERY) =====
+    // Pelanggan menempel pin saat checkout (browser) / menempel link Google
+    // Maps — kurir diarahkan PRESISI ke titik ini, bukan cuma nama gampong.
+    // Koordinat divalidasi rentangnya; dibulatkan 6 desimal (~0,1 m).
+    let deliveryLat: number | null = null;
+    let deliveryLng: number | null = null;
+    if (type === "DELIVERY" && body.deliveryLat != null && body.deliveryLng != null) {
+      const lat = Number(body.deliveryLat);
+      const lng = Number(body.deliveryLng);
+      if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+        deliveryLat = Math.round(lat * 1e6) / 1e6;
+        deliveryLng = Math.round(lng * 1e6) / 1e6;
+      }
+    }
+
     // POS bisa melampirkan member lewat kode member (hasil scan barcode kartu
     // member / ketikan manual) — poin pesanan ini akan masuk ke akun member
     // saat pesanan selesai.
@@ -222,6 +237,8 @@ export async function POST(req: NextRequest) {
           deliveryArea,
           distanceKm,
           deliveryFee,
+          deliveryLat,
+          deliveryLng,
           phone: body.phone ? String(body.phone).slice(0, 20) : null,
           note: body.note ? String(body.note).slice(0, 300) : null,
           status: "PENDING",

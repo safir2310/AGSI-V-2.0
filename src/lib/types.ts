@@ -1,4 +1,4 @@
-export type Role = "CUSTOMER" | "ADMIN" | "OWNER" | "CASHIER";
+export type Role = "CUSTOMER" | "ADMIN" | "OWNER" | "CASHIER" | "COURIER";
 
 export type AppUser = {
   id: string;
@@ -19,6 +19,15 @@ export type AppUser = {
 
 /** Akun kasir (GET/POST /api/cashiers) */
 export type CashierInfo = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  createdAt: string;
+};
+
+/** Akun kurir (GET/POST /api/couriers) — menu "Kelola Kurir" di Profil Admin */
+export type CourierInfo = {
   id: string;
   name: string;
   email: string;
@@ -116,8 +125,15 @@ export type OrderData = {
   /** ===== Pelacakan kurir (DELIVERY) — null = kurir belum berangkat ===== */
   courierName?: string | null;
   courierPhone?: string | null;
+  /** id akun kurir (role COURIER) yang ditugaskan — null = kurir luar tanpa akun */
+  courierUserId?: string | null;
   /** waktu kurir berangkat dari toko (ISO) — penanda "sedang diantar" */
   onTheWayAt?: string | null;
+  /** ===== Pin GPS lokasi rumah pelanggan (DELIVERY) ===== */
+  /** lintang pin GPS rumah pelanggan (null = pelanggan tidak menempel pin) */
+  deliveryLat?: number | null;
+  /** bujur pin GPS rumah pelanggan */
+  deliveryLng?: number | null;
   voucherCode: string | null;
   voucherDiscount: number;
   total: number;

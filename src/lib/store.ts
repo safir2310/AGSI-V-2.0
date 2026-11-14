@@ -153,7 +153,9 @@ export const useUiStore = create<UiState>((set) => ({
 
 export type CustomerView = "home" | "menu" | "cart" | "orders" | "profile";
 export type AdminView = "dashboard" | "products" | "vouchers" | "orders" | "reports" | "profile";
-export type AppView = CustomerView | AdminView | "pos" | "auth";
+/** Beranda khusus kurir (role COURIER) — tugas antaran + lokasi pelanggan */
+export type CourierView = "kurir";
+export type AppView = CustomerView | AdminView | CourierView | "pos" | "auth";
 
 type AppState = {
   view: AppView;

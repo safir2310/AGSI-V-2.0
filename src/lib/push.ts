@@ -21,7 +21,7 @@ export const ANDROID_CHANNEL_ID = "agsi_orders";
 /** Channel khusus chat CS — aplikasi native membuat channel "agsi_chat" */
 export const ANDROID_CHAT_CHANNEL_ID = "agsi_chat";
 
-export type PushKind = "new_order" | "order_paid" | "order_status" | "chat" | "test";
+export type PushKind = "new_order" | "order_paid" | "order_status" | "chat" | "courier_task" | "test";
 
 export type PushPayload = {
   kind: PushKind;
@@ -126,6 +126,8 @@ async function tokensOfUser(userId: string): Promise<string[]> {
 
 const STAFF_ROLES = ["ADMIN", "OWNER", "CASHIER"];
 const CS_ROLES = ["ADMIN", "OWNER"];
+// Kurir = role khusus pengantaran — bukan staff kasir/CS (tidak dapat push
+// pesanan baru toko / chat CS), hanya push tugas antar yang ditugaskan.
 
 function ringkasItems(items: Array<{ name: string; qty: number }>): string {
   const s = items.map((i) => `${i.name} ×${i.qty}`).join(" • ");
@@ -261,6 +263,30 @@ export async function notifyCourierOnTheWay(orderId: string): Promise<void> {
     });
   } catch (err) {
     console.error("[push] notifyCourierOnTheWay gagal:", err);
+  }
+}
+
+/**
+ * 🛵 Tugas antar BARU untuk AKUN KURIR (role COURIER) — push ke perangkat
+ * kurir yang ditugaskan. Pemicu: staff menugaskan akun kurir lewat
+ * "Serahkan ke Kurir" (PUT /api/orders/[id] dengan courierUserId).
+ * Kurir membuka berandanya: alamat akurat + pin GPS rumah pelanggan.
+ */
+export async function notifyCourierAssigned(orderId: string): Promise<void> {
+  try {
+    const o = await db.order.findUnique({ where: { id: orderId } });
+    if (!o || !o.courierUserId) return;
+    const alamatSingkat = o.deliveryArea ? `Gampong ${o.deliveryArea}` : "alamat tersimpan";
+    await sendToTokens(await tokensOfUser(o.courierUserId), {
+      kind: "courier_task",
+      title: "🛵 Tugas Antar Baru!",
+      body: `${o.code} untuk ${o.customerName} — ${alamatSingkat}. Buka beranda kurir untuk alamat lengkap & pin GPS rumah pelanggan.`,
+      url: "/?view=kurir",
+      orderId: o.id,
+      tag: `courier-${o.id}`,
+    });
+  } catch (err) {
+    console.error("[push] notifyCourierAssigned gagal:", err);
   }
 }
 

@@ -17,6 +17,8 @@ import {
   Utensils,
   X,
 } from "lucide-react";
+// Pin GPS rumah — pakai ikon Locate inline SVG? Tidak: lucide punya Crosshair.
+import { Crosshair } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -79,6 +81,10 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
   const [payOrder, setPayOrder] = useState<QrisPayOrder | null>(null);
   /** Popup pilih alamat pengantaran (area Kec. Pidie 24151) */
   const [areaOpen, setAreaOpen] = useState(false);
+  /** Pin GPS lokasi rumah (opsional) — kurir diarahkan presisi ke titik ini */
+  const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [mapsLinkInput, setMapsLinkInput] = useState("");
   const [form, setForm] = useState({
     name: user.name ?? "",
     type: "DINE_IN" as (typeof ORDER_TYPES)[number]["id"],
@@ -102,6 +108,8 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
   useEffect(() => {
     if (!deliveryEnabled) {
       setForm((f) => (f.type === "DELIVERY" ? { ...f, type: "DINE_IN", areaId: "", address: "" } : f));
+      setGps(null);
+      setMapsLinkInput("");
     }
     if (!qrisEnabled) {
       setForm((f) =>
@@ -120,6 +128,53 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
     form.type === "DELIVERY" && form.areaId ? findDeliveryArea(form.areaId) : undefined;
   const deliveryFee =
     form.type === "DELIVERY" && deliveryArea ? (feeForArea(deliveryArea.id) ?? 0) : 0;
+
+  /** Ambil pin GPS lokasi rumah sekarang (presisi — dipakai kurir via Google Maps).
+   *  Di aplikasi Android WebView geolokasi bisa ditolak → pelanggan tetap bisa
+   *  menempel link Google Maps di bawah. */
+  const pinMyLocation = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      showNotice({
+        type: "info",
+        title: "Perangkat Tidak Mendukung",
+        message: "Browser ini tidak bisa mengambil lokasi — tempel link Google Maps rumahmu di kolom yang tersedia.",
+      });
+      return;
+    }
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGps({
+          lat: Math.round(pos.coords.latitude * 1e6) / 1e6,
+          lng: Math.round(pos.coords.longitude * 1e6) / 1e6,
+        });
+        setGpsLoading(false);
+      },
+      () => {
+        setGpsLoading(false);
+        showNotice({
+          type: "info",
+          title: "Lokasi Tidak Bisa Diambil",
+          message:
+            "Izin lokasi ditolak / tidak tersedia. Buka Google Maps → titik lokasi rumahmu → Bagikan → salin link, lalu tempel di kolom link di bawah ya.",
+        });
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
+  };
+
+  /** Terima link Google Maps (@lat,lng / ?q=lat,lng / place) → simpan pin GPS */
+  const applyMapsLink = (raw: string) => {
+    setMapsLinkInput(raw);
+    const m = raw.match(/@?(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)/) ?? raw.match(/[?&]q=(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+    if (m) {
+      const lat = Number(m[1]);
+      const lng = Number(m[2]);
+      if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+        setGps({ lat, lng });
+      }
+    }
+  };
 
   /** Potongan dihitung ulang otomatis mengikuti isi keranjang */
   const voucherDiscount = useMemo(() => {
@@ -280,6 +335,8 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
           tableNo: form.type === "DINE_IN" ? form.tableNo : undefined,
           address: form.type === "DELIVERY" ? form.address.trim() || undefined : undefined,
           deliveryAreaId: form.type === "DELIVERY" ? form.areaId : undefined,
+          deliveryLat: form.type === "DELIVERY" && gps ? gps.lat : undefined,
+          deliveryLng: form.type === "DELIVERY" && gps ? gps.lng : undefined,
           phone: form.phone,
           note: form.note || undefined,
           paymentMethod: form.payment,
@@ -577,6 +634,54 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
               value={form.address}
               onChange={(e) => setForm({ ...form, address: e.target.value })}
             />
+            {/* ===== Pin GPS lokasi rumah — kurir diarahkan presisi ===== */}
+            <div className="space-y-1.5 rounded-xl border border-emerald-100 bg-emerald-50/60 p-2.5">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={pinMyLocation}
+                  disabled={gpsLoading}
+                  className={cn(
+                    "press-effect flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-[11px] font-black transition",
+                    gps
+                      ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                      : "border border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-100"
+                  )}
+                >
+                  {gpsLoading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Crosshair className={cn("h-3.5 w-3.5", gps && "animate-none")} />
+                  )}
+                  {gps ? "Pin Terpasang ✓ — Ganti Titik" : "Pin Lokasi Rumah (GPS)"}
+                </button>
+                {gps && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGps(null);
+                      setMapsLinkInput("");
+                    }}
+                    aria-label="Hapus pin lokasi"
+                    className="press-effect flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-600 hover:bg-emerald-100"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <input
+                value={mapsLinkInput}
+                onChange={(e) => applyMapsLink(e.target.value)}
+                placeholder="atau tempel link Google Maps rumahmu…"
+                aria-label="Link Google Maps lokasi rumah"
+                className="h-9 w-full rounded-lg border border-emerald-200 bg-white px-3 text-[11px] font-semibold text-neutral-700"
+              />
+              <p className="text-[10px] leading-snug text-emerald-700">
+                {gps
+                  ? `📍 Pin siap — kurir diarahkan presisi ke ${gps.lat}, ${gps.lng}`
+                  : "Opsional tapi sangat membantu kurir menemukan rumahmu 🛵"}
+              </p>
+            </div>
             <p className="text-[11px] font-semibold leading-snug text-orange-600">
               🛵 Ongkir {formatIDR(DELIVERY_FEE_PER_KM)}/km — berlaku kelipatan jarak
               (dibulatkan ke atas per 1 km).
