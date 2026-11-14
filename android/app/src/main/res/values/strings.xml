@@ -3,9 +3,9 @@
     <string name="channel_orders_name">Pesanan &amp; Notifikasi AGSI</string>
     <string name="channel_orders_desc">Banner heads-up untuk pesanan baru, pembayaran QRIS, status pesanan, dan chat CS</string>
     <string name="channel_keepalive_name">Latar Belakang AGSI</string>
-    <string name="channel_keepalive_desc">Menjaga aplikasi tetap berjalan di latar belakang agar pesanan baru langsung ternotifikasi</string>
+    <string name="channel_keepalive_desc">Menjaga aplikasi tetap berjalan di latar belakang (tersembunyi — tidak menampilkan notifikasi)</string>
     <string name="keepalive_title">AGSI aktif di latar belakang</string>
-    <string name="keepalive_body">Siap menerima pesanan baru — notifikasi muncul seketika walau aplikasi ditutup</string>
+    <string name="keepalive_body">Pesanan &amp; chat terpantau — notifikasi tetap masuk walau aplikasi ditutup</string>
     <string name="battery_dialog_title">Notifikasi selalu masuk 🔔</string>
     <string name="battery_dialog_message">Agar notifikasi pesanan baru SELALU masuk seketika walau aplikasi ditutup, Android perlu mengizinkan AGSI berjalan tanpa batasan baterai.\n\nPada layar berikutnya, pilih \"Izinkan\" / \"Allow\".</string>
     <string name="battery_dialog_ok">Izinkan</string>

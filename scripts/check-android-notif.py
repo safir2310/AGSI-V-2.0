@@ -71,6 +71,30 @@ for needle in ["maybeAskUnrestrictedBattery", "REQUEST_IGNORE_BATTERY_OPTIMIZATI
     else:
         print(f"OK MainActivity: {needle}")
 
+# 5. Notifikasi keep-alive TERSEMBUNYI (v1.3.1)
+pc = open(os.path.join(ROOT, "java/com/agsi/pos/PushChannels.kt")).read()
+for needle, desc in [
+    ("IMPORTANCE_NONE", "channel keep-alive tersembunyi"),
+    ("agsi_keepalive_hidden", "ID channel baru (importance lama tak bisa diturunkan)"),
+    ("KEEPALIVE_LEGACY", "konstanta channel lama"),
+    ("deleteNotificationChannel", "hapus channel lama dari perangkat"),
+]:
+    if needle not in pc:
+        errors.append(f"PushChannels kurang {needle} ({desc})")
+    else:
+        print(f"OK PushChannels: {needle} ({desc})")
+
+ks = open(os.path.join(ROOT, "java/com/agsi/pos/KeepAliveService.kt")).read()
+for needle, desc in [
+    ("VISIBILITY_SECRET", "notifikasi rahasia (tak muncul di lock screen)"),
+    ("setOngoing(false)", "non-ongoing"),
+    ("PushChannels.KEEPALIVE", "channel tersembunyi"),
+]:
+    if needle not in ks:
+        errors.append(f"KeepAliveService kurang {needle} ({desc})")
+    else:
+        print(f"OK KeepAliveService: {needle} ({desc})")
+
 if errors:
     print("\nGAGAL:")
     for e in errors:

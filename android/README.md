@@ -26,7 +26,7 @@ android/
         │   ├── PushService.kt          ← penerima FCM → notifikasi heads-up
         │   ├── KeepAliveService.kt     ← foreground service: proses tetap hidup
         │   │                              walau di-swipe (restart via AlarmManager),
-        │   │                              channel senyap agsi_keepalive
+        │   │                              notifikasi TERSEMBUNYI (v1.3.1)
         │   ├── BootReceiver.kt         ← hidupkan ulang keep-alive setelah
         │   │                              HP reboot / APK diperbarui
         │   ├── PushChannels.kt         ← channel "agsi_orders" IMPORTANCE_HIGH
@@ -70,12 +70,17 @@ WEB_APP_URL=https://domain-anda.com
 | HP reboot / APK update | `BootReceiver` menghidupkan ulang keep-alive otomatis |
 | Diketuk | `MainActivity` dibuka → WebView memuat `data.url` |
 
-**KeepAliveService** (v1.1) menjaga proses app tetap hidup dengan notifikasi
-tetap senyap "AGSI aktif di latar belakang" (channel `agsi_keepalive`,
-IMPORTANCE_MIN — tanpa suara/vibrasi) supaya FCM pesanan baru selalu sampai
-seketika. Saat pertama dibuka, app juga menawarkan pembebasan penghemat
-baterai (dialog resmi Android) — cara andal mencegah OEM
-(Xiaomi/OPPO/Vivo/Samsung) membekukan app yang "ditutup".
+**KeepAliveService** (v1.1) menjaga proses app tetap hidup supaya FCM pesanan
+baru selalu sampai seketika. Mulai **v1.3.1 notifikasi keep-alive
+DISEMBUNYIKAN**: diposting pada channel `agsi_keepalive_hidden`
+(IMPORTANCE_NONE) sehingga tidak pernah tampil di status bar / lock screen —
+notifikasi tetap di-post karena wajib untuk foreground service, tapi user
+tidak melihatnya sama sekali (channel lama `agsi_keepalive` yang terlihat
+dihapus otomatis dari perangkat lama). Yang tampil hanya notifikasi asli:
+**pesanan baru, QRIS terbayar, status pesanan, chat CS, dan tugas kurir**.
+Saat pertama dibuka, app juga menawarkan pembebasan penghemat baterai
+(dialog resmi Android) — cara andal mencegah OEM (Xiaomi/OPPO/Vivo/Samsung)
+membekukan app yang "ditutup".
 
 Token FCM dikelola dua arah:
 1. **Native**: `PushService.onNewToken` / `MainActivity` mendaftarkan token ke

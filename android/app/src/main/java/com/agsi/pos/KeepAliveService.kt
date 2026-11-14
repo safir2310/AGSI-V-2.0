@@ -23,8 +23,11 @@ import androidx.core.content.ContextCompat
  *
  * Cara kerja:
  *  - Dimulai dari MainActivity.onCreate (app di depan → legal di Android 12+).
- *  - Menampilkan notifikasi TETAP "AGSI aktif di latar belakang" pada
- *    channel agsi_keepalive (IMPORTANCE_MIN — tanpa suara, tidak mengganggu).
+ *  - Menampilkan notifikasi TETAP pada channel agsi_keepalive_hidden yang
+ *    TERSEMBUNYI (IMPORTANCE_NONE — tidak pernah tampil di status bar /
+ *    lock screen; mulai v1.3.1 permintaan pemilik: sembunyikan notifikasi
+ *    "AGSI aktif"). Notifikasi tetap di-post karena WAJIB untuk foreground
+ *    service, tapi user tidak melihatnya sama sekali.
  *  - START_STICKY: sistem menghidupkan ulang bila proses dibunuh sistem.
  *  - onTaskRemoved: app DI-SWIPE dari recent → layanan dijadwalkan ulang
  *    lewat AlarmManager 1,5 detik kemudian, jadi notifikasi pesanan baru
@@ -83,8 +86,14 @@ class KeepAliveService : Service() {
             .setContentText(getString(R.string.keepalive_body))
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setOngoing(true)
+            // Bukan ongoing + VISIBILITY_SECRET + channel IMPORTANCE_NONE
+            // → tidak tampil di status bar, shade, maupun lock screen.
+            // (Ongoing di channel NONE tidak masalah, tapi non-ongoing +
+            // SECRET memastikan tak muncul jika channel pernah diubah user.)
+            .setOngoing(false)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .setShowWhen(false)
+            .setContentIntent(null)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
 
