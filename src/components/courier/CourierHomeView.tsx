@@ -5,6 +5,8 @@ import { motion, useReducedMotion } from "framer-motion";
 import {
   Bike,
   CheckCheck,
+  Clock,
+  HandCoins,
   Loader2,
   LogOut,
   MapPin,
@@ -17,6 +19,7 @@ import {
 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { apiFetch } from "@/lib/api";
+import { useNoticeStore } from "@/lib/store";
 import { formatDateTime, formatIDR, type OrderData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { AppUser } from "@/lib/types";
@@ -28,11 +31,30 @@ type CourierHomeViewProps = {
   go: (v: AppView) => void;
 };
 
+/** Uang COD di tangan kurir — dari GET /api/courier/setoran */
+type SetoranData = {
+  pending: {
+    amount: number;
+    count: number;
+    orders: Array<{ id: string; code: string; total: number; customerName: string; updatedAt: string }>;
+  };
+  riwayat: Array<{
+    id: string;
+    amount: number;
+    orderCount: number;
+    note: string | null;
+    createdAt: string;
+    confirmedAt: string | null;
+  }>;
+};
+
+type Tab = "antaran" | "selesai";
+
 /** Nomor HP → format internasional utk tautan WhatsApp (62…) */
 function waNumber(raw: string): string {
   const d = raw.replace(/\D/g, "");
   if (d.startsWith("62")) return d;
-  if (d.startsWith("0")) return `62${d.slice(1)}`;
+  if (d.startsWith("0")) return `62${d}`;
   return `62${d}`;
 }
 
@@ -41,26 +63,41 @@ function waNumber(raw: string): string {
  *
  * Kurir melihat pesanan ANTAR yang ditugaskan kepadanya (staff menekan
  * "Serahkan ke Kurir" di Kelola Pesanan) lengkap dengan:
+ *  - TAB: Antaran (masih dijalan) & Selesai — riwayat pengantaran
  *  - alamat akurat: detail rumah + gampong + pin GPS rumah pelanggan
  *  - tombol rute Google Maps (prioritas pin GPS presisi)
  *  - tombol telepon & WhatsApp pelanggan
- *  - tombol "Sampai Tujuan" (menandai pesanan COMPLETED)
+ *  - tombol "Sampai Tujuan" → pesanan langsung COMPLETED (kurir kini
+ *    diizinkan oleh API; pesanan COD tunai otomatis lunas paidVia "COD")
+ *  - KANTONG UANG COD: uang tunai bayar di tempat yang dipegang kurir,
+ *    tombol "Setor ke Admin" mengosongkannya (kembali ke 0) + riwayat
+ *    setoran & status konfirmasi admin
  *
  * Daftar di-refresh otomatis tiap 15 detik — tugas baru langsung muncul.
  */
 export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
   const prefersReduced = useReducedMotion();
+  const showNotice = useNoticeStore((s) => s.show);
   const [orders, setOrders] = useState<OrderData[] | null>(null);
+  const [setoran, setSetoran] = useState<SetoranData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("antaran");
+  const [setorArmed, setSetorArmed] = useState(false);
+  const [setorBusy, setSetorBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const res = await apiFetch("/api/courier/deliveries", { cache: "no-store" });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as { orders?: OrderData[] };
+      const [dRes, sRes] = await Promise.all([
+        apiFetch("/api/courier/deliveries", { cache: "no-store" }),
+        apiFetch("/api/courier/setoran", { cache: "no-store" }),
+      ]);
+      if (!dRes.ok) throw new Error();
+      const data = (await dRes.json()) as { orders?: OrderData[] };
       setOrders(data.orders ?? []);
+      if (sRes.ok) setSetoran((await sRes.json()) as SetoranData);
       setError(null);
     } catch {
       setError("Tidak dapat menghubungi server. Periksa koneksi lalu coba lagi.");
@@ -75,9 +112,17 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
     return () => clearInterval(iv);
   }, [load]);
 
-  /** Tandai pesanan sampai tujuan (COMPLETED) */
+  /** Galat aksi hilang sendiri beberapa detik */
+  useEffect(() => {
+    if (!actionError) return;
+    const t = setTimeout(() => setActionError(null), 5000);
+    return () => clearTimeout(t);
+  }, [actionError]);
+
+  /** Tandai pesanan sampai tujuan → API kini mengizinkan KURIR (COMPLETED) */
   const completeDelivery = async (o: OrderData) => {
     setUpdating(o.id);
+    setActionError(null);
     try {
       const res = await apiFetch(`/api/orders/${o.id}`, {
         method: "PUT",
@@ -85,18 +130,55 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
         body: JSON.stringify({ status: "COMPLETED" }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Gagal.");
+      if (!res.ok) throw new Error(data.error ?? "Gagal menyelesaikan pesanan.");
       await load();
+      showNotice({
+        type: "success",
+        title: "Antaran Selesai ✓",
+        message: `${o.code} tertandai sampai tujuan — ${o.customerName} sudah dilayani.`,
+      });
     } catch (err) {
-      // ditampilkan lewat badge status yang tidak berubah — sederhana & jelas
-      console.error("[kurir] gagal menandai sampai tujuan:", err);
+      setActionError(err instanceof Error ? err.message : "Gagal menyelesaikan pesanan.");
     } finally {
       setUpdating(null);
     }
   };
 
+  /** Setor uang COD ke admin — dua langkah (tekan sekali = siap, lagi = kirim) */
+  const depositToAdmin = async () => {
+    if (!setorArmed) {
+      setSetorArmed(true);
+      setTimeout(() => setSetorArmed(false), 4000);
+      return;
+    }
+    setSetorArmed(false);
+    setSetorBusy(true);
+    try {
+      const res = await apiFetch("/api/courier/setoran", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Gagal menyimpan setoran.");
+      await load();
+      showNotice({
+        type: "success",
+        title: "Setoran Tercatat ✓",
+        message: `${formatIDR(data.setoran.amount)} diserahkan ke admin — lapor langsung bila ada selisih.`,
+      });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Gagal menyimpan setoran.");
+    } finally {
+      setSetorBusy(false);
+    }
+  };
+
   const aktif = (orders ?? []).filter((o) => o.status === "READY");
   const selesai = (orders ?? []).filter((o) => o.status === "COMPLETED");
+  const pending = setoran?.pending;
+  const riwayat = (setoran?.riwayat ?? []).slice(0, 3);
+  const shown = tab === "antaran" ? aktif : selesai;
 
   return (
     <div className="min-h-dvh bg-gradient-to-b from-emerald-50/60 via-white to-orange-50/50 px-4 pb-10 pt-[calc(0.75rem+env(safe-area-inset-top,0px))]">
@@ -120,34 +202,131 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
         </button>
       </header>
 
-      {/* ===== RINGKASAN ===== */}
-      <motion.div
-        initial={prefersReduced ? false : { opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="mb-4 grid grid-cols-2 gap-2"
-      >
-        <div className="rounded-2xl border border-emerald-100 bg-white p-3 shadow-sm">
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-600">
-            <Package className="h-3 w-3" /> Tugas Aktif
+      {/* ===== KANTONG UANG COD (setoran) ===== */}
+      {(pending?.count ?? 0) > 0 || riwayat.length > 0 ? (
+        <motion.section
+          initial={prefersReduced ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="mb-4 overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white shadow-sm"
+        >
+          <div className="flex items-center justify-between gap-3 px-4 pt-3.5">
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-amber-700">
+                <HandCoins className="h-3.5 w-3.5" /> Uang COD di Tanganmu
+              </p>
+              <p className="mt-0.5 text-2xl font-black text-neutral-900">
+                {formatIDR(pending?.amount ?? 0)}
+              </p>
+              <p className="text-[10px] text-neutral-400">
+                {pending?.count ?? 0} pesanan tunai (bayar di tempat) belum disetor ke admin
+              </p>
+            </div>
+            {(pending?.count ?? 0) > 0 && (
+              <button
+                onClick={() => void depositToAdmin()}
+                disabled={setorBusy}
+                className={cn(
+                  "press-effect flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl px-4 text-[12px] font-black text-white shadow-md disabled:opacity-60",
+                  setorArmed ? "bg-red-600 shadow-red-500/30" : "bg-amber-600 shadow-amber-500/30"
+                )}
+              >
+                {setorBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Wallet className="h-4 w-4" />
+                )}
+                {setorArmed ? "Yakin? Tekan Lagi" : "Setor ke Admin"}
+              </button>
+            )}
           </div>
-          <p className="mt-0.5 text-2xl font-black text-neutral-900">{aktif.length}</p>
+          {/* Daftar pesanan COD tertunggak (maks 3) */}
+          {(pending?.orders.length ?? 0) > 0 && (
+            <ul className="mt-2.5 space-y-1 px-4">
+              {pending!.orders.slice(0, 3).map((o) => (
+                <li key={o.id} className="flex items-baseline justify-between gap-2 text-[11px]">
+                  <span className="min-w-0 flex-1 truncate text-neutral-600">
+                    {o.code} • {o.customerName}
+                  </span>
+                  <span className="shrink-0 font-black text-amber-700">{formatIDR(o.total)}</span>
+                </li>
+              ))}
+              {pending!.orders.length > 3 && (
+                <li className="text-[10px] font-semibold text-neutral-400">
+                  +{pending!.orders.length - 3} pesanan lainnya
+                </li>
+              )}
+            </ul>
+          )}
+          {/* Riwayat setoran terakhir + status konfirmasi admin */}
+          {riwayat.length > 0 && (
+            <div className="mt-3 border-t border-amber-100 bg-white/60 px-4 py-2.5">
+              <p className="mb-1.5 flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-neutral-400">
+                <Clock className="h-3 w-3" /> Riwayat Setoran
+              </p>
+              <ul className="space-y-1">
+                {riwayat.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="min-w-0 flex-1 truncate text-neutral-500">
+                      {formatDateTime(r.createdAt)} • {r.orderCount} pesanan
+                    </span>
+                    <span className="shrink-0 font-black text-neutral-700">{formatIDR(r.amount)}</span>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black",
+                        r.confirmedAt
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-amber-100 text-amber-700"
+                      )}
+                    >
+                      {r.confirmedAt ? "Diterima Admin" : "Menunggu Konfirmasi"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </motion.section>
+      ) : null}
+
+      {/* ===== TAB: ANTARAN / SELESAI ===== */}
+      <div className="mb-3 flex rounded-2xl border border-emerald-100 bg-white p-1 shadow-sm">
+        {(
+          [
+            { id: "antaran" as Tab, label: "Antaran", icon: Package, n: aktif.length },
+            { id: "selesai" as Tab, label: "Selesai", icon: CheckCheck, n: selesai.length },
+          ]
+        ).map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            aria-pressed={tab === t.id}
+            className={cn(
+              "press-effect flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl text-[12px] font-black transition",
+              tab === t.id
+                ? "bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-md shadow-emerald-500/30"
+                : "text-neutral-500 hover:bg-emerald-50"
+            )}
+          >
+            <t.icon className="h-3.5 w-3.5" /> {t.label}
+            <span
+              className={cn(
+                "rounded-full px-1.5 py-0.5 text-[10px] font-black",
+                tab === t.id ? "bg-white/25 text-white" : "bg-neutral-100 text-neutral-500"
+              )}
+            >
+              {t.n}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Galat aksi (sampai tujuan / setor gagal) */}
+      {actionError && (
+        <div className="mb-3 flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-[11px] font-bold text-red-600">
+          <RefreshCw className="h-3.5 w-3.5 shrink-0" /> {actionError}
         </div>
-        <div className="rounded-2xl border border-orange-100 bg-white p-3 shadow-sm">
-          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-orange-600">
-            <CheckCheck className="h-3 w-3" /> Selesai Hari Ini
-          </div>
-          <p className="mt-0.5 text-2xl font-black text-neutral-900">
-            {
-              selesai.filter((o) => {
-                const d = new Date(o.updatedAt);
-                const now = new Date();
-                return d.toDateString() === now.toDateString();
-              }).length
-            }
-          </p>
-        </div>
-      </motion.div>
+      )}
 
       {/* ===== ISI ===== */}
       {loading && orders === null ? (
@@ -164,18 +343,30 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
             Coba Lagi
           </button>
         </div>
-      ) : (orders ?? []).length === 0 ? (
+      ) : shown.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/50 p-8 text-center">
-          <Bike className="h-10 w-10 text-emerald-300" />
-          <p className="text-sm font-black text-neutral-600">Belum ada tugas antaran</p>
-          <p className="max-w-[280px] text-[11px] leading-relaxed text-neutral-400">
-            Staff menugaskan pesanan antar kepadamu lewat Kelola Pesanan ▸ "Serahkan ke Kurir".
-            Tugas baru muncul otomatis di sini (halaman menyegarkan tiap 15 detik) + notifikasi push.
-          </p>
+          {tab === "antaran" ? (
+            <>
+              <Bike className="h-10 w-10 text-emerald-300" />
+              <p className="text-sm font-black text-neutral-600">Tidak ada tugas antaran</p>
+              <p className="max-w-[280px] text-[11px] leading-relaxed text-neutral-400">
+                Staff menugaskan pesanan antar kepadamu lewat Kelola Pesanan ▸ "Serahkan ke Kurir".
+                Tugas baru muncul otomatis di sini (halaman menyegarkan tiap 15 detik) + notifikasi push.
+              </p>
+            </>
+          ) : (
+            <>
+              <CheckCheck className="h-10 w-10 text-emerald-300" />
+              <p className="text-sm font-black text-neutral-600">Belum ada pengantaran selesai</p>
+              <p className="max-w-[280px] text-[11px] leading-relaxed text-neutral-400">
+                Pesanan yang sudah kamu antar sampai tujuan (tombol "Sampai Tujuan") tercatat di sini.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
-          {[...aktif, ...selesai].map((o) => {
+          {shown.map((o) => {
             const hasGps = o.deliveryLat != null && o.deliveryLng != null;
             const mapsUrl = hasGps
               ? `https://www.google.com/maps/dir/?api=1&destination=${o.deliveryLat},${o.deliveryLng}`
@@ -275,9 +466,16 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
                       </span>
                       <span className="text-orange-700">{formatIDR(o.total)}</span>
                     </p>
-                    {o.paymentStatus === "UNPAID" && (
+                    {/* COD: uang tunai dipegang kurir — masuk kantong setoran */}
+                    {o.paymentMethod === "CASH" && !done && (
                       <p className="rounded-lg bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">
-                        ⚠️ Belum lunas — konfirmasi pembayaran ke kasir (COD / bayar di tempat).
+                        💵 COD — terima uang tunai persis {formatIDR(o.total)}; uang masuk kantong
+                        setoranmu setelah ditekan "Sampai Tujuan".
+                      </p>
+                    )}
+                    {o.paymentStatus === "UNPAID" && o.paymentMethod !== "CASH" && !done && (
+                      <p className="rounded-lg bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">
+                        ⚠️ Belum lunas — pembayaran digital diverifikasi otomatis sistem.
                       </p>
                     )}
                   </div>

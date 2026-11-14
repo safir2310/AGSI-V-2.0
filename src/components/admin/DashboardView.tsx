@@ -13,9 +13,11 @@ import {
 } from "recharts";
 import {
   ArrowUpRight,
+  CheckCircle2,
   ChefHat,
   ClipboardList,
   Coins,
+  HandCoins,
   Package,
   RefreshCw,
   TrendingUp,
@@ -53,18 +55,53 @@ type ReportData = {
   }>;
 };
 
+/** Rekap setoran COD kurir — dari GET /api/courier/setoran (admin) */
+type SetoranAdminData = {
+  perKurir: Array<{ courierId: string | null; courierName: string; amount: number; count: number }>;
+  riwayat: Array<{
+    id: string;
+    amount: number;
+    orderCount: number;
+    note: string | null;
+    createdAt: string;
+    confirmedAt: string | null;
+    courier: { name: string };
+  }>;
+};
+
 export function DashboardView({ go }: { go: (v: AppView) => void }) {
   const [data, setData] = useState<ReportData | null>(null);
+  const [setoran, setSetoran] = useState<SetoranAdminData | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const prefersReduced = useReducedMotion();
 
   const load = async () => {
     setLoading(true);
     try {
-      const res = await apiFetch("/api/reports?days=7");
+      const [res, sRes] = await Promise.all([
+        apiFetch("/api/reports?days=7"),
+        apiFetch("/api/courier/setoran", { cache: "no-store" }),
+      ]);
       if (res.ok) setData(await res.json());
+      if (sRes.ok) setSetoran(await sRes.json());
     } finally {
       setLoading(false);
+    }
+  };
+
+  /** Admin menandai setoran COD kurir sebagai DITERIMA (uang di tangan) */
+  const confirmSetoran = async (id: string) => {
+    setConfirming(id);
+    try {
+      const res = await apiFetch(`/api/courier/setoran/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmed: true }),
+      });
+      if (res.ok) await load();
+    } finally {
+      setConfirming(null);
     }
   };
 
@@ -248,6 +285,87 @@ export function DashboardView({ go }: { go: (v: AppView) => void }) {
               </li>
             ))}
           </ul>
+        )}
+      </motion.section>
+
+      {/* Setoran COD kurir (uang tunai yang dipegang kurir) */}
+      <motion.section
+        initial={prefersReduced ? false : { opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.24, duration: 0.35 }}
+        className="mt-4 overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm"
+      >
+        <div className="flex items-center justify-between border-b border-amber-50 bg-gradient-to-r from-amber-50 to-white px-4 py-3">
+          <div>
+            <h2 className="flex items-center gap-1.5 text-sm font-black text-neutral-800">
+              <HandCoins className="h-4 w-4 text-amber-600" /> Setoran COD Kurir
+            </h2>
+            <p className="text-[11px] text-neutral-400">
+              Uang tunai (bayar di tempat) yang dipegang kurir & bukti setoran
+            </p>
+          </div>
+        </div>
+
+        {/* Kurir yang masih memegang uang COD */}
+        {(setoran?.perKurir ?? []).length > 0 ? (
+          <ul className="divide-y divide-amber-50">
+            {setoran!.perKurir.map((k) => (
+              <li key={k.courierId ?? "x"} className="flex items-center gap-3 px-4 py-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-[13px] font-black text-amber-700">
+                  {k.courierName.charAt(0).toUpperCase()}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-black text-neutral-700">{k.courierName}</p>
+                  <p className="text-[11px] text-neutral-400">
+                    {k.count} pesanan COD belum disetor
+                  </p>
+                </div>
+                <span className="shrink-0 text-sm font-black text-amber-700">{formatIDR(k.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-4 py-3 text-[11px] font-semibold text-neutral-400">
+            ✓ Semua kurir sudah menyetor — tidak ada uang COD yang tertunggak.
+          </p>
+        )}
+
+        {/* Riwayat setoran + konfirmasi penerimaan */}
+        {(setoran?.riwayat ?? []).length > 0 && (
+          <div className="border-t border-amber-50 bg-amber-50/40 px-4 py-3">
+            <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-neutral-400">
+              Riwayat Setoran
+            </p>
+            <ul className="space-y-2">
+              {setoran!.riwayat.slice(0, 5).map((r) => (
+                <li key={r.id} className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[11px] font-black text-neutral-700">
+                      {r.courier.name} • {formatIDR(r.amount)}{" "}
+                      <span className="font-semibold text-neutral-400">({r.orderCount} pesanan)</span>
+                    </p>
+                    <p className="truncate text-[10px] text-neutral-400">
+                      {formatDateTime(r.createdAt)}
+                      {r.note ? ` • ${r.note}` : ""}
+                    </p>
+                  </div>
+                  {r.confirmedAt ? (
+                    <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-[9px] font-black text-emerald-700">
+                      <CheckCircle2 className="h-3 w-3" /> Diterima
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => void confirmSetoran(r.id)}
+                      disabled={confirming === r.id}
+                      className="press-effect shrink-0 rounded-full bg-amber-600 px-3 py-1.5 text-[10px] font-black text-white shadow-sm hover:bg-amber-700 disabled:opacity-60"
+                    >
+                      {confirming === r.id ? "…" : "Tandai Diterima"}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </motion.section>
 

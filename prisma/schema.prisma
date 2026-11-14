@@ -1,7 +1,7 @@
 generator client {
   // Koneksi standar Prisma Postgres / Postgres biasa — TANPA driver adapter
   // (db.prisma.io memakai wire protocol Postgres standar + sslmode=require).
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // binaryTargets: runtime Vercel (Amazon Linux, OpenSSL 3) + platform lokal.
   // Tanpa ini query engine bisa tidak ditemukan saat deploy di Vercel
   // (gejala: semua route DB → "Terjadi kesalahan server.").
@@ -16,32 +16,33 @@ datasource db {
 }
 
 model User {
-  id           String             @id @default(cuid())
-  email        String             @unique
-  passwordHash String
-  name         String
-  phone        String?
-  role         String             @default("CUSTOMER") // CUSTOMER | ADMIN | OWNER | CASHIER | COURIER
-  points       Int                @default(0)
+  id                   String                @id @default(cuid())
+  email                String                @unique
+  passwordHash         String
+  name                 String
+  phone                String?
+  role                 String                @default("CUSTOMER") // CUSTOMER | ADMIN | OWNER | CASHIER | COURIER
+  points               Int                   @default(0)
   // Kode member 8 digit — di-scan lewat barcode di kartu member
-  memberCode   String?            @unique
+  memberCode           String?               @unique
   // ===== PERSETUJUAN KEBIJAKAN PENGGUNAAN DATA (privasi) =====
   // Null = belum pernah menyetujui → popup persetujuan tampil saat aplikasi
   // dibuka. Versi kebijakan baru → semua pengguna diminta menyetujui ulang.
-  dataConsentAt      DateTime?
-  dataConsentVersion String?
+  dataConsentAt        DateTime?
+  dataConsentVersion   String?
   // ===== PERSETUJUAN SYARAT & KETENTUAN PENGGUNAAN APLIKASI =====
   // Mekanisme sama dengan di atas — dua dokumen legal yang berdiri sendiri.
-  appTermsAt      DateTime?
-  appTermsVersion String?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  orders       Order[]
-  sessions     Session[]
-  pointTransactions PointTransaction[]
-  chatThread   ChatThread?
-  pushTokens   PushToken[]
+  appTermsAt           DateTime?
+  appTermsVersion      String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  orders               Order[]
+  sessions             Session[]
+  pointTransactions    PointTransaction[]
+  chatThread           ChatThread?
+  pushTokens           PushToken[]
   biometricCredentials BiometricCredential[]
+  courierSetorans      CourierSetoran[]
 }
 
 // ===== TOKEN NOTIFIKASI PUSH (FCM) =====
@@ -141,29 +142,29 @@ model Product {
 }
 
 model Order {
-  id            String      @id @default(cuid())
-  code          String      @unique
-  userId        String?
-  user          User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  customerName  String
-  type          String      @default("DINE_IN") // DINE_IN | TAKEAWAY | DELIVERY
-  tableNo       String?
-  address       String?
-  phone         String?
-  note          String?
-  status        String      @default("PENDING") // PENDING | PREPARING | READY | COMPLETED | CANCELLED
-  paymentMethod String      @default("CASH") // CASH | QRIS
+  id                 String          @id @default(cuid())
+  code               String          @unique
+  userId             String?
+  user               User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customerName       String
+  type               String          @default("DINE_IN") // DINE_IN | TAKEAWAY | DELIVERY
+  tableNo            String?
+  address            String?
+  phone              String?
+  note               String?
+  status             String          @default("PENDING") // PENDING | PREPARING | READY | COMPLETED | CANCELLED
+  paymentMethod      String          @default("CASH") // CASH | QRIS
   // Status pembayaran: UNPAID (belum bayar) | PAID (lunas).
   // QRIS LUNAS hanya lewat verifikasi OTOMATIS sistem (gateway/webhook) — kasir tidak bisa menandai.
-  paymentStatus String      @default("UNPAID")
+  paymentStatus      String          @default("UNPAID")
   // ===== Transaksi QRIS di penyedia gateway =====
-  qrisTrxId     String? // ID transaksi gateway (dipakai cek status & webhook)
-  qrisPayload   String? // String QRIS ter-cache agar tidak dibuat ulang
-  qrisMode      String? // GATEWAY (verifikasi otomatis aktif) | LOCAL (fallback tampilan QR)
-  qrisExpiresAt DateTime? // Kedaluwarsa transaksi gateway
+  qrisTrxId          String? // ID transaksi gateway (dipakai cek status & webhook)
+  qrisPayload        String? // String QRIS ter-cache agar tidak dibuat ulang
+  qrisMode           String? // GATEWAY (verifikasi otomatis aktif) | LOCAL (fallback tampilan QR)
+  qrisExpiresAt      DateTime? // Kedaluwarsa transaksi gateway
   // Nominal FINAL yang harus dibayar pelanggan (total + kode unik Casaku
   // bila aktif) — pelanggan wajib membayar nominal ini PERSIS.
-  qrisAmount    Int?
+  qrisAmount         Int?
   // Penyedia yang benar-benar melayani transaksi ini ("casaku" | "midtrans" | "internal" | "external")
   // — penting bila penyedia utama ditolak lalu fallback ke penyedia lain.
   qrisProvider       String?
@@ -173,44 +174,72 @@ model Order {
   // Deklarasi manual pembayaran QRIS statis oleh pelanggan/kasir
   // (POST /api/orders/[id]/qris/declare). NULL = lunas lewat webhook
   // gateway (verifikasi otomatis), bukan deklarasi manual.
-  qrisDeclaredAt DateTime?
+  qrisDeclaredAt     DateTime?
   // ===== Jejak pelunasan =====
-  paidAt        DateTime? // Waktu uang benar-benar masuk / tunai diterima
-  paidVia       String? // AUTO (sistem QRIS) | CASH (kasir menerima tunai)
-  subtotal      Int
-  serviceFee    Int         @default(0)
+  paidAt             DateTime? // Waktu uang benar-benar masuk / tunai diterima
+  paidVia            String? // AUTO (sistem QRIS) | CASH (kasir menerima tunai)
+  subtotal           Int
+  serviceFee         Int             @default(0)
   // ===== Pengantaran (type DELIVERY) =====
-  deliveryArea  String? // gampong tujuan (snapshot dari daftar area Pidie 24151)
-  distanceKm    Float? // perkiraan jarak toko→alamat (km)
-  deliveryFee   Int         @default(0) // ongkir Rp1.000/km — kelipatan jarak (dihitung server)
+  deliveryArea       String? // gampong tujuan (snapshot dari daftar area Pidie 24151)
+  distanceKm         Float? // perkiraan jarak toko→alamat (km)
+  deliveryFee        Int             @default(0) // ongkir Rp1.000/km — kelipatan jarak (dihitung server)
   // ===== Pelacakan kurir AGSI (type DELIVERY) =====
   // Staff menekan "Serahkan ke Kurir" saat pesanan READY → data kurir
   // tersimpan & onTheWayAt menjadi penanda "sedang diantar" untuk fitur
   // Lacak Kurir di Profil pelanggan. NULL = kurir belum berangkat.
-  courierName  String? // nama kurir AGSI yang mengantar
-  courierPhone String? // no. HP kurir (opsional — tombol telepon/WA)
-  onTheWayAt   DateTime? // waktu kurir berangkat dari toko
+  courierName        String? // nama kurir AGSI yang mengantar
+  courierPhone       String? // no. HP kurir (opsional — tombol telepon/WA)
+  onTheWayAt         DateTime? // waktu kurir berangkat dari toko
   // ===== Akun kurir (role COURIER) yang ditugaskan =====
   // Terisi saat staff menugaskan AKUN kurir (bukan cuma nama bebas) —
   // akun kurir itu bisa melihat pesanan ini di beranda kurirnya lengkap
   // dengan alamat akurat & pin GPS rumah pelanggan. NULL = kurir luar
   // (dijalankan tanpa akun, hanya nama).
-  courierUserId String? // id User role COURIER yang bertugas
+  courierUserId      String? // id User role COURIER yang bertugas
   // ===== Pin GPS lokasi rumah pelanggan (type DELIVERY) =====
   // Pelanggan menempel pin lokasi saat checkout (opsional, presisi) —
   // kurir membuka link Google Maps langsung ke titik ini.
-  deliveryLat   Float? // lintang pin GPS (-90..90)
-  deliveryLng   Float? // bujur pin GPS (-90..180)
+  deliveryLat        Float? // lintang pin GPS (-90..90)
+  deliveryLng        Float? // bujur pin GPS (-90..180)
+  // ===== Uang COD di tangan kurir (setoran) =====
+  // Pesanan antar tunai yang diselesaikan kurir → paidVia = "COD" (uang
+  // tunai berpindah ke tangan kurir, WAJIB disetor ke admin). Saat kurir
+  // menekan "Setor ke Admin", semua pesanan tertunggak diikat ke satu
+  // CourierSetoran (codSetoranId terisi) → jumlah yang harus disetor
+  // kembali ke 0. NULL = bukan COD kurir / sudah terikat setoran.
+  codSetoranId       String?
+  codSetoran         CourierSetoran? @relation(fields: [codSetoranId], references: [id], onDelete: SetNull)
   // Voucher yang dipakai (snapshot kode + besaran potongan)
-  voucherCode   String?
-  voucherDiscount Int       @default(0)
-  total         Int
-  source        String      @default("APP") // APP | POS
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  items         OrderItem[]
+  voucherCode        String?
+  voucherDiscount    Int             @default(0)
+  total              Int
+  source             String          @default("APP") // APP | POS
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  items              OrderItem[]
 
   @@index([status])
+  @@index([createdAt])
+}
+
+// ===== SETORAN UANG COD KURIR =====
+// Kurir antar yang mengambil uang tunai pelanggan (COD / bayar di tempat)
+// mengumpulkan uang di tangan, lalu menyetorkannya ke admin. Satu setoran
+// mengikat semua pesanan COD tertunggak kurir pada saat itu — jumlah uang
+// "yang harus disetor" kurir otomatis kembali ke 0 setelah setor.
+model CourierSetoran {
+  id            String    @id @default(cuid())
+  courierUserId String
+  courier       User      @relation(fields: [courierUserId], references: [id], onDelete: Cascade)
+  amount        Int // total uang yang disetor (jumlah total pesanan COD terikat)
+  orderCount    Int // banyaknya pesanan COD yang diikat setoran ini
+  note          String? // catatan kurir (mis. "disetor sore, uang kembalian disiapkan")
+  createdAt     DateTime  @default(now()) // waktu kurir menekan "Setor ke Admin"
+  confirmedAt   DateTime? // admin menandai uang diterima — NULL = menunggu konfirmasi
+  orders        Order[]
+
+  @@index([courierUserId])
   @@index([createdAt])
 }
 
@@ -290,17 +319,17 @@ model PointTransaction {
 // kunci publik yang disimpan; verifikasi tanda tangan Challenge dilakukan
 // lewat @simplewebauthn/server saat login biometrik.
 model BiometricCredential {
-  id         String   @id // credential ID (base64url) dari authenticator
+  id         String    @id // credential ID (base64url) dari authenticator
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   publicKey  String // kunci publik COSE (base64) untuk verifikasi tanda tangan
-  counter    Int      @default(0) // signature counter anti-replay
-  deviceType String?  // singleDevice | multiDevice
-  backedUp   Boolean  @default(false)
-  transports String?  // internal | hybrid | ble | nfc | usb (dipisah koma)
-  rpId       String?  // hostname saat mendaftar (debug/informasi)
-  label      String?  // nama perangkat yang tampil di daftar kelola
-  createdAt  DateTime @default(now())
+  counter    Int       @default(0) // signature counter anti-replay
+  deviceType String? // singleDevice | multiDevice
+  backedUp   Boolean   @default(false)
+  transports String? // internal | hybrid | ble | nfc | usb (dipisah koma)
+  rpId       String? // hostname saat mendaftar (debug/informasi)
+  label      String? // nama perangkat yang tampil di daftar kelola
+  createdAt  DateTime  @default(now())
   lastUsedAt DateTime?
 
   @@index([userId])
@@ -313,8 +342,8 @@ model BiometricCredential {
 model BiometricChallenge {
   key       String   @id // "reg:<userId>" | "auth:<userId>" | "auth:discover"
   challenge String
-  rpId      String?  // rpID persis yang dilihat BROWSER saat challenge dibuat (dari origin halaman)
-  origin    String?  // origin penuh persis yang dilihat browser (untuk expectedOrigin)
+  rpId      String? // rpID persis yang dilihat BROWSER saat challenge dibuat (dari origin halaman)
+  origin    String? // origin penuh persis yang dilihat browser (untuk expectedOrigin)
   expiresAt DateTime
 
   @@index([expiresAt])
@@ -326,43 +355,43 @@ model BiometricChallenge {
 //  - qrisEnabled    : pembayaran QRIS (aplikasi pelanggan & POS)
 // Dinonaktifkan → opsi tersembunyi di UI DAN ditolak server-side saat checkout.
 model StoreSetting {
-  id              String   @id @default("main")
-  deliveryEnabled Boolean  @default(true)
-  qrisEnabled     Boolean  @default(true)
+  id                        String    @id @default("main")
+  deliveryEnabled           Boolean   @default(true)
+  qrisEnabled               Boolean   @default(true)
   // ===== POPUP BANNER BERANDA =====
   // Diatur dari Profil Admin → "Popup Banner Beranda".
   // Aktif + ada gambar → popup muncul otomatis saat pelanggan membuka Beranda.
-  bannerEnabled   Boolean  @default(false)
-  bannerTitle     String? // judul popup (opsional)
-  bannerText      String? // pesan singkat popup (opsional)
-  bannerImageData String? // gambar banner (base64, portabel di semua lingkungan)
-  bannerImageMime String?
-  bannerUpdatedAt DateTime? // versi konten banner — dipakai agar popup tampil lagi utk banner baru
+  bannerEnabled             Boolean   @default(false)
+  bannerTitle               String? // judul popup (opsional)
+  bannerText                String? // pesan singkat popup (opsional)
+  bannerImageData           String? // gambar banner (base64, portabel di semua lingkungan)
+  bannerImageMime           String?
+  bannerUpdatedAt           DateTime? // versi konten banner — dipakai agar popup tampil lagi utk banner baru
   // ===== STRIP PROMO HARI INI (strip oranye di Beranda) =====
   // Diatur dari Profil Admin → "Banner & Promo Beranda" (bagian Strip Promo).
   // Nilai default = konten awal yang sebelumnya hardcoded di HomeView.
   // String kosong pada salah satu baris = baris itu disembunyikan.
-  promoStripEnabled Boolean @default(true)
-  promoStripBadge   String  @default("Promo Hari Ini")
-  promoStripTitle   String  @default("Paket Komplit mulai Rp 27.000")
-  promoStripText    String  @default("Geprek + nasi + es teh manis jumbo")
+  promoStripEnabled         Boolean   @default(true)
+  promoStripBadge           String    @default("Promo Hari Ini")
+  promoStripTitle           String    @default("Paket Komplit mulai Rp 27.000")
+  promoStripText            String    @default("Geprek + nasi + es teh manis jumbo")
   // ===== HERO BANNER PROMO HALAMAN MENU =====
   // Banner besar di atas halaman Menu pelanggan. Diatur dari Profil Admin →
   // "Banner & Promo Beranda" (bagian Hero Banner Menu). Ada gambar latar
   // (opsional) + badge + judul + baris penjelas; tanpa gambar → gradien orange.
-  menuHeroEnabled   Boolean  @default(true)
-  menuHeroBadge     String   @default("Promo Spesial")
-  menuHeroTitle     String   @default("Paket Komplit mulai Rp 27.000")
-  menuHeroText      String   @default("Geprek + nasi + es teh manis jumbo")
-  menuHeroImageData String? // gambar latar hero (base64, portabel)
-  menuHeroImageMime String?
-  menuHeroUpdatedAt DateTime? // versi konten — cache-buster URL gambar
+  menuHeroEnabled           Boolean   @default(true)
+  menuHeroBadge             String    @default("Promo Spesial")
+  menuHeroTitle             String    @default("Paket Komplit mulai Rp 27.000")
+  menuHeroText              String    @default("Geprek + nasi + es teh manis jumbo")
+  menuHeroImageData         String? // gambar latar hero (base64, portabel)
+  menuHeroImageMime         String?
+  menuHeroUpdatedAt         DateTime? // versi konten — cache-buster URL gambar
   // ===== SLIDE VOUCHER DI CAROUSEL MENU =====
   // Carousel promo Menu = slide hero + slide voucher aktif. Admin dapat
   // menyembunyikan slide voucher atau membatasi jumlahnya dari Profil Admin
   // → "Banner & Promo" (bagian Slide Voucher di Menu).
-  menuPromoVouchersEnabled Boolean @default(true)
-  menuPromoVouchersMax     Int     @default(3) // 1–5
+  menuPromoVouchersEnabled  Boolean   @default(true)
+  menuPromoVouchersMax      Int       @default(3) // 1–5
   // ===== 2 BANNER PROMO CUSTOM DI CAROUSEL MENU =====
   // Dua slide banner promo tambahan (slot 1 & 2) yang kontennya — teks, emoji,
   // warna gradien, dan gambar latar — dapat diganti-ganti admin dari Profil →
@@ -374,7 +403,7 @@ model StoreSetting {
   menuPromoBanner1ImageMime String?
   menuPromoBanner2ImageData String? // gambar latar banner slot 2 (base64)
   menuPromoBanner2ImageMime String?
-  updatedAt       DateTime @updatedAt
+  updatedAt                 DateTime  @updatedAt
 }
 
 // Transaksi QRIS di gateway SANDBOX lokal (gaya API qriskuu).

@@ -5,6 +5,7 @@ import { ORDER_STATUS_FLOW } from "@/lib/types";
 import { awardPointsForOrderCompletion } from "@/lib/points";
 import { notifyOrderStatus, notifyCourierOnTheWay, notifyCourierAssigned } from "@/lib/push";
 import { isDigitalPayment } from "@/lib/payments";
+import { codCompletionMarking, courierCompleteDecision } from "@/lib/courier-setoran";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -19,12 +20,46 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function PUT(req: NextRequest, { params }: Params) {
   const user = await getCurrentUser();
-  if (!user || (!isAdminRole(user.role) && user.role !== "CASHIER")) {
+  if (!user) {
     return NextResponse.json({ error: "Tidak diizinkan." }, { status: 403 });
   }
   const { id } = await params;
   try {
     const body = await req.json();
+
+    // ===== KURIR: "Sampai Tujuan" — selesaikan pesanan antarnya sendiri =====
+    // Tombol di beranda kurir kini BENAR-BENAR berfungsi (dulu selalu 403
+    // karena kurir tidak masuk daftar role yang diizinkan). Kurir hanya
+    // boleh menandai COMPLETED pesanan ANTAR miliknya yang sedang READY —
+    // pesanan lain & perubahan lain tetap ditolak. Pesanan antar tunai
+    // (COD / bayar di tempat) yang belum lunas otomatis dilunasi dengan
+    // paidVia "COD" — uang berpindah ke tangan kurir, wajib disetor ke
+    // admin lewat fitur Setoran COD (lihat src/lib/courier-setoran.ts).
+    if (user.role === "COURIER") {
+      const order = await db.order.findUnique({ where: { id } });
+      const decision = courierCompleteDecision(user, order, body);
+      if (!decision.ok) {
+        return NextResponse.json({ error: decision.error }, { status: decision.code });
+      }
+      const marking = codCompletionMarking(order!);
+      const updated = await db.$transaction(async (tx) => {
+        const updatedOrder = await tx.order.update({
+          where: { id },
+          data: { status: "COMPLETED", ...(marking ?? {}) },
+          include: { items: true },
+        });
+        // Poin member tetap masuk normal saat kurir menyelesaikan pesanan
+        await awardPointsForOrderCompletion(tx, order!);
+        return updatedOrder;
+      });
+      // 🔔 Push update status ke perangkat pelanggan pemilik pesanan
+      void notifyOrderStatus(id, "COMPLETED");
+      return NextResponse.json({ order: updated });
+    }
+
+    if (!isAdminRole(user.role) && user.role !== "CASHIER") {
+      return NextResponse.json({ error: "Tidak diizinkan." }, { status: 403 });
+    }
 
     // ===== Tandai pembayaran LUNAS =====
     if (body?.paymentStatus === "PAID") {
