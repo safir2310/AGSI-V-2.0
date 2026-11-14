@@ -16,6 +16,8 @@
  */
 
 export const PASSWORD_MIN = 8;
+/** Mode santai (khusus kurir): boleh nama & angka berurutan */
+export const RELAXED_MIN = 6;
 
 /**
  * Daftar hitam sandi yang pernah bocor massal / terlalu mudah ditebak.
@@ -84,14 +86,25 @@ function hasRepeatRun(pw: string, len = 4): boolean {
 
 /**
  * Validasi sandi baru.
- * @param pw     sandi yang diusulkan
- * @param email  (opsional) email akun — larang memuat nama emailnya
+ * @param pw      sandi yang diusulkan
+ * @param email   (opsional) email akun — larang memuat nama emailnya
+ * @param relaxed (opsional) mode santai KHUSUS AKUN KURIR: minimal 6
+ *   karakter, boleh nama saja (tanpa angka), boleh angka berurutan
+ *   (mis. "budi", "123456", "kurir123"). Aturan ketat tetap dipakai
+ *   untuk kasir/admin/pelanggan.
  */
 export function validatePassword(
   pw: string,
-  opts?: { email?: string | null },
+  opts?: { email?: string | null; relaxed?: boolean },
 ): { ok: true } | { ok: false; error: string } {
   const s = (pw ?? "").trim();
+
+  if (opts?.relaxed) {
+    if (s.length < RELAXED_MIN)
+      return { ok: false, error: `Password kurir minimal ${RELAXED_MIN} karakter — boleh nama atau angka berurutan (mis. budi, 123456, kurir123).` };
+    return { ok: true };
+  }
+
   if (s.length < PASSWORD_MIN)
     return { ok: false, error: `Password minimal ${PASSWORD_MIN} karakter (huruf + angka disarankan campur).` };
   if (!/[a-zA-Z]/.test(s) || !/[0-9]/.test(s))

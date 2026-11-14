@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: "Format email tidak valid." }, { status: 400 });
     }
-    const pwCheck = validatePassword(password, { email });
+    const pwCheck = validatePassword(password, { relaxed: true });
     if (!pwCheck.ok) {
       return NextResponse.json({ error: pwCheck.error }, { status: 400 });
     }

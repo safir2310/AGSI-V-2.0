@@ -45,7 +45,10 @@ export async function PUT(req: NextRequest) {
     // ===== Ganti password (opsional) =====
     let passwordHash: string | undefined;
     if (newPassword) {
-      const pwCheck = validatePassword(newPassword, { email: me.email });
+      const pwCheck = validatePassword(newPassword, {
+        email: me.email,
+        relaxed: me.role === "COURIER",
+      });
       if (!pwCheck.ok) {
         return NextResponse.json({ error: pwCheck.error }, { status: 400 });
       }

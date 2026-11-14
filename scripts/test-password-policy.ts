@@ -49,5 +49,18 @@ for (let i = 0; i < 200; i++) {
 console.log("  ✓ 200 usulan acak semuanya lolos kebijakan");
 check("dua usulan berurutan beda", suggestPassword() !== suggestPassword());
 
+console.log("== 5. Mode santai KURIR (relaxed) ==");
+check("nama saja 'budiono' (7 huruf) diterima", accepted("budiono", { relaxed: true }));
+check("nama pendek 'budi' (4 huruf) ditolak — di bawah min 6", rejected("budi", { relaxed: true }));
+check("nama+angka 'budi123' diterima", accepted("budi123", { relaxed: true }));
+check("angka berurutan '123456' diterima", accepted("123456", { relaxed: true }));
+check("'kurir123' (denylist ketat) diterima relaxed", accepted("kurir123", { relaxed: true }));
+check("'111111' (ulangan) diterima relaxed", accepted("111111", { relaxed: true }));
+check("'agusantarno' nama panjang diterima", accepted("agusantarno", { relaxed: true }));
+check("terlalu pendek 'budi1' ditolak", rejected("budi1", { relaxed: true }));
+check("terlalu pendek '12345' ditolak", rejected("12345", { relaxed: true }));
+check("kosong ditolak", rejected("      ", { relaxed: true }));
+check("relaxed TIDAK berlaku tanpa flag: 'kurir123' tetap ditolak", rejected("kurir123"));
+
 console.log(`\n${pass} lulus, ${fail} gagal`);
 process.exit(fail ? 1 : 0);

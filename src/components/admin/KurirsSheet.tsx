@@ -125,7 +125,7 @@ export function KurirsSheet({ open, onClose }: KurirsSheetProps) {
       return;
     }
     if (password) {
-      const pwCheck = validatePassword(password, { email });
+      const pwCheck = validatePassword(password, { relaxed: true });
       if (!pwCheck.ok) {
         showNotice({ type: "error", title: "Password Ditolak", message: pwCheck.error });
         return;
@@ -344,14 +344,14 @@ export function KurirsSheet({ open, onClose }: KurirsSheetProps) {
                       id="kr-pass"
                       type="password"
                       className="border-emerald-200 focus-visible:ring-emerald-400"
-                      placeholder={isAdd ? "Min. 8 karakter (huruf & angka)" : "Kosongkan bila tidak diganti"}
+                      placeholder={isAdd ? "Min. 6 — boleh nama / angka berurutan" : "Kosongkan bila tidak diganti"}
                       value={form.password}
                       onChange={set("password")}
                       autoComplete="new-password"
                     />
                     <p className="text-[10px] text-neutral-400">
                       {isAdd
-                        ? "Kurir memakai email & password ini untuk masuk beranda kurir. Hindari sandi umum (mis. kurir123) — sandi yang pernah bocor memunculkan peringatan Chrome saat login."
+                        ? "Sandi kurir santai: minimal 6 karakter, boleh nama (mis. budi) atau angka berurutan (mis. 123456). Sandi sangat umum bisa memunculkan peringatan Chrome saat kurir login."
                         : "Mengisi password akan memaksa kurir masuk ulang di semua perangkat."}
                     </p>
                   </div>

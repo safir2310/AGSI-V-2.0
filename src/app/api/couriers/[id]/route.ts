@@ -41,7 +41,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Nomor HP tidak valid." }, { status: 400 });
     }
     if (password) {
-      const pwCheck = validatePassword(password);
+      const pwCheck = validatePassword(password, { relaxed: true });
       if (!pwCheck.ok) {
         return NextResponse.json({ error: pwCheck.error }, { status: 400 });
       }

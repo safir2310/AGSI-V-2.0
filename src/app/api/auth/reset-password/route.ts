@@ -24,17 +24,21 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const pwCheck = validatePassword(newPwd, { email });
-    if (!pwCheck.ok) {
-      return NextResponse.json({ error: pwCheck.error }, { status: 400 });
-    }
-
     const user = await db.user.findUnique({ where: { email: normalized } });
     if (!user) {
       return NextResponse.json(
         { error: "Email ini belum terdaftar." },
         { status: 404 }
       );
+    }
+
+    // Sandi kurir santai (boleh nama/angka berurutan); role lain tetap ketat
+    const pwCheck = validatePassword(newPwd, {
+      email: normalized,
+      relaxed: user.role === "COURIER",
+    });
+    if (!pwCheck.ok) {
+      return NextResponse.json({ error: pwCheck.error }, { status: 400 });
     }
 
     const reset = await db.passwordReset.findFirst({
