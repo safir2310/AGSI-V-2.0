@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
 import { checkVoucherForUser, normalizeVoucherCode } from "@/lib/voucher";
@@ -275,10 +275,12 @@ export async function POST(req: NextRequest) {
       return created;
     });
 
-    // 🔔 Push heads-up ke perangkat staff (admin/owner/kasir). Pesanan QRIS
+    // 🔔 Push heads-up ke perangkat staff (admin/owner/kasir) — real-time:
+    // after() menjamin push tetap terkirim SETELAH respons kembali (promise
+    // mengambang di serverless bisa dibunuh sebelum selesai). Pesanan QRIS
     // aplikasi yang belum dibayar otomatis dilewati di dalam helper —
     // pemantiknya notifyOrderPaid saat dana terverifikasi masuk.
-    void notifyNewOrder(order.id);
+    after(() => notifyNewOrder(order.id));
 
     return NextResponse.json({ order });
   } catch (err) {

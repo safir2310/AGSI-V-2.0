@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
 import { notifyChatMessage } from "@/lib/push";
@@ -205,13 +205,13 @@ export async function POST(req: NextRequest) {
         });
         return m;
       });
-      // 🔔 Push ke pelanggan: balasan CS masuk (fire-and-forget)
-      void notifyChatMessage({
+      // 🔔 Push ke pelanggan: balasan CS masuk — after() menjamin terkirim
+      after(() => notifyChatMessage({
         fromRole: user.role,
         toUserId: targetUserId,
         senderName: user.name,
         body: text,
-      });
+      }));
       return NextResponse.json({ message: serializeMessage(message) }, { status: 201 });
     }
 
@@ -243,8 +243,8 @@ export async function POST(req: NextRequest) {
       });
       return m;
     });
-    // 🔔 Push ke perangkat petugas CS (admin/owner)
-    void notifyChatMessage({ fromRole: user.role, senderName: user.name, body: text });
+    // 🔔 Push ke perangkat petugas CS (admin/owner) — real-time via after()
+    after(() => notifyChatMessage({ fromRole: user.role, senderName: user.name, body: text }));
     return NextResponse.json({ message: serializeMessage(message) }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Terjadi kesalahan server." }, { status: 500 });

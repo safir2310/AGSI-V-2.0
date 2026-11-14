@@ -5,9 +5,11 @@ import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -90,6 +92,10 @@ class MainActivity : AppCompatActivity() {
         /** Extra path tujuan setelah notifikasi diketuk (mis. "/orders") */
         const val EXTRA_NAV_URL = "agsi.nav_url"
 
+        /** Broadcast internal PushService → halaman web (event JS "agsi-push")
+         *  saat aplikasi terbuka — popup/suara/refresh notifikasi instan. */
+        const val ACTION_PUSH_RECEIVED = "agsi.PUSH_RECEIVED"
+
         /** Penanda UA — sinkron dengan src/lib/push-client.ts (isNativeAndroidApp) */
         private const val UA_SUFFIX = " AGSIAndroidApp/"
     }
@@ -126,6 +132,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
 
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var pushReceiver: BroadcastReceiver? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     /** Untuk AgsiNativeBridge: posting pekerjaan ke thread utama. */
@@ -226,6 +233,7 @@ class MainActivity : AppCompatActivity() {
         setupBackHandler()
 
         attachWebView()
+        registerPushForwarder()
         registerNetworkCallback()
         ensureNotificationPermission()
 
@@ -265,6 +273,14 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         mainHandler.removeCallbacksAndMessages(null)
         unregisterNetworkCallback()
+        pushReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (_: Exception) {
+                // sudah tidak terdaftar
+            }
+        }
+        pushReceiver = null
         fileChooserCallback?.onReceiveValue(null)
         fileChooserCallback = null
         dismissPopup()
@@ -416,6 +432,36 @@ class MainActivity : AppCompatActivity() {
         val caps = cm.getNetworkCapabilities(network) ?: return false
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
             caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+
+    /** Terima push dari PushService (aplikasi terbuka) → dispatch event JS
+     *  "agsi-push" ke halaman web: popup + suara + segarkan data notifikasi
+     *  INSTAN (real-time), tanpa menunggu interval polling halaman. */
+    private fun registerPushForwarder() {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action != ACTION_PUSH_RECEIVED) return
+                val payload = intent.getStringExtra("payload") ?: return
+                val wv = peekWebView() ?: return
+                wv.post {
+                    wv.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('agsi-push',{detail:$payload}));",
+                        null,
+                    )
+                }
+            }
+        }
+        pushReceiver = receiver
+        try {
+            ContextCompat.registerReceiver(
+                this,
+                receiver,
+                IntentFilter(ACTION_PUSH_RECEIVED),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Penerus push ke halaman tidak tersedia", e)
+        }
     }
 
     private fun registerNetworkCallback() {

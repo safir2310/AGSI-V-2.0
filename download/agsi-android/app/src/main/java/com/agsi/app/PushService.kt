@@ -11,13 +11,14 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 
 /**
- * Layanan FCM — menerima push dari backend (src/lib/push.ts + src/lib/fcm.ts)
- * dan menampilkan heads-up notification di channel "agsi_orders".
+ * Layanan FCM — menerima push dari backend (src/lib/push.ts + src/lib/fcm.ts).
  *
  * - Aplikasi di BACKGROUND: SDK FCM menampilkan notifikasi otomatis dengan
  *   channel default (meta-data di AndroidManifest) — tap membuka MainActivity.
- * - Aplikasi di FOREGROUND: onMessageReceived dipanggil → notifikasi lokal
- *   channel yang sama.
+ *   Chat memakai channel "agsi_chat" (channel_id dari payload server).
+ * - Aplikasi di FOREGROUND: push DITERUSKAN KE HALAMAN WEB lewat broadcast →
+ *   event JS "agsi-push" — popup + suara + daftar pesanan/chat di halaman
+ *   menyala INSTAN (real-time), tanpa notifikasi sistem ganda.
  * - data.url berisi path tujuan setelah banner diketuk (mis. "/orders").
  */
 class PushService : FirebaseMessagingService() {
@@ -29,13 +30,22 @@ class PushService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
+        val kind = data["kind"] ?: ""
         val title = message.notification?.title ?: data["title"] ?: return
         val body = message.notification?.body ?: data["body"] ?: ""
         val url = data["url"] ?: "/"
         val tag = data["tag"] ?: "agsi"
+        val orderId = data["orderId"]
         // Pesanan sama saling mengganti, bukan menumpuk (sinkron data.tag server)
-        val id = (data["orderId"] ?: title).hashCode()
+        val id = (orderId ?: title).hashCode()
 
+        // ===== Aplikasi TERBUKA: real-time ke halaman, tanpa notifikasi ganda
+        if (AgsiApp.isForeground) {
+            forwardToPage(kind, title, body, url, orderId, tag)
+            return
+        }
+
+        // ===== Aplikasi di latar belakang: heads-up notifikasi sistem
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
@@ -58,7 +68,10 @@ class PushService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(this, AgsiApp.CHANNEL_ORDERS)
+        // Chat CS tampil di channel sendiri agar bisa diatur terpisah
+        val channel = if (kind == "chat") AgsiApp.CHANNEL_CHAT else AgsiApp.CHANNEL_ORDERS
+
+        val notification = NotificationCompat.Builder(this, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setLargeIcon(BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher))
             .setContentTitle(title)
@@ -74,6 +87,36 @@ class PushService : FirebaseMessagingService() {
             NotificationManagerCompat.from(this).notify(tag, id, notification)
         } catch (_: SecurityException) {
             // izin notifikasi dicabut pengguna — abaikan
+        }
+    }
+
+    /** Teruskan push ke halaman web (saat aplikasi terbuka): broadcast →
+     *  MainActivity → event JS "agsi-push" → popup + suara + refresh instan.
+     *  Detail event dipakai watcher web (src/components/shared/NotifWatchers.tsx). */
+    private fun forwardToPage(
+        kind: String,
+        title: String,
+        body: String,
+        url: String,
+        orderId: String?,
+        tag: String,
+    ) {
+        val payload = org.json.JSONObject().apply {
+            put("kind", kind)
+            put("title", title)
+            put("body", body)
+            put("url", url)
+            put("tag", tag)
+            if (orderId != null) put("orderId", orderId)
+        }
+        try {
+            sendBroadcast(
+                Intent(MainActivity.ACTION_PUSH_RECEIVED)
+                    .setPackage(packageName)
+                    .putExtra("payload", payload.toString())
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("AGSI/Push", "Gagal meneruskan push ke halaman", e)
         }
     }
 }

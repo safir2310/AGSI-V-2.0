@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
 import { ORDER_STATUS_FLOW } from "@/lib/types";
@@ -53,7 +53,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
         return updatedOrder;
       });
       // 🔔 Push update status ke perangkat pelanggan pemilik pesanan
-      void notifyOrderStatus(id, "COMPLETED");
+      after(() => notifyOrderStatus(id, "COMPLETED"));
       return NextResponse.json({ order: updated });
     }
 
@@ -141,10 +141,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
         include: { items: true },
       });
       // 🔔 Push ke pelanggan: pesanan sedang diantar kurir X
-      void notifyCourierOnTheWay(id);
+      after(() => notifyCourierOnTheWay(id));
       // 🔔 Push ke AKUN KURIR yang ditugaskan: tugas antar baru
       if (courierUserId) {
-        void notifyCourierAssigned(id);
+        after(() => notifyCourierAssigned(id));
       }
       return NextResponse.json({ order: updated });
     }
@@ -193,7 +193,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
     });
 
     // 🔔 Push update status ke perangkat pelanggan pemilik pesanan
-    void notifyOrderStatus(id, status);
+    after(() => notifyOrderStatus(id, status));
 
     return NextResponse.json({ order: updated });
   } catch {

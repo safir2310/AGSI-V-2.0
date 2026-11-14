@@ -38,6 +38,7 @@
  * field) agar mudah berpindah penyedia tanpa mengubah kode aplikasi.
  */
 
+import { after } from "next/server";
 import { db } from "@/lib/db";
 import { notifyOrderPaid } from "@/lib/push";
 import {
@@ -404,8 +405,14 @@ export async function markOrderPaidBySystem(orderId: string): Promise<{
 
   // 🔔 Dana masuk → push heads-up ke staff (masuk dapur) & pelanggan
   // (pembayaran diterima). Hanya untuk pelunasan yang benar-benar baru.
+  // after() menjamin push tetap terkirim SETELAH respons webhook kembali —
+  // promise mengambang di serverless bisa dibunuh sebelum selesai.
   if (!result.already && !result.cancelled) {
-    void notifyOrderPaid(orderId);
+    try {
+      after(() => notifyOrderPaid(orderId));
+    } catch {
+      void notifyOrderPaid(orderId); // dipanggil di luar konteks request
+    }
   }
   return result;
 }

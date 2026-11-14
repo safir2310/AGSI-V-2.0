@@ -29,6 +29,21 @@ import { playAgsiChat, playAgsiOrder, playAgsiStatus } from "@/lib/sound";
 /** Popup hanya untuk pesanan yang dibuat maksimal 3 menit lalu (anti bising saat reload) */
 const FRESH_WINDOW_MS = 3 * 60 * 1000;
 
+/* ===== REAL-TIME: tick instan saat push FCM diteruskan aplikasi (v1.3.2+) =====
+ * Aplikasi Android meneruskan push ke halaman lewat event JS "agsi-push"
+ * (MainActivity → evaluateJavascript) saat aplikasi TERBUKA. Semua watcher
+ * mendaftarkan fungsi tick-nya di sini, jadi popup + suara + segarkan daftar
+ * pesanan/chat terjadi SEKETIKA — tidak menunggu interval polling 8–10 detik.
+ * Di browser murni event ini tidak pernah menyala — polling tetap jalur
+ * cadangan; saat aplikasi di latar belakang, notifikasi sistem FCM yang
+ * bekerja dan watcher menangkap perubahan saat halaman kembali aktif. */
+const pushTicks = new Set<() => void>();
+if (typeof window !== "undefined") {
+  window.addEventListener("agsi-push", () => {
+    for (const tick of pushTicks) void tick();
+  });
+}
+
 function isAdmin(role: string) {
   return role === "ADMIN" || role === "OWNER";
 }
@@ -110,10 +125,12 @@ export function AdminNewOrderWatcher({ user }: { user: AppUser }) {
     };
 
     void tick();
+    pushTicks.add(tick); // push FCM masuk → tick instan (popup real-time)
     const iv = setInterval(tick, 10000);
     return () => {
       alive = false;
       clearInterval(iv);
+      pushTicks.delete(tick);
     };
   }, [admin, showNotice, go]);
 
@@ -240,10 +257,12 @@ export function CustomerNotifWatcher({ user }: { user: AppUser }) {
     };
 
     void tick();
+    pushTicks.add(tick); // push FCM masuk → tick instan (popup real-time)
     const iv = setInterval(tick, 8000);
     return () => {
       alive = false;
       clearInterval(iv);
+      pushTicks.delete(tick);
     };
   }, [customer, showNotice, go]);
 
@@ -320,10 +339,12 @@ export function ChatNotifWatcher({ user }: { user: AppUser }) {
     };
 
     void tick();
+    pushTicks.add(tick); // push FCM masuk → tick instan (popup real-time)
     const iv = setInterval(tick, 8000);
     return () => {
       alive = false;
       clearInterval(iv);
+      pushTicks.delete(tick);
     };
   }, [enabled, staff, showNotice]);
 

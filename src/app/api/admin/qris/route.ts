@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
 import { cancelExpiredQrisOrders } from "@/lib/order-expiry";
@@ -298,7 +298,7 @@ export async function POST(req: NextRequest) {
   });
 
   // 🔔 Kabari perangkat pelanggan (pola yang sama dengan pembatalan lain)
-  void notifyOrderStatus(order.id, "CANCELLED");
+  after(() => notifyOrderStatus(order.id, "CANCELLED"));
 
   return NextResponse.json({
     ok: true,
