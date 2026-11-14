@@ -210,6 +210,7 @@ export type MenuPromoInfo = {
 type SettingsState = {
   deliveryEnabled: boolean;
   qrisEnabled: boolean;
+  ewalletEnabled: boolean;
   banner: BannerInfo;
   promo: PromoStripInfo;
   menuHero: MenuHeroInfo;
@@ -346,6 +347,7 @@ function normalizeMenuPromo(raw: unknown): MenuPromoInfo {
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   deliveryEnabled: true,
   qrisEnabled: true,
+  ewalletEnabled: true,
   banner: FALLBACK_BANNER,
   promo: FALLBACK_PROMO,
   menuHero: FALLBACK_MENU_HERO,
@@ -363,6 +365,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         set({
           deliveryEnabled: data.deliveryEnabled !== false,
           qrisEnabled: data.qrisEnabled !== false,
+          ewalletEnabled: data.ewalletEnabled !== false,
           banner: normalizeBanner(data.banner),
           promo: normalizePromo(data.promo),
           menuHero: normalizeMenuHero(data.menuHero),

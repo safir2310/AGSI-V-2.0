@@ -76,6 +76,7 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
   // nonaktif → opsi antar / QRIS disembunyikan & pilihan lama di-reset
   const deliveryEnabled = useSettingsStore((s) => s.deliveryEnabled);
   const qrisEnabled = useSettingsStore((s) => s.qrisEnabled);
+  const ewalletEnabled = useSettingsStore((s) => s.ewalletEnabled);
   const [submitting, setSubmitting] = useState(false);
   /** Pesanan QRIS yang sedang dibayar (layar QR terbuka) */
   const [payOrder, setPayOrder] = useState<QrisPayOrder | null>(null);
@@ -111,16 +112,24 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
       setGps(null);
       setMapsLinkInput("");
     }
-    if (!qrisEnabled) {
+    if (!qrisEnabled || !ewalletEnabled) {
       setForm((f) =>
-        f.payment === "QRIS" || f.payment === "EWALLET" ? { ...f, payment: "CASH" } : f
+        (f.payment === "QRIS" && !qrisEnabled) || (f.payment === "EWALLET" && !ewalletEnabled)
+          ? { ...f, payment: "CASH" }
+          : f
       );
     }
-  }, [deliveryEnabled, qrisEnabled]);
+  }, [deliveryEnabled, qrisEnabled, ewalletEnabled]);
 
-  /** Opsi jenis pesanan & pembayaran yang tampil — mengikuti saklar admin */
+  /** Opsi jenis pesanan & pembayaran yang tampil — mengikuti saklar admin.
+   *  QRIS & E-Wallet saklarnya TERPISAH sejak v1.3.4 (ewalletEnabled). */
   const availableTypes = ORDER_TYPES.filter((t) => t.id !== "DELIVERY" || deliveryEnabled);
-  const availablePayments = PAYMENTS.filter((p) => p.id === "CASH" || qrisEnabled);
+  const availablePayments = PAYMENTS.filter(
+    (p) =>
+      p.id === "CASH" ||
+      (p.id === "QRIS" && qrisEnabled) ||
+      (p.id === "EWALLET" && ewalletEnabled)
+  );
 
   /** Area pengantaran terpilih + ongkir — Rp1.000/km, kelipatan jarak
    *  (jarak dibulatkan KE ATAS per 1 km, dihitung ulang juga oleh server) */
@@ -729,9 +738,13 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
               </button>
             ))}
           </div>
-          {!qrisEnabled && (
+          {(!qrisEnabled || !ewalletEnabled) && (
             <p className="text-[11px] font-semibold leading-snug text-amber-600">
-              📱 Pembayaran digital (QRIS / E-Wallet) sedang tidak tersedia — silakan bayar tunai.
+              {!qrisEnabled && !ewalletEnabled
+                ? "📱 Pembayaran digital (QRIS / E-Wallet) sedang tidak tersedia — silakan bayar tunai."
+                : !qrisEnabled
+                  ? "📱 Pembayaran QRIS sedang tidak tersedia — silakan bayar tunai atau E-Wallet."
+                  : "👛 Pembayaran E-Wallet sedang tidak tersedia — silakan bayar tunai atau QRIS."}
             </p>
           )}
         </div>

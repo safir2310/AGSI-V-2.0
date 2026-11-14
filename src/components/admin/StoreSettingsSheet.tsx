@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Store,
   TriangleAlert,
+  Wallet,
   X,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -59,10 +60,11 @@ export function StoreSettingsSheet({ open, onClose }: StoreSettingsSheetProps) {
   const showNotice = useNoticeStore((s) => s.show);
   const deliveryEnabled = useSettingsStore((s) => s.deliveryEnabled);
   const qrisEnabled = useSettingsStore((s) => s.qrisEnabled);
+  const ewalletEnabled = useSettingsStore((s) => s.ewalletEnabled);
 
   const [loading, setLoading] = useState(false);
   /** id saklar yang sedang dikirim ke server (tampilkan spinner di barisnya) */
-  const [savingKey, setSavingKey] = useState<"delivery" | "qris" | null>(null);
+  const [savingKey, setSavingKey] = useState<"delivery" | "qris" | "ewallet" | null>(null);
 
   // ===== Status Gateway QRIS & Midtrans (admin) =====
   const [health, setHealth] = useState<HealthInfo | null>(null);
@@ -136,15 +138,22 @@ export function StoreSettingsSheet({ open, onClose }: StoreSettingsSheetProps) {
   }, [open, onClose]);
 
   /** Simpan satu saklar — optimis, dibalikkan bila server menolak */
-  const save = async (key: "delivery" | "qris", next: boolean) => {
+  const save = async (key: "delivery" | "qris" | "ewallet", next: boolean) => {
     if (savingKey) return;
-    const field = key === "delivery" ? "deliveryEnabled" : "qrisEnabled";
-    const prev = key === "delivery" ? deliveryEnabled : qrisEnabled;
+    const field =
+      key === "delivery" ? "deliveryEnabled" : key === "qris" ? "qrisEnabled" : "ewalletEnabled";
+    const prev = key === "delivery" ? deliveryEnabled : key === "qris" ? qrisEnabled : ewalletEnabled;
     if (prev === next) return;
 
     setSavingKey(key);
     // Update optimis — UI langsung berubah
-    useSettingsStore.setState(field === "deliveryEnabled" ? { deliveryEnabled: next } : { qrisEnabled: next });
+    useSettingsStore.setState(
+      field === "deliveryEnabled"
+        ? { deliveryEnabled: next }
+        : field === "qrisEnabled"
+          ? { qrisEnabled: next }
+          : { ewalletEnabled: next }
+    );
     try {
       const res = await apiFetch("/api/settings", {
         method: "PUT",
@@ -154,7 +163,13 @@ export function StoreSettingsSheet({ open, onClose }: StoreSettingsSheetProps) {
       const body = await res.json();
       if (!res.ok) {
         // Kembalikan saklar bila gagal
-        useSettingsStore.setState(field === "deliveryEnabled" ? { deliveryEnabled: prev } : { qrisEnabled: prev });
+        useSettingsStore.setState(
+          field === "deliveryEnabled"
+            ? { deliveryEnabled: prev }
+            : field === "qrisEnabled"
+              ? { qrisEnabled: prev }
+              : { ewalletEnabled: prev }
+        );
         showNotice({ type: "error", title: "Gagal Menyimpan", message: body.error ?? "Coba lagi sebentar ya." });
         return;
       }
@@ -167,12 +182,22 @@ export function StoreSettingsSheet({ open, onClose }: StoreSettingsSheetProps) {
             ? next
               ? "Pelanggan kembali bisa memilih \"Antar ke Alamat\" saat checkout."
               : "Opsi antar pesanan disembunyikan dari pelanggan & POS. Pesanan antar baru otomatis ditolak."
-            : next
-              ? "Pelanggan kembali bisa membayar dengan QRIS."
-              : "Opsi pembayaran QRIS disembunyikan dari pelanggan & POS. Pembayaran QRIS baru otomatis ditolak.",
+            : key === "qris"
+              ? next
+                ? "Pelanggan kembali bisa membayar dengan QRIS."
+                : "Opsi pembayaran QRIS disembunyikan dari pelanggan & POS. Pembayaran QRIS baru otomatis ditolak."
+              : next
+                ? "Pelanggan kembali bisa membayar dengan E-Wallet (DOKU Wallet, DANA, OVO, ShopeePay)."
+                : "Opsi pembayaran E-Wallet disembunyikan dari pelanggan & POS. Pembayaran E-Wallet baru otomatis ditolak.",
       });
     } catch {
-      useSettingsStore.setState(field === "deliveryEnabled" ? { deliveryEnabled: prev } : { qrisEnabled: prev });
+      useSettingsStore.setState(
+        field === "deliveryEnabled"
+          ? { deliveryEnabled: prev }
+          : field === "qrisEnabled"
+            ? { qrisEnabled: prev }
+            : { ewalletEnabled: prev }
+      );
       showNotice({ type: "error", title: "Koneksi Bermasalah", message: "Tidak dapat menghubungi server." });
     } finally {
       setSavingKey(null);
@@ -180,8 +205,9 @@ export function StoreSettingsSheet({ open, onClose }: StoreSettingsSheetProps) {
   };
 
   /** Nonaktifkan selalu dikonfirmasi dulu (menghentikan layanan itu tadi) */
-  const requestToggle = (key: "delivery" | "qris", next: boolean) => {
-    const label = key === "delivery" ? "Antar Pesanan" : "Pembayaran QRIS";
+  const requestToggle = (key: "delivery" | "qris" | "ewallet", next: boolean) => {
+    const label =
+      key === "delivery" ? "Antar Pesanan" : key === "qris" ? "Pembayaran QRIS" : "Pembayaran E-Wallet";
     if (next) {
       void save(key, true);
       return;
@@ -192,7 +218,9 @@ export function StoreSettingsSheet({ open, onClose }: StoreSettingsSheetProps) {
       message:
         key === "delivery"
           ? "Pelanggan tidak akan bisa memilih \"Antar ke Alamat\" sampai layanan diaktifkan lagi. Pesanan antar baru otomatis ditolak."
-          : "Pelanggan tidak akan bisa membayar dengan QRIS sampai diaktifkan lagi. Pembayaran QRIS baru otomatis ditolak.",
+          : key === "qris"
+            ? "Pelanggan tidak akan bisa membayar dengan QRIS sampai diaktifkan lagi. Pembayaran QRIS baru otomatis ditolak."
+            : "Pelanggan tidak akan bisa membayar lewat halaman DOKU (DOKU Wallet, DANA, OVO, ShopeePay) sampai diaktifkan lagi. Pembayaran E-Wallet baru otomatis ditolak.",
       actions: [
         { label: "Batal" },
         { label: "Ya, Nonaktifkan", variant: "destructive", onClick: () => void save(key, false) },
@@ -213,10 +241,19 @@ export function StoreSettingsSheet({ open, onClose }: StoreSettingsSheetProps) {
     {
       key: "qris" as const,
       icon: QrCode,
-      title: "Pembayaran Digital (QRIS & E-Wallet)",
-      desc: "Pelanggan & kasir bisa membayar lewat QRIS / E-Wallet DOKU (terverifikasi otomatis saat dana masuk).",
+      title: "Pembayaran QRIS",
+      desc: "Pelanggan & kasir bisa membayar lewat QRIS — semua kanal (terverifikasi otomatis saat dana masuk).",
       active: qrisEnabled,
-      onBadge: "📱 QRIS & E-Wallet aktif",
+      onBadge: "📱 QRIS aktif",
+      offBadge: "Nonaktif",
+    },
+    {
+      key: "ewallet" as const,
+      icon: Wallet,
+      title: "Pembayaran E-Wallet (DOKU)",
+      desc: "Bayar lewat halaman DOKU — pilih DOKU Wallet / DANA / OVO / ShopeePay (sesuai kanal aktif akun). Saklar TERPISAH dari QRIS: matikan salah satu, yang lain tetap jalan.",
+      active: ewalletEnabled,
+      onBadge: "👛 E-Wallet aktif",
       offBadge: "Nonaktif",
     },
   ];

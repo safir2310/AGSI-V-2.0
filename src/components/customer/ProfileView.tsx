@@ -123,6 +123,7 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   // Saklar layanan toko (untuk deskripsi menu + sheet pengaturan)
   const deliveryEnabled = useSettingsStore((s) => s.deliveryEnabled);
   const qrisEnabled = useSettingsStore((s) => s.qrisEnabled);
+  const ewalletEnabled = useSettingsStore((s) => s.ewalletEnabled);
   const banner = useSettingsStore((s) => s.banner);
   const menuHero = useSettingsStore((s) => s.menuHero);
   const spent = orders
@@ -321,7 +322,7 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
         {
           icon: Settings2,
           label: "Pengaturan Toko",
-          desc: `Antar ${deliveryEnabled ? "aktif ✓" : "nonaktif ✕"} • QRIS ${qrisEnabled ? "aktif ✓" : "nonaktif ✕"} — ketuk untuk ubah`,
+          desc: `Antar ${deliveryEnabled ? "aktif ✓" : "nonaktif ✕"} • QRIS ${qrisEnabled ? "aktif ✓" : "nonaktif ✕"} • E-Wallet ${ewalletEnabled ? "aktif ✓" : "nonaktif ✕"} — ketuk untuk ubah`,
           onClick: () => setSettingsOpen(true),
         },
         {

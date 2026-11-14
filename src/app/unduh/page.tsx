@@ -71,15 +71,16 @@ export default function UnduhPage() {
         <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-3.5">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <p className="text-[11.5px] leading-relaxed text-amber-800">
-            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> Notifikasi makin
-            GARDA-BESAR: bunyi ALARM nyaring (bukan suara notifikasi biasa) +
-            getar kuat, tampil PENUH di layar kunci, dan layar HP yang tidur/
-            terkunci LANGSUNG DIBANGUNKAN menampilkan pesanan masuk. Tetap
-            real-time: popup + suara instan saat aplikasi terbuka, heads-up
-            walau aplikasi ditutup, notifikasi layanan tetap tersembunyi.
-            Versi sebelumnya: notifikasi real-time pesanan/chat, notifikasi
-            layanan disembunyikan total, lonceng &amp; badge, Lacak Kurir AGSI,
-            simpan struk &amp; cetak laporan, Face ID / sidik jari.
+            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> Suara notifikasi
+            kembali ke suara NOTIFIKASI BIASA (suara alarm v1.3.3 dilepas atas
+            permintaan) — tetap tampil PENUH di layar kunci dan layar HP yang
+            tidur/terkunci tetap DIBANGUNKAN menampilkan pesanan masuk. Di
+            situs, pembayaran E-Wallet (DOKU Wallet / DANA / OVO / ShopeePay)
+            kini bisa dinonaktifkan TERPISAH dari QRIS lewat Profil Admin →
+            Pengaturan Toko. Versi sebelumnya: suara alarm + getar kuat,
+            notifikasi real-time pesanan/chat, notifikasi layanan tersembunyi,
+            lonceng &amp; badge, Lacak Kurir AGSI, simpan struk &amp; cetak
+            laporan, Face ID / sidik jari.
           </p>
         </div>
 

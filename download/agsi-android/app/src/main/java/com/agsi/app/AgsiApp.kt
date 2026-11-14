@@ -6,7 +6,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.media.AudioAttributes
-import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -25,22 +24,30 @@ class AgsiApp : Application() {
 
     companion object {
         /**
-         * ID channel v1.3.3+ — SUARA ALARM nyaring, getar kuat, tampil penuh
-         * di layar kunci. ID BARU ("_v2"), bukan sekadar mengubah suara
-         * "agsi_orders", karena Android TIDAK mengizinkan kode mengubah
-         * setelan (suara/vibrasi) channel yang sudah terpasang di perangkat.
-         * WAJIB sinkron dengan src/lib/push.ts (ANDROID_CHANNEL_ID).
+         * ID channel v1.3.4+ — suara NOTIFIKASI BIASA (permintaan pemilik:
+         * kembalikan suara alarm v1.3.3 ke suara notifikasi), tetap tampil
+         * penuh di layar kunci dan membangunkan layar HP yang tidur (full
+         * -screen intent). ID BARU ("_v3") karena Android TIDAK mengizinkan
+         * kode mengubah setelan (suara/vibrasi) channel yang sudah terpasang
+         * di perangkat. WAJIB sinkron dengan src/lib/push.ts.
          */
-        const val CHANNEL_ORDERS = "agsi_orders_v2"
+        const val CHANNEL_ORDERS = "agsi_orders_v3"
 
-        /** Channel chat CS v1.3.3+ (pesanan & chat dipisah agar bisa diatur sendiri) */
-        const val CHANNEL_CHAT = "agsi_chat_v2"
+        /** Channel chat CS v1.3.4+ (pesanan & chat dipisah agar bisa diatur sendiri) */
+        const val CHANNEL_CHAT = "agsi_chat_v3"
 
-        /** Channel pesanan LAMA (≤ v1.3.2, suara notifikasi biasa) — dihapus saat migrasi */
-        const val CHANNEL_ORDERS_LEGACY = "agsi_orders"
-
-        /** Channel chat LAMA (≤ v1.3.2) — dihapus saat migrasi */
-        const val CHANNEL_CHAT_LEGACY = "agsi_chat"
+        /**
+         * Channel LAMA yang dihapus saat migrasi v1.3.4: v1 (≤1.3.2) &
+         * v2 (v1.3.3, suara alarm) milik pesanan/chat, plus channel layanan
+         * TERLIHAT (v1.2.4–v1.3.0).
+         */
+        val LEGACY_CHANNELS = arrayOf(
+            "agsi_orders",
+            "agsi_orders_v2",
+            "agsi_chat",
+            "agsi_chat_v2",
+            "agsi_service",
+        )
 
         /**
          * Channel layanan pemantau TERSEMBUNYI (v1.3.1+) — ID BARU, bukan
@@ -50,9 +57,6 @@ class AgsiApp : Application() {
          * tampil di daftar notifikasi).
          */
         const val CHANNEL_SERVICE_HIDDEN = "agsi_service_hidden"
-
-        /** Channel layanan LAMA (v1.2.4–v1.3.0, TERLIHAT) — dihapus saat migrasi */
-        const val CHANNEL_SERVICE_LEGACY = "agsi_service"
 
         /** true bila ada Activity yang tampil di depan */
         @Volatile
@@ -89,11 +93,11 @@ class AgsiApp : Application() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = getSystemService(NotificationManager::class.java) ?: return
 
-        // 🔊 Suara ALARM nyaring — volume mengikuti slider alarm yang di sebagian
-        // besar HP berada di level maksimal, jauh lebih keras dari suara
-        // notifikasi biasa. Fallback aman: ringtone → notifikasi sistem.
-        val alarmAudio = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ALARM)
+        // 🔔 Suara NOTIFIKASI BIASA (default sistem) — permintaan pemilik
+        // v1.3.4: ganti suara alarm v1.3.3. USAGE_NOTIFICATION mengikuti
+        // slider volume notifikasi seperti biasa.
+        val notificationAudio = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
 
@@ -103,9 +107,9 @@ class AgsiApp : Application() {
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = getString(R.string.notification_channel_desc)
-            setSound(loudSoundUri(), alarmAudio)
+            setSound(defaultNotificationSound(), notificationAudio)
             enableVibration(true)
-            vibrationPattern = longArrayOf(0, 700, 250, 700)
+            vibrationPattern = longArrayOf(0, 250, 150, 250)
             // 🔒 Tampil PENUH di layar kunci — detail pesanan terbaca tanpa buka kunci
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
@@ -117,9 +121,9 @@ class AgsiApp : Application() {
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = getString(R.string.channel_chat_desc)
-            setSound(loudSoundUri(), alarmAudio)
+            setSound(defaultNotificationSound(), notificationAudio)
             enableVibration(true)
-            vibrationPattern = longArrayOf(0, 700, 250, 700)
+            vibrationPattern = longArrayOf(0, 200, 120, 200)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         nm.createNotificationChannel(chat)
@@ -139,19 +143,16 @@ class AgsiApp : Application() {
         }
         nm.createNotificationChannel(service)
 
-        // Bersihkan channel lama: layanan TERLIHAT (≤ v1.3.0) serta channel
-        // pesanan/chat lama bersuara notifikasi biasa (≤ v1.3.2) — migrasi ke
-        // channel v2 bersuara ALARM nyaring.
-        nm.deleteNotificationChannel(CHANNEL_SERVICE_LEGACY)
-        nm.deleteNotificationChannel(CHANNEL_ORDERS_LEGACY)
-        nm.deleteNotificationChannel(CHANNEL_CHAT_LEGACY)
+        // Bersihkan SEMUA channel lama saat migrasi: layanan TERLIHAT
+        // (≤ v1.3.0) serta pesanan/chat v1 (≤ v1.3.2) & v2 bersuara alarm
+        // (v1.3.3) — migrasi ke channel v3 bersuara notifikasi biasa.
+        for (legacy in LEGACY_CHANNELS) {
+            nm.deleteNotificationChannel(legacy)
+        }
     }
 
-    /** URI suara ALARM dengan fallback berlapis (alarm → ringtone → notifikasi). */
-    private fun loudSoundUri(): Uri {
-        return RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            ?: Settings.System.DEFAULT_NOTIFICATION_URI
+    /** URI suara NOTIFIKASI BAWAAN sistem (suara notifikasi biasa). */
+    private fun defaultNotificationSound(): Uri {
+        return Settings.System.DEFAULT_NOTIFICATION_URI
     }
 }

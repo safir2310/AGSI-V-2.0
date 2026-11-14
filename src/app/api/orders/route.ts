@@ -98,9 +98,10 @@ export async function POST(req: NextRequest) {
     const type = ["DINE_IN", "TAKEAWAY", "DELIVERY"].includes(body.type) ? body.type : "DINE_IN";
 
     // ===== SAKLAR LAYANAN TOKO (Profil Admin → Pengaturan Toko) =====
-    // Layanan antar & pembayaran QRIS bisa dinonaktifkan admin — selain
+    // Layanan antar, QRIS, dan E-Wallet bisa dinonaktifkan admin — selain
     // disembunyikan di UI, checkout juga DITOLAK di sini agar tidak bisa
-    // dilewati lewat request langsung ke API.
+    // dilewati lewat request langsung ke API. QRIS & E-Wallet saklarnya
+    // TERPISAH sejak v1.3.4 (ewalletEnabled) — matikan satu, satu lagi hidup.
     const storeSettings = await getStoreSettings();
     if (type === "DELIVERY" && !storeSettings.deliveryEnabled) {
       return NextResponse.json(
@@ -108,12 +109,15 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (
-      (body.paymentMethod === "QRIS" || body.paymentMethod === "EWALLET") &&
-      !storeSettings.qrisEnabled
-    ) {
+    if (body.paymentMethod === "QRIS" && !storeSettings.qrisEnabled) {
       return NextResponse.json(
-        { error: "Pembayaran digital (QRIS / E-Wallet) sedang dinonaktifkan. Silakan bayar tunai." },
+        { error: "Pembayaran QRIS sedang dinonaktifkan. Silakan bayar tunai." },
+        { status: 400 }
+      );
+    }
+    if (body.paymentMethod === "EWALLET" && !storeSettings.ewalletEnabled) {
+      return NextResponse.json(
+        { error: "Pembayaran E-Wallet sedang dinonaktifkan. Silakan bayar tunai atau QRIS." },
         { status: 400 }
       );
     }

@@ -60,16 +60,19 @@ export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView
   // nonaktif → tombol "Antar" / "QRIS" disembunyikan & pilihan lama di-reset
   const deliveryEnabled = useSettingsStore((s) => s.deliveryEnabled);
   const qrisEnabled = useSettingsStore((s) => s.qrisEnabled);
+  const ewalletEnabled = useSettingsStore((s) => s.ewalletEnabled);
 
   // Layanan dimatikan admin → pilihan lama otomatis dikembalikan
   useEffect(() => {
     if (!deliveryEnabled) {
       setOrderType((t) => (t === "DELIVERY" ? "DINE_IN" : t));
     }
-    if (!qrisEnabled) {
-      setPayment((p) => (p === "QRIS" || p === "EWALLET" ? "CASH" : p));
+    if (!qrisEnabled || !ewalletEnabled) {
+      setPayment((p) =>
+        (p === "QRIS" && !qrisEnabled) || (p === "EWALLET" && !ewalletEnabled) ? "CASH" : p
+      );
     }
-  }, [deliveryEnabled, qrisEnabled]);
+  }, [deliveryEnabled, qrisEnabled, ewalletEnabled]);
   const [submitting, setSubmitting] = useState(false);
   const [clock, setClock] = useState("");
   const [lastOrder, setLastOrder] = useState<{
@@ -898,16 +901,22 @@ export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView
               ))}
             </div>
 
-            {/* Metode bayar — QRIS/E-Wallet hilang bila dimatikan admin */}
-            <div className={cn("grid gap-1.5", qrisEnabled ? "grid-cols-3" : "grid-cols-1")}>
+            {/* Metode bayar — QRIS & E-Wallet saklarnya TERPISAH (Profil Admin →
+                Pengaturan Toko); masing-masing hilang bila dimatikan admin */}
+            <div
+              className={cn(
+                "grid gap-1.5",
+                qrisEnabled && ewalletEnabled
+                  ? "grid-cols-3"
+                  : qrisEnabled || ewalletEnabled
+                    ? "grid-cols-2"
+                    : "grid-cols-1"
+              )}
+            >
               {[
                 { id: "CASH" as const, label: "💵 Tunai" },
-                ...(qrisEnabled
-                  ? [
-                      { id: "QRIS" as const, label: "📱 QRIS" },
-                      { id: "EWALLET" as const, label: "👛 E-Wallet" },
-                    ]
-                  : []),
+                ...(qrisEnabled ? [{ id: "QRIS" as const, label: "📱 QRIS" }] : []),
+                ...(ewalletEnabled ? [{ id: "EWALLET" as const, label: "👛 E-Wallet" }] : []),
               ].map((p) => (
                 <button
                   key={p.id}

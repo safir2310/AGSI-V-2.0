@@ -81,6 +81,7 @@ export async function GET() {
       {
         deliveryEnabled: true,
         qrisEnabled: true,
+        ewalletEnabled: true,
         banner: {
           bannerEnabled: false,
           bannerTitle: null,
@@ -121,7 +122,7 @@ export async function GET() {
 
 /**
  * PUT /api/settings — ubah saklar layanan & konten banner (KHUSUS Admin/Owner).
- * Body saklar : { deliveryEnabled?: boolean, qrisEnabled?: boolean }
+ * Body saklar : { deliveryEnabled?: boolean, qrisEnabled?: boolean, ewalletEnabled?: boolean }
  * Body banner : { bannerEnabled?, bannerTitle?, bannerText?, bannerImageData?, bannerImageRemove?, bannerTouch? }
  * Body promo  : { promoStripEnabled?, promoStripBadge?, promoStripTitle?, promoStripText? }
  * Body hero   : { menuHeroEnabled?, menuHeroBadge?, menuHeroTitle?, menuHeroText?, menuHeroImageData?, menuHeroImageRemove?, menuHeroTouch? }
@@ -137,7 +138,7 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const patch: { deliveryEnabled?: boolean; qrisEnabled?: boolean } = {};
+    const patch: { deliveryEnabled?: boolean; qrisEnabled?: boolean; ewalletEnabled?: boolean } = {};
 
     if ("deliveryEnabled" in body) {
       if (typeof body.deliveryEnabled !== "boolean") {
@@ -156,6 +157,15 @@ export async function PUT(req: NextRequest) {
         );
       }
       patch.qrisEnabled = body.qrisEnabled;
+    }
+    if ("ewalletEnabled" in body) {
+      if (typeof body.ewalletEnabled !== "boolean") {
+        return NextResponse.json(
+          { error: "ewalletEnabled harus boolean." },
+          { status: 400 }
+        );
+      }
+      patch.ewalletEnabled = body.ewalletEnabled;
     }
 
     if (Object.keys(patch).length > 0) {

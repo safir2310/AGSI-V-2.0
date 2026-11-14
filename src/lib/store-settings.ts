@@ -5,6 +5,7 @@
  * Profil → "Pengaturan Toko":
  *  - deliveryEnabled: layanan antar pesanan (type DELIVERY)
  *  - qrisEnabled    : pembayaran QRIS
+ *  - ewalletEnabled : pembayaran e-wallet (halaman DOKU) — TERPISAH dari QRIS
  * Dinonaktifkan → opsi disembunyikan di UI pelanggan/POS DAN ditolak
  * server-side saat checkout (lihat POST /api/orders).
  */
@@ -13,6 +14,7 @@ import { db } from "@/lib/db";
 export type StoreSettings = {
   deliveryEnabled: boolean;
   qrisEnabled: boolean;
+  ewalletEnabled: boolean;
 };
 
 /** Konten popup banner beranda (disimpan di baris StoreSetting yang sama). */
@@ -32,7 +34,11 @@ export async function getStoreSettings(): Promise<StoreSettings> {
     update: {},
     create: { id: "main" },
   });
-  return { deliveryEnabled: row.deliveryEnabled, qrisEnabled: row.qrisEnabled };
+  return {
+    deliveryEnabled: row.deliveryEnabled,
+    qrisEnabled: row.qrisEnabled,
+    ewalletEnabled: row.ewalletEnabled,
+  };
 }
 
 /** Konten strip "Promo Hari Ini" di Beranda (disimpan di baris StoreSetting yang sama). */
@@ -92,21 +98,23 @@ export type BannerPatch = {
 
 /** Simpan sebagian pengaturan toko (hanya field yang dikirim yang berubah). */
 export async function updateStoreSettings(
-  patch: Partial<{ deliveryEnabled: boolean; qrisEnabled: boolean }>
+  patch: Partial<{ deliveryEnabled: boolean; qrisEnabled: boolean; ewalletEnabled: boolean }>
 ): Promise<StoreSettings> {
+  const data = {
+    ...(typeof patch.deliveryEnabled === "boolean" ? { deliveryEnabled: patch.deliveryEnabled } : {}),
+    ...(typeof patch.qrisEnabled === "boolean" ? { qrisEnabled: patch.qrisEnabled } : {}),
+    ...(typeof patch.ewalletEnabled === "boolean" ? { ewalletEnabled: patch.ewalletEnabled } : {}),
+  };
   const row = await db.storeSetting.upsert({
     where: { id: "main" },
-    update: {
-      ...(typeof patch.deliveryEnabled === "boolean" ? { deliveryEnabled: patch.deliveryEnabled } : {}),
-      ...(typeof patch.qrisEnabled === "boolean" ? { qrisEnabled: patch.qrisEnabled } : {}),
-    },
-    create: {
-      id: "main",
-      ...(typeof patch.deliveryEnabled === "boolean" ? { deliveryEnabled: patch.deliveryEnabled } : {}),
-      ...(typeof patch.qrisEnabled === "boolean" ? { qrisEnabled: patch.qrisEnabled } : {}),
-    },
+    update: data,
+    create: { id: "main", ...data },
   });
-  return { deliveryEnabled: row.deliveryEnabled, qrisEnabled: row.qrisEnabled };
+  return {
+    deliveryEnabled: row.deliveryEnabled,
+    qrisEnabled: row.qrisEnabled,
+    ewalletEnabled: row.ewalletEnabled,
+  };
 }
 
 /** Simpan sebagian konten popup banner beranda. */

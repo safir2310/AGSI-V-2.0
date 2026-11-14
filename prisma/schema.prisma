@@ -359,6 +359,10 @@ model StoreSetting {
   id                        String    @id @default("main")
   deliveryEnabled           Boolean   @default(true)
   qrisEnabled               Boolean   @default(true)
+  // Pembayaran E-Wallet (halaman DOKU: DOKU Wallet / DANA / OVO / ShopeePay)
+  // bisa dimatikan TERPISAH dari QRIS — Profil Admin → "Pengaturan Toko".
+  // Nonaktif → opsi disembunyikan di UI pelanggan/POS & checkout ditolak API.
+  ewalletEnabled            Boolean   @default(true)
   // ===== POPUP BANNER BERANDA =====
   // Diatur dari Profil Admin → "Popup Banner Beranda".
   // Aktif + ada gambar → popup muncul otomatis saat pelanggan membuka Beranda.
