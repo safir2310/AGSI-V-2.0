@@ -13,6 +13,7 @@ import android.graphics.Color
  */
 object PushChannels {
     const val ORDERS = "agsi_orders"
+    const val KEEPALIVE = "agsi_keepalive"
 
     fun create(context: Context) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -27,5 +28,18 @@ object PushChannels {
             enableVibration(true)
         }
         nm.createNotificationChannel(orders)
+
+        // Keep-alive: notifikasi tetap "app berjalan di latar belakang"
+        // IMPORTANCE_MIN = tanpa suara/vibrasi/layar — tidak mengganggu
+        val keepalive = NotificationChannel(
+            KEEPALIVE,
+            context.getString(R.string.channel_keepalive_name),
+            NotificationManager.IMPORTANCE_MIN
+        ).apply {
+            description = context.getString(R.string.channel_keepalive_desc)
+            setSound(null, null)
+            enableVibration(false)
+        }
+        nm.createNotificationChannel(keepalive)
     }
 }

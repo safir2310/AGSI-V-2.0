@@ -5,6 +5,13 @@
     <!-- Android 13+ : izin tampilkan notifikasi (diminta runtime saat buka app) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Layanan latar belakang (foreground service): proses app tetap
+         hidup agar push pesanan baru sampai seketika walau di-swipe.
+         Tipe specialUse dipilih karena berjalan sepanjang jam operasional
+         (tipe dataSync dibatasi 6 jam/hari di Android 15). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
     <!-- cleartext hanya untuk dev lokal http://10.0.2.2 — hapus saat produksi https -->
     <application
         android:allowBackup="true"
@@ -33,6 +40,19 @@
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_SERVICE" />
             </intent-filter>
+        </service>
+
+        <!-- Keep-alive: notifikasi tetap "AGSI aktif" — proses tidak
+             dibunuh penghemat baterai OEM, FCM pesanan sampai langsung.
+             specialUse = tanpa batas 6 jam (dataSync) — layanan Order Push
+             AGSI berjalan sepanjang jam operasional restoran. -->
+        <service
+            android:name=".KeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Continuous order push delivery for restaurant staff" />
         </service>
 
         <!-- Channel & ikon default utk notifikasi sistem (app di background) -->

@@ -2,4 +2,8 @@
     <string name="app_name">AGSI POS</string>
     <string name="channel_orders_name">Pesanan &amp; Notifikasi AGSI</string>
     <string name="channel_orders_desc">Banner heads-up untuk pesanan baru, pembayaran QRIS, status pesanan, dan chat CS</string>
+    <string name="channel_keepalive_name">Latar Belakang AGSI</string>
+    <string name="channel_keepalive_desc">Menjaga aplikasi tetap berjalan di latar belakang agar pesanan baru langsung ternotifikasi</string>
+    <string name="keepalive_title">AGSI aktif di latar belakang</string>
+    <string name="keepalive_body">Siap menerima pesanan baru — notifikasi muncul seketika walau aplikasi ditutup</string>
 </resources>

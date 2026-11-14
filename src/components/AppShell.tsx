@@ -212,7 +212,7 @@ export function AppShell() {
         return <ProfileView user={user} go={go} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />;
       // Admin
       case "dashboard":
-        return <DashboardView go={go} />;
+        return <DashboardView go={go} user={user} />;
       case "products":
         return <ProductsView />;
       case "vouchers":

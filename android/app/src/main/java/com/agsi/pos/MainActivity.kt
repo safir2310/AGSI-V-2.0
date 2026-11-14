@@ -35,6 +35,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         PushChannels.create(this)
+        // Proses app tetap hidup walau di-swipe → FCM pesanan baru
+        // sampai seketika (tidak ditahan penghemat baterai OEM)
+        KeepAliveService.start(this)
         requestNotificationPermissionIfNeeded()
 
         webView = WebView(this)
