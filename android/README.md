@@ -24,6 +24,11 @@ android/
         ├── java/com/agsi/pos/
         │   ├── MainActivity.kt         ← WebView + jembatan JS AgsiNative
         │   ├── PushService.kt          ← penerima FCM → notifikasi heads-up
+        │   ├── KeepAliveService.kt     ← foreground service: proses tetap hidup
+        │   │                              walau di-swipe (restart via AlarmManager),
+        │   │                              channel senyap agsi_keepalive
+        │   ├── BootReceiver.kt         ← hidupkan ulang keep-alive setelah
+        │   │                              HP reboot / APK diperbarui
         │   ├── PushChannels.kt         ← channel "agsi_orders" IMPORTANCE_HIGH
         │   ├── PushApi.kt              ← daftarkan token ke /api/push/register
         │   └── FcmTokenHolder.kt
@@ -60,7 +65,17 @@ WEB_APP_URL=https://domain-anda.com
 | --- | --- |
 | Background/closed | Sistem menampilkan notifikasi dari payload `notification` pada channel `agsi_orders` (IMPORTANCE_HIGH → **heads-up banner**) |
 | Foreground (dibuka) | `PushService.onMessageReceived` membangun notifikasi prioritas MAX |
+| Di-swipe dari recent | `KeepAliveService.onTaskRemoved` menjadwalkan restart 1,5 detik via AlarmManager → proses hidup lagi |
+| Proses dibunuh sistem | `START_STICKY` → sistem menghidupkan ulang layanan |
+| HP reboot / APK update | `BootReceiver` menghidupkan ulang keep-alive otomatis |
 | Diketuk | `MainActivity` dibuka → WebView memuat `data.url` |
+
+**KeepAliveService** (v1.1) menjaga proses app tetap hidup dengan notifikasi
+tetap senyap "AGSI aktif di latar belakang" (channel `agsi_keepalive`,
+IMPORTANCE_MIN — tanpa suara/vibrasi) supaya FCM pesanan baru selalu sampai
+seketika. Saat pertama dibuka, app juga menawarkan pembebasan penghemat
+baterai (dialog resmi Android) — cara andal mencegah OEM
+(Xiaomi/OPPO/Vivo/Samsung) membekukan app yang "ditutup".
 
 Token FCM dikelola dua arah:
 1. **Native**: `PushService.onNewToken` / `MainActivity` mendaftarkan token ke

@@ -1,16 +1,21 @@
 package com.agsi.pos
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
+import android.widget.Toast
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -39,6 +44,7 @@ class MainActivity : AppCompatActivity() {
         // sampai seketika (tidak ditahan penghemat baterai OEM)
         KeepAliveService.start(this)
         requestNotificationPermissionIfNeeded()
+        maybeAskUnrestrictedBattery()
 
         webView = WebView(this)
         setContentView(webView)
@@ -107,9 +113,59 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Minta pembebasan penghemat baterai (satu kali per instalasi).
+     *
+     * Xiaomi/OPPO/Vivo/Samsung (dan stock Android "Adaptif") menunda atau
+     * MEMBUANG pesan FCM saat app dianggap "tidak dipakai" — walau ada
+     * foreground service, beberapa OEM tetap membekukan proses. Meminta
+     * ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS melewati dialog sistem
+     * "Biarkan aplikasi selalu berjalan di latar belakang?" → penghemat
+     * baterai dimatikan untuk AGSI → notifikasi pesanan masuk selalu
+     * seketika, termasuk saat aplikasi ditutup.
+     */
+    private fun maybeAskUnrestrictedBattery() {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) return  // sudah bebas
+
+        val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_ASKED, false)) return  // sudah pernah ditanya — jangan ganggu
+
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.battery_dialog_title))
+            .setMessage(getString(R.string.battery_dialog_message))
+            .setPositiveButton(getString(R.string.battery_dialog_ok)) { _, _ ->
+                prefs.edit().putBoolean(KEY_ASKED, true).apply()
+                try {
+                    // Dialog sistem resmi Android (bukan paksa-paksa) —
+                    // user bebas menolak; kita hanya menampilkan opsinya.
+                    startActivity(
+                        Intent(
+                            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse("package:$packageName")
+                        )
+                    )
+                } catch (e: Exception) {
+                    // Beberapa ROM tidak menyediakan dialog ini → bawa ke
+                    // daftar optimasi baterai manual.
+                    try {
+                        startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    } catch (e2: Exception) {
+                        Toast.makeText(this, R.string.battery_toast_manual, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .setNegativeButton(getString(R.string.battery_dialog_later)) { _, _ ->
+                prefs.edit().putBoolean(KEY_ASKED, true).apply()
+            }
+            .show()
+    }
+
     companion object {
         const val EXTRA_URL = "url"
         private const val REQ_NOTIF = 1001
+        private const val PREFS = "agsi_prefs"
+        private const val KEY_ASKED = "battery_asked"
     }
 }
 

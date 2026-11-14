@@ -5,6 +5,14 @@
     <!-- Android 13+ : izin tampilkan notifikasi (diminta runtime saat buka app) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Notifikasi tetap masuk walau app ditutup: hidupkan ulang layanan
+         keep-alive setelah HP reboot / APK diperbarui -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Pembebasan penghemat baterai (dialog resmi Android) supaya OEM
+         tidak membekukan proses → FCM pesanan selalu seketika -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- Layanan latar belakang (foreground service): proses app tetap
          hidup agar push pesanan baru sampai seketika walau di-swipe.
          Tipe specialUse dipilih karena berjalan sepanjang jam operasional
@@ -54,6 +62,20 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Continuous order push delivery for restaurant staff" />
         </service>
+
+        <!-- Hidupkan ulang keep-alive setelah HP reboot / APK diperbarui
+             (tanpa ini notifikasi mati sampai app dibuka lagi) -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Channel & ikon default utk notifikasi sistem (app di background) -->
         <meta-data

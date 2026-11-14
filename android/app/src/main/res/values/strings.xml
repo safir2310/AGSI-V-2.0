@@ -6,4 +6,9 @@
     <string name="channel_keepalive_desc">Menjaga aplikasi tetap berjalan di latar belakang agar pesanan baru langsung ternotifikasi</string>
     <string name="keepalive_title">AGSI aktif di latar belakang</string>
     <string name="keepalive_body">Siap menerima pesanan baru — notifikasi muncul seketika walau aplikasi ditutup</string>
+    <string name="battery_dialog_title">Notifikasi selalu masuk 🔔</string>
+    <string name="battery_dialog_message">Agar notifikasi pesanan baru SELALU masuk seketika walau aplikasi ditutup, Android perlu mengizinkan AGSI berjalan tanpa batasan baterai.\n\nPada layar berikutnya, pilih \"Izinkan\" / \"Allow\".</string>
+    <string name="battery_dialog_ok">Izinkan</string>
+    <string name="battery_dialog_later">Nanti saja</string>
+    <string name="battery_toast_manual">Buka Pengaturan ▸ Baterai ▸ Tanpa batasan untuk aplikasi AGSI agar notifikasi selalu masuk.</string>
 </resources>

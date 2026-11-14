@@ -1,10 +1,14 @@
 package com.agsi.pos
 
+import android.app.AlarmManager
 import android.app.Notification
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import android.os.SystemClock
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 
@@ -22,6 +26,11 @@ import androidx.core.content.ContextCompat
  *  - Menampilkan notifikasi TETAP "AGSI aktif di latar belakang" pada
  *    channel agsi_keepalive (IMPORTANCE_MIN — tanpa suara, tidak mengganggu).
  *  - START_STICKY: sistem menghidupkan ulang bila proses dibunuh sistem.
+ *  - onTaskRemoved: app DI-SWIPE dari recent → layanan dijadwalkan ulang
+ *    lewat AlarmManager 1,5 detik kemudian, jadi notifikasi pesanan baru
+ *    TETAP masuk walau pengguna "menutup aplikasi" (permintaan pemilik:
+ *    aplikasi ditutup → notifikasi tetap berjalan dan masuk).
+ *  - BootReceiver menghidupkan ulang setelah HP reboot / APK diperbarui.
  *  - Tanpa loop jaringan — hemat baterai; FCM tetap lewat Google Play
  *    services, layanan ini hanya menjaga proses tetap hidup.
  *
@@ -44,6 +53,29 @@ class KeepAliveService : Service() {
         return START_STICKY
     }
 
+    /**
+     * App di-SWIPE dari recent apps → jadwalkan restart diri 1,5 detik
+     * lagi lewat AlarmManager. Beberapa OEM membunuh layanan saat swipe
+     * (bukan cuma activity); alarm memastikan proses hidup kembali
+     * sehingga notifikasi pesanan baru tetap masuk.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val restart = Intent(applicationContext, KeepAliveService::class.java)
+        val pending = PendingIntent.getService(
+            this,
+            1,
+            restart,
+            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        am.set(
+            AlarmManager.ELAPSED_REALTIME,
+            SystemClock.elapsedRealtime() + 1500,
+            pending
+        )
+        super.onTaskRemoved(rootIntent)
+    }
+
     private fun buildNotification(): Notification =
         NotificationCompat.Builder(this, PushChannels.KEEPALIVE)
             .setSmallIcon(R.drawable.ic_notification)
@@ -61,8 +93,14 @@ class KeepAliveService : Service() {
 
         /** Mulai layanan (aman dipanggil berulang — onStartCommand idempoten). */
         fun start(context: Context) {
-            val intent = Intent(context, KeepAliveService::class.java)
-            ContextCompat.startForegroundService(context, intent)
+            try {
+                val intent = Intent(context, KeepAliveService::class.java)
+                ContextCompat.startForegroundService(context, intent)
+            } catch (e: Exception) {
+                // Mis. device restore/kondisi aneh — jangan crash app;
+                // layanan dicoba lagi saat app dibuka / boot berikutnya.
+                Log.w("AGSIPush", "KeepAliveService gagal dimulai: ${e.message}")
+            }
         }
     }
 }
