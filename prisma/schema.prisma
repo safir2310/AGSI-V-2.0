@@ -232,7 +232,8 @@ model CourierSetoran {
   id            String    @id @default(cuid())
   courierUserId String
   courier       User      @relation(fields: [courierUserId], references: [id], onDelete: Cascade)
-  amount        Int // total uang yang disetor (jumlah total pesanan COD terikat)
+  amount        Int // uang MENU yang disetor ke admin (total pesanan dikurangi ongkir)
+  ongkir        Int @default(0) // total ongkir pesanan terikat — PENDAPATAN KURIR, tidak ikut disetor
   orderCount    Int // banyaknya pesanan COD yang diikat setoran ini
   note          String? // catatan kurir (mis. "disetor sore, uang kembalian disiapkan")
   createdAt     DateTime  @default(now()) // waktu kurir menekan "Setor ke Admin"

@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
-import { COD_PAID_VIA } from "@/lib/courier-setoran";
+import { COD_PAID_VIA, courierIncomeOf, menuMoneyOf } from "@/lib/courier-setoran";
 
 /**
  * SETORAN UANG COD KURIR (src/lib/courier-setoran.ts = aturan murni).
  *
- * GET  — role COURIER: uang COD di tangan (belum disetor) + riwayat setoran
- *        sendiri. Role admin: rekap tertunggak PER kurir + riwayat semua
- *        setoran (untuk kartu "Setoran Kurir" di dashboard admin).
+ * Pembagian uang pesanan antar tunai (COD / bayar di tempat):
+ *  - Kurir menerima uang PENUH dari pelanggan (total = menu + ongkir).
+ *  - Kurir menyetor ke admin hanya NOMINAL PESANAN (uang menu) = total − ongkir.
+ *  - Ongkir (deliveryFee) = PENDAPATAN KURIR — tetap di kurir, tidak ikut
+ *    disetor; tercatat di CourierSetoran.ongkir agar tetap transparan.
+ *
+ * GET  — role COURIER: kantong COD miliknya (uang menu utk disetor + ongkir
+ *        pendapatan) + riwayat setoran. Role admin: rekap tertunggak PER
+ *        kurir + riwayat semua setoran (untuk sheet "Setoran Kurir" di
+ *        Profil admin — konfirmasi lewat PATCH /api/courier/setoran/[id]).
  * POST — role COURIER: "Setor ke Admin" → SEMUA pesanan COD tertunggak
  *        kurir diikat ke satu CourierSetoran (codSetoranId terisi) sehingga
- *        jumlah uang yang harus disetor kembali ke 0; admin tinggal
- *        mengonfirmasi penerimaan (PATCH /api/courier/setoran/[id]).
+ *        jumlah uang yang harus disetor kembali ke 0; ongkir tetap milik
+ *        kurir.
  */
 export async function GET() {
   const user = await getCurrentUser();
@@ -24,10 +31,18 @@ export async function GET() {
   if (user.role === "COURIER") {
     const pendingOrders = await db.order.findMany({
       where: { courierUserId: user.id, paidVia: COD_PAID_VIA, codSetoranId: null },
-      select: { id: true, code: true, total: true, customerName: true, updatedAt: true },
+      select: {
+        id: true,
+        code: true,
+        total: true,
+        deliveryFee: true,
+        customerName: true,
+        updatedAt: true,
+      },
       orderBy: { updatedAt: "desc" },
     });
-    const amount = pendingOrders.reduce((sum, o) => sum + o.total, 0);
+    const amount = pendingOrders.reduce((sum, o) => sum + menuMoneyOf(o), 0);
+    const ongkir = pendingOrders.reduce((sum, o) => sum + courierIncomeOf(o), 0);
     const riwayat = await db.courierSetoran.findMany({
       where: { courierUserId: user.id },
       orderBy: { createdAt: "desc" },
@@ -35,7 +50,7 @@ export async function GET() {
     });
     return NextResponse.json({
       role: "COURIER",
-      pending: { amount, count: pendingOrders.length, orders: pendingOrders },
+      pending: { amount, ongkir, count: pendingOrders.length, orders: pendingOrders },
       riwayat,
     });
   }
@@ -44,22 +59,32 @@ export async function GET() {
   if (!isAdminRole(user.role)) {
     return NextResponse.json({ error: "Tidak diizinkan." }, { status: 403 });
   }
-  const grouped = await db.order.groupBy({
-    by: ["courierUserId"],
+  // Nominal setoran = total − ongkir per pesanan → agregasi dihitung di
+  // sisi aplikasi (pesanan COD tertunggak jumlahnya kecil).
+  const pendingOrders = await db.order.findMany({
     where: { paidVia: COD_PAID_VIA, codSetoranId: null, courierUserId: { not: null } },
-    _sum: { total: true },
-    _count: { _all: true },
+    select: { courierUserId: true, total: true, deliveryFee: true },
   });
-  const ids = grouped.map((g) => g.courierUserId).filter((v): v is string => v != null);
+  const map = new Map<string, { amount: number; ongkir: number; count: number }>();
+  for (const o of pendingOrders) {
+    const key = o.courierUserId as string;
+    const cur = map.get(key) ?? { amount: 0, ongkir: 0, count: 0 };
+    cur.amount += menuMoneyOf(o);
+    cur.ongkir += courierIncomeOf(o);
+    cur.count += 1;
+    map.set(key, cur);
+  }
+  const ids = [...map.keys()];
   const couriers = await db.user.findMany({
     where: { id: { in: ids } },
     select: { id: true, name: true },
   });
-  const perKurir = grouped.map((g) => ({
-    courierId: g.courierUserId,
-    courierName: couriers.find((c) => c.id === g.courierUserId)?.name ?? "Kurir terhapus",
-    amount: g._sum.total ?? 0,
-    count: g._count._all,
+  const perKurir = ids.map((id) => ({
+    courierId: id,
+    courierName: couriers.find((c) => c.id === id)?.name ?? "Kurir terhapus",
+    amount: map.get(id)!.amount,
+    ongkir: map.get(id)!.ongkir,
+    count: map.get(id)!.count,
   }));
   const riwayat = await db.courierSetoran.findMany({
     orderBy: { createdAt: "desc" },
@@ -89,16 +114,19 @@ export async function POST(req: NextRequest) {
     // bila tombol ditekan dua kali / perangkat lain menyetor bersamaan)
     const pending = await tx.order.findMany({
       where: { courierUserId: user.id, paidVia: COD_PAID_VIA, codSetoranId: null },
-      select: { id: true, total: true },
+      select: { id: true, total: true, deliveryFee: true },
     });
     if (pending.length === 0) {
       return { empty: true as const };
     }
-    const amount = pending.reduce((sum, o) => sum + o.total, 0);
+    // Disetor ke admin = uang MENU (total − ongkir); ongkir = pendapatan kurir
+    const amount = pending.reduce((sum, o) => sum + menuMoneyOf(o), 0);
+    const ongkir = pending.reduce((sum, o) => sum + courierIncomeOf(o), 0);
     const setoran = await tx.courierSetoran.create({
       data: {
         courierUserId: user.id,
         amount,
+        ongkir,
         orderCount: pending.length,
         note,
       },

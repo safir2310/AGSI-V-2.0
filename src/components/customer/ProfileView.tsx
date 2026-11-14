@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Coins,
   FileText,
+  HandCoins,
   HelpCircle,
   Info,
   LogOut,
@@ -30,6 +31,7 @@ import { BiometricSheet } from "@/components/shared/BiometricSheet";
 import { AdminsSheet } from "@/components/admin/AdminsSheet";
 import { CashiersSheet } from "@/components/admin/CashiersSheet";
 import { KurirsSheet } from "@/components/admin/KurirsSheet";
+import { SetoranKurirSheet } from "@/components/admin/SetoranKurirSheet";
 import { StoreSettingsSheet } from "@/components/admin/StoreSettingsSheet";
 import { BannerSettingsSheet } from "@/components/admin/BannerSettingsSheet";
 import { QrisManagerSheet } from "@/components/admin/QrisManagerSheet";
@@ -79,6 +81,8 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const [bannerOpen, setBannerOpen] = useState(false);
   const [qrisOpen, setQrisOpen] = useState(false);
   const [posterOpen, setPosterOpen] = useState(false);
+  const [setoranOpen, setSetoranOpen] = useState(false);
+  const [setoranBadge, setSetoranBadge] = useState(0);
   const [qrisDesc, setQrisDesc] = useState<string | null>(null);
   const [policyOpen, setPolicyOpen] = useState(false);
   const [pushOpen, setPushOpen] = useState(false);
@@ -88,6 +92,34 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const [pushStatus, setPushStatus] = useState<PushStatus | null>(null);
   const [chatUnread, setChatUnread] = useState(0);
   const isAdmin = user.role === "ADMIN" || user.role === "OWNER";
+
+  // Badge menu "Setoran Kurir" (admin): jumlah kurir yang masih memegang
+  // uang COD + setoran yang menunggu konfirmasi — segar saat profil dibuka
+  // & setiap kali sheet setoran ditutup.
+  useEffect(() => {
+    if (!isAdmin) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await apiFetch("/api/courier/setoran", { cache: "no-store" });
+        if (!res.ok) return;
+        const d = (await res.json()) as {
+          perKurir?: unknown[];
+          riwayat?: Array<{ confirmedAt: string | null }>;
+        };
+        if (!alive) return;
+        const pendingConfirm = (d.riwayat ?? []).filter((r) => !r.confirmedAt).length;
+        setSetoranBadge((d.perKurir ?? []).length + pendingConfirm);
+      } catch {
+        // diam — badge disembunyikan saja
+      }
+    };
+    void load();
+    return () => {
+      alive = false;
+    };
+  }, [isAdmin, setoranOpen]);
+
   // Saklar layanan toko (untuk deskripsi menu + sheet pengaturan)
   const deliveryEnabled = useSettingsStore((s) => s.deliveryEnabled);
   const qrisEnabled = useSettingsStore((s) => s.qrisEnabled);
@@ -270,6 +302,16 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
         { icon: UserPlus, label: "Kelola Kasir", desc: "Tambah & atur akun kasir POS", onClick: () => setCashiersOpen(true) },
         { icon: Bike, label: "Kelola Kurir", desc: "Akun kurir antaran — tugas & lokasi rumah pelanggan", onClick: () => setKurirsOpen(true) },
         {
+          icon: HandCoins,
+          label: "Setoran Kurir",
+          desc:
+            setoranBadge > 0
+              ? `${setoranBadge} hal perlu dicek — uang COD kurir & konfirmasi setoran`
+              : "Uang COD kurir (bayar di tempat) — konfirmasi setoran di sini",
+          onClick: () => setSetoranOpen(true),
+          badge: setoranBadge,
+        },
+        {
           icon: Palette,
           label: "Generator Poster & Banner",
           desc: "Bikin poster, banner promosi & spanduk otomatis — tinggal unduh",
@@ -426,6 +468,9 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
       {isAdmin && <CashiersSheet open={cashiersOpen} onClose={() => setCashiersOpen(false)} />}
       {/* Sheet kelola kurir — akun kurir antaran pesanan (admin/owner) */}
       {isAdmin && <KurirsSheet open={kurirsOpen} onClose={() => setKurirsOpen(false)} />}
+      {/* Sheet setoran COD kurir — rekap uang di tangan kurir + konfirmasi
+          penerimaan setoran (admin/owner) */}
+      {isAdmin && <SetoranKurirSheet open={setoranOpen} onClose={() => setSetoranOpen(false)} />}
       {/* Sheet kelola admin — daftar/tambah/edit/hapus akun admin & owner */}
       {isAdmin && (
         <AdminsSheet

@@ -10,12 +10,13 @@
  *      ditandai (pelunasan digital hanya lewat verifikasi otomatis);
  *      yang sudah PAID tidak diutak-atik; TAKEAWAY tidak dianggap COD.
  *   C. Kantong setoran: hanya paidVia "COD" & belum terikat setoran
- *      (codSetoranId NULL) dihitung; jumlah = penjumlahan total; setelah
- *      diikat (codSetoranId terisi) → kembali 0.
+ *      (codSetoranId NULL) dihitung; yang disetor ke admin = NOMINAL MENU
+ *      (total − ongkir); ongkir = PENDAPATAN KURIR, tidak ikut disetor;
+ *      setelah diikat (codSetoranId terisi) → semua kembali 0.
  *
  *   bun scripts/test-courier-setoran.ts
  */
-import { codCompletionMarking, courierCompleteDecision, isCodDelivery, isUndepositedCod, setoranSummary } from "../src/lib/courier-setoran";
+import { codCompletionMarking, courierCompleteDecision, courierIncomeOf, isCodDelivery, isUndepositedCod, menuMoneyOf, setoranSummary } from "../src/lib/courier-setoran";
 
 let pass = 0;
 let fail = 0;
@@ -113,25 +114,35 @@ ok(
 );
 ok("DELIVERY tunai → COD kurir", isCodDelivery(orderReadyKurir1) === true);
 
-console.log("\n=== C. Kantong setoran (harus disetor → 0 setelah setor) ===");
+console.log("\n=== C. Kantong setoran: nominal menu disetor, ongkir = pendapatan kurir ===");
 
+// Pesanan COD: total = menu + ongkir (contoh: menu 30.000 + ongkir 3.000 = 33.000)
 const kantong = [
-  { ...orderReadyKurir1, total: 33000, paidVia: "COD", codSetoranId: null },
-  { ...orderReadyKurir1, id: "o2", total: 21500, paidVia: "COD", codSetoranId: null },
-  { ...orderReadyKurir1, id: "o3", total: 40000, paidVia: "AUTO", codSetoranId: null }, // QRIS — bukan uang tunai
-  { ...orderReadyKurir1, id: "o4", total: 25000, paidVia: "CASH", codSetoranId: null }, // lunas di kasir
-  { ...orderReadyKurir1, id: "o5", total: 15000, paidVia: "COD", codSetoranId: "setoran-lama" }, // sudah disetor
+  { ...orderReadyKurir1, total: 33000, deliveryFee: 3000, paidVia: "COD", codSetoranId: null },
+  { ...orderReadyKurir1, id: "o2", total: 24500, deliveryFee: 3000, paidVia: "COD", codSetoranId: null },
+  { ...orderReadyKurir1, id: "o3", total: 40000, deliveryFee: 0, paidVia: "AUTO", codSetoranId: null }, // QRIS — bukan uang tunai
+  { ...orderReadyKurir1, id: "o4", total: 25000, deliveryFee: 2000, paidVia: "CASH", codSetoranId: null }, // lunas di kasir
+  { ...orderReadyKurir1, id: "o5", total: 15000, deliveryFee: 0, paidVia: "COD", codSetoranId: "setoran-lama" }, // sudah disetor
 ];
+
+// Nominal pesanan yang disetor ke admin = total − ongkir (uang menu)
+ok("menuMoneyOf = total − ongkir (33.000 − 3.000 = 30.000)", menuMoneyOf({ total: 33000, deliveryFee: 3000 }) === 30000);
+ok("menuMoneyOf tanpa ongkir = total penuh", menuMoneyOf({ total: 25000, deliveryFee: 0 }) === 25000);
+ok("menuMoneyOf jadi 0 bila voucher menutup semua (total 0)", menuMoneyOf({ total: 0, deliveryFee: 0 }) === 0);
+ok("courierIncomeOf = ongkir (pendapatan kurir)", courierIncomeOf({ total: 33000, deliveryFee: 3000 }) === 3000);
 
 const sum = setoranSummary(kantong);
 ok("hanya COD belum disetor dihitung (2 pesanan)", sum.count === 2);
-ok("jumlah = 33.000 + 21.500 = 54.500", sum.amount === 54500, formatRupiah(sum.amount));
+ok("setoran ke admin = uang menu saja (30.000 + 21.500 = 51.500)", sum.amount === 51500, formatRupiah(sum.amount));
+ok("ongkir = pendapatan kurir (3.000 + 3.000 = 6.000, TIDAK disetor)", sum.ongkir === 6000, formatRupiah(sum.ongkir));
+ok("uang penuh di tangan kurir = menu + ongkir (57.500)", sum.amount + sum.ongkir === 57500, formatRupiah(sum.amount + sum.ongkir));
 
 // Setelah setor: semua pesanan terikat setoran → kantong kembali ke 0
 const setelahSetor = kantong.map((o) => ({ ...o, codSetoranId: "setoran-baru" }));
 const sum2 = setoranSummary(setelahSetor);
 ok("setelah disetor ke admin → kantong kembali 0 pesanan", sum2.count === 0);
-ok("setelah disetor ke admin → kantong kembali Rp0", sum2.amount === 0);
+ok("setelah disetor ke admin → setoran kembali Rp0", sum2.amount === 0);
+ok("setelah disetor → ongkir tertunggak juga 0 (pendapatan tercatat di setoran)", sum2.ongkir === 0);
 
 // IsUndepositedCod presisi
 ok("paidVia COD tanpa setoran → tertunggak", isUndepositedCod({ paidVia: "COD", codSetoranId: null }) === true);

@@ -34,13 +34,22 @@ type CourierHomeViewProps = {
 /** Uang COD di tangan kurir — dari GET /api/courier/setoran */
 type SetoranData = {
   pending: {
-    amount: number;
+    amount: number; // uang MENU yang disetor ke admin (total − ongkir)
+    ongkir: number; // ongkir = PENDAPATAN KURIR (tidak ikut disetor)
     count: number;
-    orders: Array<{ id: string; code: string; total: number; customerName: string; updatedAt: string }>;
+    orders: Array<{
+      id: string;
+      code: string;
+      total: number;
+      deliveryFee: number;
+      customerName: string;
+      updatedAt: string;
+    }>;
   };
   riwayat: Array<{
     id: string;
     amount: number;
+    ongkir: number;
     orderCount: number;
     note: string | null;
     createdAt: string;
@@ -165,7 +174,9 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
       showNotice({
         type: "success",
         title: "Setoran Tercatat ✓",
-        message: `${formatIDR(data.setoran.amount)} diserahkan ke admin — lapor langsung bila ada selisih.`,
+        message: `${formatIDR(data.setoran.amount)} uang menu diserahkan ke admin — ongkir ${formatIDR(
+          data.setoran.ongkir ?? 0
+        )} tetap pendapatanmu. Lapor langsung bila ada selisih.`,
       });
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Gagal menyimpan setoran.");
@@ -213,14 +224,19 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
           <div className="flex items-center justify-between gap-3 px-4 pt-3.5">
             <div className="min-w-0">
               <p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-amber-700">
-                <HandCoins className="h-3.5 w-3.5" /> Uang COD di Tanganmu
+                <HandCoins className="h-3.5 w-3.5" /> Setor ke Admin (Nominal Menu)
               </p>
               <p className="mt-0.5 text-2xl font-black text-neutral-900">
                 {formatIDR(pending?.amount ?? 0)}
               </p>
               <p className="text-[10px] text-neutral-400">
-                {pending?.count ?? 0} pesanan tunai (bayar di tempat) belum disetor ke admin
+                {pending?.count ?? 0} pesanan COD — uang menu saja, ongkir bukan uang admin
               </p>
+              {(pending?.ongkir ?? 0) > 0 && (
+                <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black text-emerald-700">
+                  🛵 Ongkir {formatIDR(pending?.ongkir ?? 0)} = pendapatanmu (tidak disetor)
+                </p>
+              )}
             </div>
             {(pending?.count ?? 0) > 0 && (
               <button
@@ -240,17 +256,25 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
               </button>
             )}
           </div>
-          {/* Daftar pesanan COD tertunggak (maks 3) */}
+          {/* Daftar pesanan COD tertunggak (maks 3): nominal menu + ongkir */}
           {(pending?.orders.length ?? 0) > 0 && (
             <ul className="mt-2.5 space-y-1 px-4">
-              {pending!.orders.slice(0, 3).map((o) => (
-                <li key={o.id} className="flex items-baseline justify-between gap-2 text-[11px]">
-                  <span className="min-w-0 flex-1 truncate text-neutral-600">
-                    {o.code} • {o.customerName}
-                  </span>
-                  <span className="shrink-0 font-black text-amber-700">{formatIDR(o.total)}</span>
-                </li>
-              ))}
+              {pending!.orders.slice(0, 3).map((o) => {
+                const menu = Math.max(0, o.total - (o.deliveryFee ?? 0));
+                return (
+                  <li key={o.id} className="flex items-baseline justify-between gap-2 text-[11px]">
+                    <span className="min-w-0 flex-1 truncate text-neutral-600">
+                      {o.code} • {o.customerName}
+                    </span>
+                    <span className="shrink-0 font-black text-amber-700">{formatIDR(menu)}</span>
+                    {(o.deliveryFee ?? 0) > 0 && (
+                      <span className="shrink-0 text-[10px] font-bold text-emerald-600">
+                        +ongkir {formatIDR(o.deliveryFee ?? 0)}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
               {pending!.orders.length > 3 && (
                 <li className="text-[10px] font-semibold text-neutral-400">
                   +{pending!.orders.length - 3} pesanan lainnya
@@ -271,6 +295,11 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
                       {formatDateTime(r.createdAt)} • {r.orderCount} pesanan
                     </span>
                     <span className="shrink-0 font-black text-neutral-700">{formatIDR(r.amount)}</span>
+                    {(r.ongkir ?? 0) > 0 && (
+                      <span className="shrink-0 text-[10px] font-bold text-emerald-600">
+                        +{formatIDR(r.ongkir)}
+                      </span>
+                    )}
                     <span
                       className={cn(
                         "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black",

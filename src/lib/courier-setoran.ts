@@ -24,6 +24,7 @@ type OrderLike = {
   courierUserId?: string | null;
   codSetoranId?: string | null;
   total?: number;
+  deliveryFee?: number | null;
 };
 
 type UserLike = { id: string; role: string };
@@ -84,13 +85,32 @@ export function isUndepositedCod(order: OrderLike): boolean {
   return order.paidVia === COD_PAID_VIA && order.codSetoranId == null;
 }
 
-/** Ringkasan setoran: jumlah uang + banyak pesanan tertunggak. */
+/**
+ * NOMINAL PESANAN yang disetor kurir ke admin: total dikurangi ongkir.
+ * (total = subtotal + serviceFee + ongkir − voucher — lihat pembuatan
+ * pesanan). Ongkir BUKAN uang admin — itu pendapatan kurir.
+ */
+export function menuMoneyOf(order: OrderLike): number {
+  return Math.max(0, (order.total ?? 0) - (order.deliveryFee ?? 0));
+}
+
+/** Ongkir pesanan = PENDAPATAN KURIR (tetap di tangan kurir). */
+export function courierIncomeOf(order: OrderLike): number {
+  return order.deliveryFee ?? 0;
+}
+
+/**
+ * Ringkasan kantong COD kurir: uang menu yang harus disetor ke admin +
+ * ongkir yang menjadi pendapatan kurir + banyaknya pesanan tertunggak.
+ * Setelah disetor (pesanan terikat setoran), semuanya kembali ke 0.
+ */
 export function setoranSummary(
   orders: OrderLike[]
-): { amount: number; count: number } {
+): { amount: number; ongkir: number; count: number } {
   const eligible = orders.filter(isUndepositedCod);
   return {
-    amount: eligible.reduce((sum, o) => sum + (o.total ?? 0), 0),
+    amount: eligible.reduce((sum, o) => sum + menuMoneyOf(o), 0),
+    ongkir: eligible.reduce((sum, o) => sum + courierIncomeOf(o), 0),
     count: eligible.length,
   };
 }
