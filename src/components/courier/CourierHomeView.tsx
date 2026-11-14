@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
+  Banknote,
   Bike,
   CheckCheck,
   Clock,
   HandCoins,
+  History,
   Loader2,
   LogOut,
   MapPin,
@@ -16,6 +19,7 @@ import {
   Phone,
   RefreshCw,
   Wallet,
+  X,
 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { apiFetch } from "@/lib/api";
@@ -57,6 +61,22 @@ type SetoranData = {
   }>;
 };
 
+/** Pendapatan kurir (ongkir) + riwayat pengantaran — GET /api/courier/income */
+type IncomeData = {
+  today: { amount: number; count: number };
+  yesterday: { amount: number; count: number };
+  history: Array<{
+    id: string;
+    code: string;
+    customerName: string;
+    deliveryArea: string | null;
+    address: string | null;
+    deliveryFee: number;
+    paymentMethod: string;
+    updatedAt: string;
+  }>;
+};
+
 type Tab = "antaran" | "selesai";
 
 /** Nomor HP → format internasional utk tautan WhatsApp (62…) */
@@ -89,6 +109,8 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
   const showNotice = useNoticeStore((s) => s.show);
   const [orders, setOrders] = useState<OrderData[] | null>(null);
   const [setoran, setSetoran] = useState<SetoranData | null>(null);
+  const [income, setIncome] = useState<IncomeData | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -99,14 +121,16 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
 
   const load = useCallback(async () => {
     try {
-      const [dRes, sRes] = await Promise.all([
+      const [dRes, sRes, iRes] = await Promise.all([
         apiFetch("/api/courier/deliveries", { cache: "no-store" }),
         apiFetch("/api/courier/setoran", { cache: "no-store" }),
+        apiFetch("/api/courier/income", { cache: "no-store" }),
       ]);
       if (!dRes.ok) throw new Error();
       const data = (await dRes.json()) as { orders?: OrderData[] };
       setOrders(data.orders ?? []);
       if (sRes.ok) setSetoran((await sRes.json()) as SetoranData);
+      if (iRes.ok) setIncome((await iRes.json()) as IncomeData);
       setError(null);
     } catch {
       setError("Tidak dapat menghubungi server. Periksa koneksi lalu coba lagi.");
@@ -189,6 +213,7 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
   const selesai = (orders ?? []).filter((o) => o.status === "COMPLETED");
   const pending = setoran?.pending;
   const riwayat = (setoran?.riwayat ?? []).slice(0, 3);
+  const riwayatAntaran = income?.history ?? [];
   const shown = tab === "antaran" ? aktif : selesai;
 
   return (
@@ -212,6 +237,48 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
           <LogOut className="h-4.5 w-4.5" />
         </button>
       </header>
+
+      {/* ===== PENDAPATAN KURIR (ongkir pesanan selesai, WIB) ===== */}
+      <motion.section
+        initial={prefersReduced ? false : { opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="mb-4"
+      >
+        <div className="grid grid-cols-2 gap-2.5">
+          <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-600 to-emerald-500 p-3.5 text-white shadow-md shadow-emerald-500/25">
+            <p className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-emerald-100">
+              <Banknote className="h-3.5 w-3.5" /> Pendapatan Hari Ini
+            </p>
+            <p className="mt-1 text-xl font-black leading-tight">
+              {formatIDR(income?.today.amount ?? 0)}
+            </p>
+            <p className="text-[10px] font-semibold text-emerald-100">
+              {income?.today.count ?? 0} pengantaran selesai
+            </p>
+          </div>
+          <div className="rounded-2xl border border-neutral-200 bg-white p-3.5 shadow-sm">
+            <p className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-neutral-400">
+              <Banknote className="h-3.5 w-3.5" /> Kemarin
+            </p>
+            <p className="mt-1 text-xl font-black leading-tight text-neutral-800">
+              {formatIDR(income?.yesterday.amount ?? 0)}
+            </p>
+            <p className="text-[10px] font-semibold text-neutral-400">
+              {income?.yesterday.count ?? 0} pengantaran
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => setHistoryOpen(true)}
+          className="press-effect mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-white py-2.5 text-[12px] font-black text-emerald-700 shadow-sm hover:bg-emerald-50"
+        >
+          <History className="h-4 w-4" /> Riwayat Pengantaran
+          <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-black text-emerald-700">
+            {riwayatAntaran.length}
+          </span>
+        </button>
+      </motion.section>
 
       {/* ===== KANTONG UANG COD (setoran) ===== */}
       {(pending?.count ?? 0) > 0 || riwayat.length > 0 ? (
@@ -555,6 +622,90 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
         >
           <RefreshCw className="h-3.5 w-3.5" /> {error} — Ketuk untuk coba lagi
         </button>
+      )}
+
+      {/* ===== SHEET RIWAYAT PENGANTARAN ===== */}
+      {createPortal(
+        <AnimatePresence>
+          {historyOpen && (
+            <motion.div
+              key="riwayat-overlay"
+              initial={prefersReduced ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={prefersReduced ? undefined : { opacity: 0 }}
+              className="fixed inset-0 z-[95] flex items-end justify-center bg-neutral-900/70 backdrop-blur-sm sm:items-center sm:p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Riwayat Pengantaran"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setHistoryOpen(false);
+              }}
+            >
+              <motion.div
+                initial={prefersReduced ? false : { y: 48, scale: 0.97 }}
+                animate={{ y: 0, scale: 1 }}
+                exit={prefersReduced ? undefined : { y: 48, opacity: 0 }}
+                transition={{ type: "spring", damping: 28, stiffness: 320 }}
+                className="flex max-h-[85dvh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+              >
+                <div className="flex items-center justify-between gap-2 border-b border-neutral-100 px-4 py-3.5">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-black text-neutral-900">Riwayat Pengantaran 🛵</h2>
+                    <p className="text-[10px] text-neutral-400">
+                      30 pengantaran terakhir — ongkir = pendapatanmu (tidak ikut disetor)
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setHistoryOpen(false)}
+                    aria-label="Tutup riwayat"
+                    className="press-effect flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                  {riwayatAntaran.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2 py-10 text-center">
+                      <History className="h-9 w-9 text-emerald-200" />
+                      <p className="text-[13px] font-black text-neutral-500">Belum ada pengantaran selesai</p>
+                      <p className="max-w-[260px] text-[11px] leading-relaxed text-neutral-400">
+                        Setiap pesanan yang kamu tandai "Sampai Tujuan" tercatat di sini beserta ongkirnya.
+                      </p>
+                    </div>
+                  ) : (
+                    <ul className="space-y-2">
+                      {riwayatAntaran.map((h) => (
+                        <li
+                          key={h.id}
+                          className="flex items-center gap-3 rounded-xl border border-neutral-100 bg-white px-3 py-2.5 shadow-sm"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[12px] font-black text-neutral-800">
+                              {h.code} • {h.customerName}
+                            </p>
+                            <p className="truncate text-[10px] text-neutral-400">
+                              {formatDateTime(h.updatedAt)}
+                              {h.deliveryArea ? ` • ${h.deliveryArea}` : ""}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-[13px] font-black text-emerald-600">
+                              +{formatIDR(h.deliveryFee)}
+                            </p>
+                            <p className="text-[9px] font-bold uppercase text-neutral-400">
+                              {h.paymentMethod === "CASH" ? "COD" : "Digital"}
+                            </p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
       )}
     </div>
   );
