@@ -5,7 +5,7 @@
  */
 
 /** Versi APK terbaru yang tersaji di /agsi-app.apk (sinkron dgn download/) */
-export const LATEST_APP_VERSION = "1.2.10";
+export const LATEST_APP_VERSION = "1.3.0";
 
 /** Lokasi APK di situs — diunduh lewat DownloadManager aplikasi (v1.1.0+) */
 export const APK_URL = "/agsi-app.apk";

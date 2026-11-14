@@ -31,7 +31,14 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "AGSI",
   },
+  // ===== Manifest PWA — prasyarat install (Add to Home Screen) & paket toko
+  // (Play Store/App Store) yang membaca metadata nama + ikon dari sini =====
+  manifest: "/manifest.webmanifest",
   icons: {
+    icon: [
+      { url: "/push-icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/push-icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
