@@ -25,8 +25,17 @@ class AgsiApp : Application() {
         /** Channel chat CS (pesanan & chat dipisah agar bisa diatur sendiri) */
         const val CHANNEL_CHAT = "agsi_chat"
 
-        /** Channel notifikasi minimal untuk layanan pemantau latar belakang */
-        const val CHANNEL_SERVICE = "agsi_service"
+        /**
+         * Channel layanan pemantau TERSEMBUNYI (v1.3.1+) — ID BARU, bukan
+         * sekadar menurunkan importance "agsi_service", karena Android
+         * TIDAK mengizinkan kode mengubah importance channel yang sudah
+         * terpasang di perangkat (v1.2.4–v1.3.0 dibuat IMPORTANCE_MIN yang
+         * tampil di daftar notifikasi).
+         */
+        const val CHANNEL_SERVICE_HIDDEN = "agsi_service_hidden"
+
+        /** Channel layanan LAMA (v1.2.4–v1.3.0, TERLIHAT) — dihapus saat migrasi */
+        const val CHANNEL_SERVICE_LEGACY = "agsi_service"
 
         /** true bila ada Activity yang tampil di depan */
         @Volatile
@@ -84,16 +93,23 @@ class AgsiApp : Application() {
         }
         nm.createNotificationChannel(chat)
 
-        // Channel MINIMAL — notifikasi "layanan berjalan" harus senyap &
-        // berada di bawah daftar notifikasi (wajib ada utk foreground service)
+        // Channel layanan pemantau — TERSEMBUNYI TOTAL (IMPORTANCE_NONE):
+        // notifikasi foreground service tidak pernah tampil di status bar /
+        // daftar notifikasi / lock screen (permintaan pemilik v1.3.1:
+        // "sembunyikan notifikasi AGSI aktif"). Notifikasi tetap di-post
+        // karena wajib untuk foreground service, tapi user tidak melihatnya.
         val service = NotificationChannel(
-            CHANNEL_SERVICE,
+            CHANNEL_SERVICE_HIDDEN,
             getString(R.string.channel_service_name),
-            NotificationManager.IMPORTANCE_MIN,
+            NotificationManager.IMPORTANCE_NONE,
         ).apply {
             description = getString(R.string.channel_service_desc)
             setShowBadge(false)
         }
         nm.createNotificationChannel(service)
+
+        // Bersihkan channel lama yang TERLIHAT dari perangkat pemakai versi
+        // sebelumnya — notifikasi "AGSI aktif" yang masih menempel ikut hilang.
+        nm.deleteNotificationChannel(CHANNEL_SERVICE_LEGACY)
     }
 }

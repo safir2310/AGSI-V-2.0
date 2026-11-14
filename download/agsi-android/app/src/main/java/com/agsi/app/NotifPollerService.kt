@@ -44,9 +44,10 @@ import java.util.concurrent.Executors
  *                                tidak dobel dengan push FCM)
  *
  * Cara kerja:
- *  - Foreground service (tipe specialUse) dengan notifikasi minimal di bawah
- *    layar — supaya Android mengizinkan polling jangka panjang (START_STICKY,
- *    dijalankan ulang saat boot oleh BootReceiver).
+ *  - Foreground service (tipe specialUse) dengan notifikasi TERSEMBUNYI
+ *    (v1.3.1: channel IMPORTANCE_NONE — tidak pernah tampil di status bar /
+ *    daftar notifikasi) supaya Android mengizinkan polling jangka panjang
+ *    (START_STICKY, dijalankan ulang saat boot oleh BootReceiver).
  *  - Hanya memantau saat aplikasi DI LATAR BELAKANG; saat aplikasi tampil di
  *    depan, popup + suara di halaman web (NotifWatchers) yang bekerja —
  *    siklus pertama setelah kembali ke latar belakang dipakai sebagai
@@ -453,7 +454,8 @@ class NotifPollerService : Service() {
         }
     }
 
-    /** Notifikasi minimal yang menandai layanan latar belakang berjalan */
+    /** Notifikasi layanan — TERSEMBUNYI (channel IMPORTANCE_NONE + SECRET):
+     *  wajib di-post utk foreground service, tapi tidak pernah tampil. */
     private fun buildServiceNotification(): Notification {
         val intent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -465,12 +467,13 @@ class NotifPollerService : Service() {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        return NotificationCompat.Builder(this, AgsiApp.CHANNEL_SERVICE)
+        return NotificationCompat.Builder(this, AgsiApp.CHANNEL_SERVICE_HIDDEN)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(getString(R.string.notif_service_title))
             .setContentText(getString(R.string.notif_service_text))
             .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setOngoing(true)
+            .setOngoing(false)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .setContentIntent(pending)
             .build()
     }

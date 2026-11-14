@@ -37,7 +37,7 @@
     <string name="channel_chat_name">Pesan Chat</string>
     <string name="channel_chat_desc">Pesan baru dari CS AGSI dan pesan pelanggan baru</string>
     <string name="channel_service_name">Layanan Latar Belakang</string>
-    <string name="channel_service_desc">Menjaga notifikasi pesanan &amp; chat tetap berjalan walau aplikasi ditutup</string>
+    <string name="channel_service_desc">Menjaga notifikasi pesanan &amp; chat tetap berjalan walau aplikasi ditutup (tersembunyi — tidak menampilkan notifikasi)</string>
     <string name="notif_service_title">Notifikasi AGSI aktif</string>
     <string name="notif_service_text">Pesanan &amp; chat dipantau di latar belakang — banner muncul walau aplikasi ditutup</string>
 

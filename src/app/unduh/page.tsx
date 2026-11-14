@@ -71,12 +71,14 @@ export default function UnduhPage() {
         <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-3.5">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <p className="text-[11.5px] leading-relaxed text-amber-800">
-            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> Notifikasi layar untuk
-            pesanan baru, update status &amp; chat CS — muncul walau aplikasi
-ditutup (layanan latar belakang), plus lonceng notifikasi &amp; badge di
-aplikasi. Versi sebelumnya: simpan struk &amp; ekspor laporan langsung ke
-folder Unduhan/AGSI, cetak lewat dialog cetak sistem, dan pendaftaran
-Face ID / sidik jari langsung dari halaman Profil.
+            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> Notifikasi tetap
+            &quot;AGSI aktif — pesanan &amp; chat dipantau di latar belakang&quot;
+            kini disembunyikan total dari status bar &amp; layar — tampilan
+            notifikasi lebih bersih, pesanan &amp; chat tetap masuk seketika
+            walau aplikasi ditutup. Versi sebelumnya: notifikasi layar pesanan
+            baru, QRIS terbayar, status pesanan &amp; chat CS walau aplikasi
+            ditutup, lonceng notifikasi &amp; badge, Lacak Kurir AGSI, simpan
+            struk &amp; cetak laporan, dan Face ID / sidik jari.
           </p>
         </div>
 

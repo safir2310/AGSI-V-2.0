@@ -80,3 +80,8 @@ tool-results
 
 # APK disalin saat build oleh scripts/copy-apk.mjs — jangan di-commit
 public/agsi-app.apk
+
+# Toolchain build di sandbox (tidak untuk repo)
+.android-sdk/
+.android-sdk-tmp/
+.gradle-home/
