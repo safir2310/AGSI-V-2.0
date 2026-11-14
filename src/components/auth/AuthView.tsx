@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ChickenLogo } from "@/components/logo/ChickenLogo";
 import { setAuthToken, apiFetch } from "@/lib/api";
+import { validatePassword } from "@/lib/password-policy";
 import {
   biometricAvailable,
   getBiometricEmail,
@@ -150,6 +151,13 @@ export function AuthView({ onSuccess }: AuthViewProps) {
   /* ===== Masuk / Daftar ===== */
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (mode !== "login") {
+      const pwCheck = validatePassword(form.password, { email: form.email });
+      if (!pwCheck.ok) {
+        showNotice({ type: "error", title: "Password Ditolak", message: pwCheck.error });
+        return;
+      }
+    }
     setLoading(true);
     try {
       const url = mode === "login" ? "/api/auth/login" : "/api/auth/register";
@@ -227,8 +235,9 @@ export function AuthView({ onSuccess }: AuthViewProps) {
       showNotice({ type: "error", title: "Kode Belum Lengkap", message: "Masukkan 6 digit kode OTP dari emailmu." });
       return;
     }
-    if (reset.newPassword.length < 6) {
-      showNotice({ type: "error", title: "Password Terlalu Pendek", message: "Password baru minimal 6 karakter." });
+    const pwCheck = validatePassword(reset.newPassword, { email: form.email });
+    if (!pwCheck.ok) {
+      showNotice({ type: "error", title: "Password Ditolak", message: pwCheck.error });
       return;
     }
     if (reset.newPassword !== reset.confirmPassword) {
@@ -407,12 +416,12 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                     <Input
                       id="reset-password"
                       type="password"
-                      placeholder="Minimal 6 karakter"
+                      placeholder="Minimal 8 karakter (huruf & angka)"
                       className="border-orange-200 focus-visible:ring-orange-400"
                       value={reset.newPassword}
                       onChange={(e) => setReset({ ...reset, newPassword: e.target.value })}
                       required
-                      minLength={6}
+                      minLength={8}
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -533,7 +542,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                   <Input
                     id="password"
                     type="password"
-                    placeholder="Minimal 6 karakter"
+                    placeholder="Minimal 8 karakter (huruf & angka)"
                     value={form.password}
                     onChange={(e) => setForm({ ...form, password: e.target.value })}
                     required

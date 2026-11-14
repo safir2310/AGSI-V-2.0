@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { suggestPassword, validatePassword } from "@/lib/password-policy";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
@@ -123,9 +124,12 @@ export function KurirsSheet({ open, onClose }: KurirsSheetProps) {
       showNotice({ type: "error", title: "Data Belum Lengkap", message: "Nama & email wajib diisi." });
       return;
     }
-    if (isAdd && password.length < 6) {
-      showNotice({ type: "error", title: "Password Kurang", message: "Password minimal 6 karakter." });
-      return;
+    if (password) {
+      const pwCheck = validatePassword(password, { email });
+      if (!pwCheck.ok) {
+        showNotice({ type: "error", title: "Password Ditolak", message: pwCheck.error });
+        return;
+      }
     }
     if (password && password !== form.confirmPassword) {
       showNotice({ type: "error", title: "Password Tidak Sama", message: "Konfirmasi password belum cocok." });
@@ -319,21 +323,35 @@ export function KurirsSheet({ open, onClose }: KurirsSheetProps) {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor="kr-pass">
-                      {isAdd ? "Password" : "Password Baru (opsional)"}
-                    </Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label htmlFor="kr-pass">
+                        {isAdd ? "Password" : "Password Baru (opsional)"}
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => {
+                            const s = suggestPassword();
+                            return { ...f, password: s, confirmPassword: s };
+                          })
+                        }
+                        className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100"
+                      >
+                        Usul sandi kuat
+                      </button>
+                    </div>
                     <Input
                       id="kr-pass"
                       type="password"
                       className="border-emerald-200 focus-visible:ring-emerald-400"
-                      placeholder={isAdd ? "Min. 6 karakter" : "Kosongkan bila tidak diganti"}
+                      placeholder={isAdd ? "Min. 8 karakter (huruf & angka)" : "Kosongkan bila tidak diganti"}
                       value={form.password}
                       onChange={set("password")}
                       autoComplete="new-password"
                     />
                     <p className="text-[10px] text-neutral-400">
                       {isAdd
-                        ? "Kurir memakai email & password ini untuk masuk beranda kurir."
+                        ? "Kurir memakai email & password ini untuk masuk beranda kurir. Hindari sandi umum (mis. kurir123) — sandi yang pernah bocor memunculkan peringatan Chrome saat login."
                         : "Mengisi password akan memaksa kurir masuk ulang di semua perangkat."}
                     </p>
                   </div>

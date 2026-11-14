@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { validatePassword } from "@/lib/password-policy";
 import { db } from "@/lib/db";
 import { deleteUserSessions, hashPassword, verifyPassword } from "@/lib/auth";
 
@@ -23,11 +24,9 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (newPwd.length < 6) {
-      return NextResponse.json(
-        { error: "Password baru minimal 6 karakter." },
-        { status: 400 }
-      );
+    const pwCheck = validatePassword(newPwd, { email });
+    if (!pwCheck.ok) {
+      return NextResponse.json({ error: pwCheck.error }, { status: 400 });
     }
 
     const user = await db.user.findUnique({ where: { email: normalized } });

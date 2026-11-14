@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, hashPassword, verifyPassword } from "@/lib/auth";
+import { validatePassword } from "@/lib/password-policy";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -44,8 +45,9 @@ export async function PUT(req: NextRequest) {
     // ===== Ganti password (opsional) =====
     let passwordHash: string | undefined;
     if (newPassword) {
-      if (newPassword.length < 6) {
-        return NextResponse.json({ error: "Password baru minimal 6 karakter." }, { status: 400 });
+      const pwCheck = validatePassword(newPassword, { email: me.email });
+      if (!pwCheck.ok) {
+        return NextResponse.json({ error: pwCheck.error }, { status: 400 });
       }
       const fresh = await db.user.findUnique({
         where: { id: me.id },

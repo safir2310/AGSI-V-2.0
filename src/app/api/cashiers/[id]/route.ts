@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { validatePassword } from "@/lib/password-policy";
 import { db } from "@/lib/db";
 import { getCurrentUser, deleteUserSessions, hashPassword, isAdminRole } from "@/lib/auth";
 
@@ -38,8 +39,11 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (phone !== undefined && phone && !/^[0-9+()\-\s]{6,20}$/.test(phone)) {
       return NextResponse.json({ error: "Nomor HP tidak valid." }, { status: 400 });
     }
-    if (password && password.length < 6) {
-      return NextResponse.json({ error: "Password minimal 6 karakter." }, { status: 400 });
+    if (password) {
+      const pwCheck = validatePassword(password);
+      if (!pwCheck.ok) {
+        return NextResponse.json({ error: pwCheck.error }, { status: 400 });
+      }
     }
 
     const updated = await db.user.update({

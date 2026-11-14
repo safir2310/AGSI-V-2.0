@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { validatePassword } from "@/lib/password-policy";
 import { db } from "@/lib/db";
 import { getCurrentUser, hashPassword, isAdminRole } from "@/lib/auth";
 
@@ -60,8 +61,9 @@ export async function POST(req: NextRequest) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: "Format email tidak valid." }, { status: 400 });
     }
-    if (password.length < 6) {
-      return NextResponse.json({ error: "Password minimal 6 karakter." }, { status: 400 });
+    const pwCheck = validatePassword(password, { email });
+    if (!pwCheck.ok) {
+      return NextResponse.json({ error: pwCheck.error }, { status: 400 });
     }
     if (phone && !/^[0-9+()\-\s]{6,20}$/.test(phone)) {
       return NextResponse.json({ error: "Nomor HP tidak valid." }, { status: 400 });

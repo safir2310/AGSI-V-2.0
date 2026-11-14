@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, hashPassword, isAdminRole } from "@/lib/auth";
+import { validatePassword } from "@/lib/password-policy";
 
 /**
  * GET /api/couriers — daftar akun kurir (khusus Admin/Owner).
@@ -57,8 +58,9 @@ export async function POST(req: NextRequest) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: "Format email tidak valid." }, { status: 400 });
     }
-    if (password.length < 6) {
-      return NextResponse.json({ error: "Password minimal 6 karakter." }, { status: 400 });
+    const pwCheck = validatePassword(password, { email });
+    if (!pwCheck.ok) {
+      return NextResponse.json({ error: pwCheck.error }, { status: 400 });
     }
 
     const existing = await db.user.findUnique({ where: { email } });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { suggestPassword, validatePassword } from "@/lib/password-policy";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
@@ -148,9 +149,12 @@ export function AdminsSheet({ open, onClose, currentUserId, currentUserRole }: A
       showNotice({ type: "error", title: "Data Belum Lengkap", message: "Nama & email wajib diisi." });
       return;
     }
-    if (isAdd && password.length < 6) {
-      showNotice({ type: "error", title: "Password Kurang", message: "Password minimal 6 karakter." });
-      return;
+    if (password) {
+      const pwCheck = validatePassword(password, { email });
+      if (!pwCheck.ok) {
+        showNotice({ type: "error", title: "Password Ditolak", message: pwCheck.error });
+        return;
+      }
     }
     if (password && password !== form.confirmPassword) {
       showNotice({ type: "error", title: "Password Tidak Sama", message: "Konfirmasi password belum cocok." });
@@ -404,21 +408,35 @@ export function AdminsSheet({ open, onClose, currentUserId, currentUserRole }: A
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor="ad-pass">
-                      {isAdd ? "Password" : "Password Baru (opsional)"}
-                    </Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label htmlFor="ad-pass">
+                        {isAdd ? "Password" : "Password Baru (opsional)"}
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => {
+                            const s = suggestPassword();
+                            return { ...f, password: s, confirmPassword: s };
+                          })
+                        }
+                        className="shrink-0 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-700 hover:bg-orange-100"
+                      >
+                        Usul sandi kuat
+                      </button>
+                    </div>
                     <Input
                       id="ad-pass"
                       type="password"
                       className="border-orange-200 focus-visible:ring-orange-400"
-                      placeholder={isAdd ? "Min. 6 karakter" : "Kosongkan bila tidak diganti"}
+                      placeholder={isAdd ? "Min. 8 karakter (huruf & angka)" : "Kosongkan bila tidak diganti"}
                       value={form.password}
                       onChange={set("password")}
                       autoComplete="new-password"
                     />
                     <p className="text-[10px] text-neutral-400">
                       {isAdd
-                        ? "Admin memakai email & password ini untuk masuk ke aplikasi."
+                        ? "Admin memakai email & password ini untuk masuk ke aplikasi. Hindari sandi umum — sandi yang pernah bocor memunculkan peringatan Chrome saat login."
                         : "Mengisi password akan memaksa akun ini masuk ulang di semua perangkat."}
                     </p>
                   </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { createSession, hashPassword } from "@/lib/auth";
+import { validatePassword } from "@/lib/password-policy";
 import { generateMemberCode } from "@/lib/points";
 
 export async function POST(req: NextRequest) {
@@ -20,11 +21,9 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (String(password).length < 6) {
-      return NextResponse.json(
-        { error: "Password minimal 6 karakter." },
-        { status: 400 }
-      );
+    const pwCheck = validatePassword(String(password), { email });
+    if (!pwCheck.ok) {
+      return NextResponse.json({ error: pwCheck.error }, { status: 400 });
     }
     const normalized = String(email).toLowerCase().trim();
     const existing = await db.user.findUnique({ where: { email: normalized } });
