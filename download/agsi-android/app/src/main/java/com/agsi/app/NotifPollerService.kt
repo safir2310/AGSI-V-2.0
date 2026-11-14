@@ -444,6 +444,10 @@ class NotifPollerService : Service() {
             .setStyle(NotificationCompat.BigTextStyle().bigText(ev.body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            // 🔒 Tampil PENUH di layar kunci + ⏰ bangunkan layar HP yang tidur
+            // (full-screen intent — perilaku sama dengan jalur FCM PushService)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setFullScreenIntent(pending, true)
             .setAutoCancel(true)
             .setContentIntent(pending)
             .build()

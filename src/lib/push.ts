@@ -15,11 +15,13 @@ import { formatIDR } from "@/lib/types";
  * tidak pernah melempar, kegagalan hanya dicatat di log server.
  */
 
-/** ID channel Android — WAJIB sama dengan di aplikasi native (android/…) */
-export const ANDROID_CHANNEL_ID = "agsi_orders";
+/** ID channel Android — WAJIB sama dengan di aplikasi native (v1.3.3+
+ *  "agsi_orders_v2": suara ALARM nyaring, tampil penuh di layar kunci,
+ *  bangunkan layar via full-screen intent). */
+export const ANDROID_CHANNEL_ID = "agsi_orders_v2";
 
-/** Channel khusus chat CS — aplikasi native membuat channel "agsi_chat" */
-export const ANDROID_CHAT_CHANNEL_ID = "agsi_chat";
+/** Channel khusus chat CS — aplikasi native membuat channel "agsi_chat_v2" */
+export const ANDROID_CHAT_CHANNEL_ID = "agsi_chat_v2";
 
 export type PushKind = "new_order" | "order_paid" | "order_status" | "chat" | "courier_task" | "test";
 

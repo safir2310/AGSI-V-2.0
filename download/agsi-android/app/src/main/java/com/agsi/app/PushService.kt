@@ -79,6 +79,12 @@ class PushService : FirebaseMessagingService() {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            // 🔒 Tampil PENUH di layar kunci (detail pesanan terbaca langsung)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            // ⏰ HP tidur/terkunci → layar DIBANGUNKAN & aplikasi tampil langsung
+            // di atas layar kunci (full-screen intent). Saat layar nyala & tidak
+            // terkunci, Android tetap memakai heads-up banner biasa.
+            .setFullScreenIntent(pending, true)
             .setAutoCancel(true)
             .setContentIntent(pending)
             .build()

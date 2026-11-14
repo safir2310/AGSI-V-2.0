@@ -32,6 +32,7 @@ import android.util.Base64
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
@@ -217,6 +218,21 @@ class MainActivity : AppCompatActivity() {
         }
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // ⏰ Bangunkan layar saat HP tidur/terkunci: notifikasi penting (full
+        // -screen intent dari PushService/NotifPollerService) menampilkan
+        // aplikasi LANGSUNG di atas layar kunci — dapur tidak melewatkan
+        // pesanan walau HP tergeletak layar mati (permintaan pemilik v1.3.3).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
 
         root = findViewById(R.id.root)
         contentSlot = findViewById(R.id.content_slot)
