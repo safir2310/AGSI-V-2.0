@@ -120,6 +120,11 @@ class MainActivity : AppCompatActivity() {
     private var pendingSaveMime: String? = null
     private var pendingSaveName: String? = null
 
+    // Pin GPS lokasi rumah pelanggan (navigator.geolocation di WebView) —
+    // callback geolokasi yang menunggu izin runtime ACCESS_FINE_LOCATION
+    private var pendingGeoOrigin: String? = null
+    private var pendingGeoCallback: GeolocationPermissions.Callback? = null
+
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -145,6 +150,17 @@ class MainActivity : AppCompatActivity() {
 
     private val notifPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    /** Hasil dialog izin lokasi — balas callback geolokasi WebView yang menunggu.
+     *  Granted → halaman boleh memakai navigator.geolocation (pin GPS rumah). */
+    private val locationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val origin = pendingGeoOrigin
+            val cb = pendingGeoCallback
+            pendingGeoOrigin = null
+            pendingGeoCallback = null
+            if (origin != null && cb != null) cb.invoke(origin, granted, false)
+        }
 
     /** Hasil dialog "Simpan ke" (SAF) — tulis file yang diminta web via bridge */
     private val saveFileLauncher =
@@ -320,6 +336,9 @@ class MainActivity : AppCompatActivity() {
         with(wv.settings) {
             javaScriptEnabled = true
             domStorageEnabled = true
+            // Pin GPS lokasi rumah pelanggan (checkout antar) — izin runtime
+            // diminta saat halaman memakai navigator.geolocation (ChromeClient)
+            setGeolocationEnabled(true)
             // window.open / target=_blank ditangani ChromeClient (popup aman)
             setSupportMultipleWindows(true)
             javaScriptCanOpenWindowsAutomatically = true
@@ -1106,8 +1125,29 @@ class MainActivity : AppCompatActivity() {
             origin: String?,
             callback: GeolocationPermissions.Callback?,
         ) {
-            // Website AGSI tidak memakai geolokasi — tolak dengan rapi
-            callback?.invoke(origin, false, false)
+            // Pin GPS lokasi rumah pelanggan (checkout antar — kurir antar
+            // presisi). Sudah diizinkan → langsung beri; belum → minta izin
+            // runtime ACCESS_FINE_LOCATION, balasan dialog diteruskan ke web.
+            if (origin == null || callback == null) return
+            val granted =
+                ContextCompat.checkSelfPermission(
+                    this@MainActivity,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ) ==
+                    PackageManager.PERMISSION_GRANTED
+            if (granted) {
+                callback.invoke(origin, true, false)
+            } else {
+                pendingGeoOrigin = origin
+                pendingGeoCallback = callback
+                locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+        }
+
+        override fun onGeolocationPermissionsHidePrompt() {
+            // Dialog ditutup tanpa jawaban — buang callback yang menunggu
+            pendingGeoOrigin = null
+            pendingGeoCallback = null
         }
     }
 }
