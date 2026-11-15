@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useAppStore, useUiStore } from "@/lib/store";
 import { notifySuite, type SuiteKind } from "@/lib/notif-suite";
 import { playAgsiChat, playAgsiOrder, playAgsiStatus } from "@/lib/sound";
-import { registerNativeTokenIfPresent } from "@/lib/push-client";
+import { isNativeAndroidApp, registerNativeTokenIfPresent } from "@/lib/push-client";
 import type { AppUser } from "@/lib/types";
 
 /**
@@ -43,6 +43,10 @@ export function PushBridge({ user }: { user: AppUser }) {
         | { type?: string; title?: string; body?: string; url?: string; kind?: string }
         | null;
       if (!d || d.type !== "AGSI_PUSH" || !d.title) return;
+      // v1.3.14 — di APLIKASI ANDROID: kartu notifikasi dibuat native di
+      // status bar (PushService); jalur web-push browser tidak dipakai agar
+      // tidak ada kartu/tampilan dobel. (Jalur ini untuk browser murni.)
+      if (isNativeAndroidApp()) return;
 
       const kind = d.kind ?? "info";
       if (kind === "new_order") playAgsiOrder();

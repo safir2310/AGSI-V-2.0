@@ -19,9 +19,10 @@ import com.google.firebase.messaging.RemoteMessage
  * tidak ikut menyala) dan tanpa grouping/quick reply.
  *
  * - Aplikasi di BACKGROUND (atau layar terkunci): kartu PENUH + suara.
- * - Aplikasi di FOREGROUND: kartu status bar SENYAP (popup halaman yang
- *   berbunyi — tanpa suara dobel) + push diteruskan ke halaman web lewat
- *   broadcast → event JS "agsi-push" (popup + suara + refresh instan).
+ * - Aplikasi di FOREGROUND (v1.3.14 — permintaan pemilik: notifikasi muncul
+ *   di STATUS BAR, bukan di dalam aplikasi): kartu PENUH + suara (sama
+ *   dengan background) + push diteruskan ke halaman web lewat broadcast →
+ *   event JS "agsi-push" (hanya segarkan data — tampilan web dimatikan).
  * - data.url berisi path tujuan setelah kartu diketuk (mis. "/orders").
  *
  * KONTROL NOTIFIKASI SENYAP (v1.3.8):
@@ -81,10 +82,13 @@ class PushService : FirebaseMessagingService() {
             return
         }
 
-        // ===== Aplikasi TERBUKA (v1.3.11): kartu status bar SENYAP tetap
-        // dibuat (permintaan pemilik: status bar, layar kunci & suara
-        // selalu muncul bersamaan) + real-time ke halaman — popup & suara
-        // halaman yang berbunyi, kartu senyap mencegah suara DOBEL.
+        // ===== Aplikasi TERBUKA (v1.3.14 — permintaan pemilik: notifikasi
+        // muncul di STATUS BAR, bukan di dalam aplikasi): kartu PENUH
+        // heads-up + suara khas AGSI + getar, SAMA seperti saat aplikasi
+        // ditutup — tanpa lagi tampilan di dalam halaman (popup/suite web
+        // dimatikan di NotifWatchers saat native, jadi tidak ada suara
+        // dobel). Event tetap diteruskan ke halaman hanya untuk segarkan
+        // data (daftar pesanan & badge chat).
         if (AgsiApp.isForeground) {
             val channelFg = if (kind == "chat") AgsiApp.CHANNEL_CHAT else AgsiApp.CHANNEL_ORDERS
             AgsiNotifications.show(
@@ -97,7 +101,6 @@ class PushService : FirebaseMessagingService() {
                 url = url,
                 channel = channelFg,
                 chatQuickReply = kind == "chat",
-                silent = true,
             )
             forwardToPage(kind, title, body, url, orderId, tag)
             return

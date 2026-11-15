@@ -5,31 +5,42 @@ import { apiFetch } from "@/lib/api";
 import { useAppStore, useUiStore, type NoticeType } from "@/lib/store";
 import { notifySuite } from "@/lib/notif-suite";
 import { recordBrowserEntry } from "@/lib/notif-center";
+import { isNativeAndroidApp } from "@/lib/push-client";
 import { useOrdersStore } from "@/lib/hooks";
 import { formatIDR, type AppUser, type OrderData } from "@/lib/types";
 import { playAgsiChat, playAgsiOrder, playAgsiStatus } from "@/lib/sound";
 
 /**
- * 🔔 WATCHER NOTIFIKASI MASUK (popup + suara khas AGSI)
+ * 🔔 WATCHER NOTIFIKASI MASUK (segarkan data + tampilan notifikasi halaman)
  *
  * - AdminNewOrderWatcher : polling daftar pesanan (scope=all) tiap 10 detik.
  *   Pesanan yang BELUM pernah terlihat & benar-benar baru (≤ 3 menit) →
- *   popup besar + BEL DAPUR AGSI yang nyaring. Pesanan QRIS aplikasi yang
- *   belum dibayar tidak pernah dikirim server, jadi popup hanya muncul untuk
- *   pesanan yang sudah benar-benar "masuk".
+ *   kabar penting. Pesanan QRIS aplikasi yang belum dibayar tidak pernah
+ *   dikirim server, jadi kabar hanya muncul untuk pesanan yang sudah
+ *   benar-benar "masuk".
  * - CustomerNotifWatcher : polling pesanan sendiri (scope=mine) tiap 8 detik.
- *   Perubahan status pesanan (dimasak, siap, selesai, batal) dan dana QRIS
- *   masuk → popup + senar AGSI.
+ *   Perubahan status pesanan (dimasak, siap, selesai, batal) dan dana QRIS.
  * - ChatNotifWatcher    : polling hitungan chat belum dibaca tiap 8 detik
  *   untuk PELANGGAN (balasan CS) sekaligus ADMIN/OWNER (pesan pelanggan
- *   baru). Chat masuk → popup + blip AGSI + tombol "Buka Chat". Badge di
- *   halaman profil ikut menyala karena polling yang sama.
+ *   baru). Badge di header ikut menyala karena polling yang sama.
  *
- * Polling pertama hanya menandai baseline (tidak memunculkan popup lama).
+ * v1.3.14 — PEMBAGIAN JALUR TAMPILAN (permintaan pemilik: notifikasi muncul
+ * di STATUS BAR, bukan di dalam aplikasi):
+ *  - APLIKASI ANDROID (native): kartu notifikasi dibuat NATIVE di status bar
+ *    (PushService — heads-up + suara khas AGSI + getar + layar kunci) —
+ *    watcher di sini HANYA segarkan data (daftar pesanan, badge chat),
+ *    TANPA popup/suite di dalam halaman & TANPA suara web (anti dobel).
+ *  - BROWSER: suite notifikasi in-app (notifySuite) + suara web tetap jalan.
+ *
+ * Polling pertama hanya menandai baseline (tidak memunculkan kabar lama).
  */
 
 /** Popup hanya untuk pesanan yang dibuat maksimal 3 menit lalu (anti bising saat reload) */
 const FRESH_WINDOW_MS = 3 * 60 * 1000;
+
+/** true = halaman berjalan di dalam aplikasi Android native (WebView) —
+ *  kartu notifikasi dibuat native di status bar, bukan di dalam halaman. */
+const NATIVE_APP = isNativeAndroidApp();
 
 /* ===== REAL-TIME: tick instan saat push FCM diteruskan aplikasi (v1.3.2+) =====
  * Aplikasi Android meneruskan push ke halaman lewat event JS "agsi-push"
@@ -93,59 +104,65 @@ export function AdminNewOrderWatcher({ user }: { user: AppUser }) {
         // langsung menyala tanpa menunggu refresh manual.
         void useOrdersStore.getState().load("all");
 
-        // 🔔 SUARA KHAS AGSI — nyaring
-        playAgsiOrder();
+        // v1.3.14 — di APLIKASI ANDROID kartu dibuat native di STATUS BAR
+        // (PushService) → halaman cukup segarkan data: tanpa suara web,
+        // tanpa suite in-app, tanpa rekaman Pusat Notifikasi dobel (kartu
+        // native sudah direkam). Di browser: jalur penuh di bawah.
+        if (!NATIVE_APP) {
+          // 🔔 SUARA KHAS AGSI — nyaring
+          playAgsiOrder();
 
-        // Daftar dari server urut terbaru dulu → fresh[0] = paling baru
-        const t = fresh[0];
-        const ringkas = t.items.map((i) => `${i.name} ×${i.qty}`).join(" • ");
-        // v1.3.13 — SUITE 5 GAYA: POPUP tengah (kritis) + HEADS-UP + BANNER +
-        // FLOATING gelembung muncul BERSAMAAN untuk pesanan baru masuk.
-        notifySuite(
-          {
-            kind: "new_order",
-            title:
-              fresh.length > 1
-                ? `🔔 ${fresh.length} Pesanan Baru Masuk!`
-                : "🔔 Pesanan Baru Masuk!",
-            body: `${t.code} • ${t.customerName}${
-              t.tableNo ? ` (Meja ${t.tableNo})` : ""
-            } • ${formatIDR(t.total)} — ${ringkas}`,
-            url: "/orders",
-          },
-          "critical",
-          {
-            type: "success",
-            mascot: true,
-            title:
-              fresh.length > 1
-                ? `🔔 ${fresh.length} Pesanan Baru Masuk!`
-                : "🔔 Pesanan Baru Masuk!",
-            message:
-              fresh.length > 1
-                ? `Terbaru: ${t.code} — ${t.customerName}${
-                    t.tableNo ? ` (Meja ${t.tableNo})` : ""
-                  } • ${formatIDR(t.total)}\n${ringkas}\nSegera diproses ya!`
-                : `${t.code} • ${t.customerName}${
-                    t.tableNo ? ` • Meja ${t.tableNo}` : ""
-                  } • ${formatIDR(t.total)}\n${ringkas}`,
-            actions: [
-              { label: "Lihat Pesanan", onClick: () => go("orders") },
-              { label: "Nanti" },
-            ],
-          },
-        );
+          // Daftar dari server urut terbaru dulu → fresh[0] = paling baru
+          const t = fresh[0];
+          const ringkas = t.items.map((i) => `${i.name} ×${i.qty}`).join(" • ");
+          // SUITE 5 GAYA (v1.3.13): POPUP tengah (kritis) + HEADS-UP + BANNER
+          // + FLOATING gelembung muncul BERSAMAAN untuk pesanan baru masuk.
+          notifySuite(
+            {
+              kind: "new_order",
+              title:
+                fresh.length > 1
+                  ? `🔔 ${fresh.length} Pesanan Baru Masuk!`
+                  : "🔔 Pesanan Baru Masuk!",
+              body: `${t.code} • ${t.customerName}${
+                t.tableNo ? ` (Meja ${t.tableNo})` : ""
+              } • ${formatIDR(t.total)} — ${ringkas}`,
+              url: "/orders",
+            },
+            "critical",
+            {
+              type: "success",
+              mascot: true,
+              title:
+                fresh.length > 1
+                  ? `🔔 ${fresh.length} Pesanan Baru Masuk!`
+                  : "🔔 Pesanan Baru Masuk!",
+              message:
+                fresh.length > 1
+                  ? `Terbaru: ${t.code} — ${t.customerName}${
+                      t.tableNo ? ` (Meja ${t.tableNo})` : ""
+                    } • ${formatIDR(t.total)}\n${ringkas}\nSegera diproses ya!`
+                  : `${t.code} • ${t.customerName}${
+                      t.tableNo ? ` • Meja ${t.tableNo}` : ""
+                    } • ${formatIDR(t.total)}\n${ringkas}`,
+              actions: [
+                { label: "Lihat Pesanan", onClick: () => go("orders") },
+                { label: "Nanti" },
+              ],
+            },
+          );
 
-        // 🗂️ Pusat notifikasi (browser): rekam tiap pesanan baru masuk
-        for (const o of fresh) {
-          recordBrowserEntry({
-            ts: Date.now(),
-            kind: "new_order",
-            tag: o.id,
-            title: "🔔 Pesanan Baru Masuk!",
-            body: `${o.code} • ${o.customerName}${o.tableNo ? ` (Meja ${o.tableNo})` : ""} • ${formatIDR(o.total)}`,
-            url: "/orders",
-          });
+          // 🗂️ Pusat notifikasi (browser): rekam tiap pesanan baru masuk
+          for (const o of fresh) {
+            recordBrowserEntry({
+              ts: Date.now(),
+              kind: "new_order",
+              tag: o.id,
+              title: "🔔 Pesanan Baru Masuk!",
+              body: `${o.code} • ${o.customerName}${o.tableNo ? ` (Meja ${o.tableNo})` : ""} • ${formatIDR(o.total)}`,
+              url: "/orders",
+            });
+          }
         }
       } catch {
         // offline — coba lagi di tick berikutnya
@@ -266,46 +283,50 @@ export function CustomerNotifWatcher({ user }: { user: AppUser }) {
               // Segarkan daftar pesanan → badge tab "Pesanan" & daftar ikut segar
               void useOrdersStore.getState().load("mine");
 
-              playAgsiStatus();
-              const n = statusNotif(changes[0]);
-              // v1.3.13 — SUITE 5 GAYA: momen KRITIS (pembayaran masuk &
-              // pesanan SIAP) tetap POPUP tengah + heads-up + banner +
-              // gelembung; pembaruan lain cukup heads-up + banner + gelembung.
-              const c0 = changes[0];
-              const critical = c0.paymentStatus === "PAID" || c0.status === "READY";
-              notifySuite(
-                {
-                  kind: c0.paymentStatus === "PAID" ? "order_paid" : "order_status",
-                  title: n.title,
-                  body: n.message,
-                  url: "/orders",
-                },
-                critical ? "critical" : "important",
-                critical
-                  ? {
-                      type: n.type,
-                      mascot: n.mascot,
-                      title: n.title,
-                      message: n.message,
-                      actions: [
-                        { label: "Lihat Pesanan", onClick: () => go("orders") },
-                        { label: "Tutup" },
-                      ],
-                    }
-                  : undefined,
-              );
+              // v1.3.14 — di APLIKASI ANDROID kartu dibuat native di STATUS
+              // BAR (PushService) → halaman cukup segarkan data. Browser:
+              // SUITE 5 GAYA (v1.3.13) — momen KRITIS (pembayaran masuk &
+              // pesanan SIAP) POPUP tengah + heads-up + banner + gelembung;
+              // pembaruan lain cukup heads-up + banner + gelembung.
+              if (!NATIVE_APP) {
+                playAgsiStatus();
+                const n = statusNotif(changes[0]);
+                const c0 = changes[0];
+                const critical = c0.paymentStatus === "PAID" || c0.status === "READY";
+                notifySuite(
+                  {
+                    kind: c0.paymentStatus === "PAID" ? "order_paid" : "order_status",
+                    title: n.title,
+                    body: n.message,
+                    url: "/orders",
+                  },
+                  critical ? "critical" : "important",
+                  critical
+                    ? {
+                        type: n.type,
+                        mascot: n.mascot,
+                        title: n.title,
+                        message: n.message,
+                        actions: [
+                          { label: "Lihat Pesanan", onClick: () => go("orders") },
+                          { label: "Tutup" },
+                        ],
+                      }
+                    : undefined,
+                );
 
-              // 🗂️ Pusat notifikasi (browser): rekam tiap perubahan status/pembayaran
-              for (const c of changes) {
-                const n2 = statusNotif(c);
-                recordBrowserEntry({
-                  ts: Date.now(),
-                  kind: c.paymentStatus === "PAID" ? "order_paid" : "order_status",
-                  tag: c.id,
-                  title: n2.title,
-                  body: n2.message,
-                  url: "/orders",
-                });
+                // 🗂️ Pusat notifikasi (browser): rekam tiap perubahan status/pembayaran
+                for (const c of changes) {
+                  const n2 = statusNotif(c);
+                  recordBrowserEntry({
+                    ts: Date.now(),
+                    kind: c.paymentStatus === "PAID" ? "order_paid" : "order_status",
+                    tag: c.id,
+                    title: n2.title,
+                    body: n2.message,
+                    url: "/orders",
+                  });
+                }
               }
             }
           }
@@ -361,6 +382,11 @@ export function ChatNotifWatcher({ user }: { user: AppUser }) {
         const chatOpen = useUiStore.getState().chatOpen;
         // Sedang membuka chat → pesan dianggap dibaca, jangan bunyi
         if (prevUnread !== null && unread > prevUnread && !chatOpen) {
+        // v1.3.14 — di APLIKASI ANDROID kartu dibuat native di STATUS BAR
+        // (PushService) → halaman cukup segarkan data & badge. Browser:
+        // SUITE 5 GAYA (v1.3.13) — chat masuk → HEADS-UP + BANNER + FLOATING
+        // (tanpa popup tengah — overlay chat punya pintu sendiri).
+        if (!NATIVE_APP) {
           playAgsiChat();
           // 🗂️ Pusat notifikasi (browser): rekam chat masuk
           recordBrowserEntry({
@@ -373,9 +399,6 @@ export function ChatNotifWatcher({ user }: { user: AppUser }) {
                 : "Ada pesan baru di chat AGSI.",
             url: "/chat",
           });
-          // v1.3.13 — SUITE 5 GAYA: chat masuk → HEADS-UP + BANNER + FLOATING
-          // (tanpa popup tengah — overlay chat punya pintu sendiri); tap
-          // kartu langsung membuka chat. Pesan tetap direkam Pusat Notifikasi.
           notifySuite(
             {
               kind: "chat",
@@ -390,6 +413,7 @@ export function ChatNotifWatcher({ user }: { user: AppUser }) {
             },
             "important",
           );
+        }
         }
         prevUnread = unread;
       } catch {
