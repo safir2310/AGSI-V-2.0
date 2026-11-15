@@ -1,11 +1,8 @@
 package com.agsi.app
 
-import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.BitmapFactory
 import android.os.Build
-import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -26,6 +23,10 @@ import com.google.firebase.messaging.RemoteMessage
  *    dari NotificationManager;
  *  - hanya jenis penting (SYSTEM_NOTIF_KINDS) yang jadi notifikasi sistem;
  *  - jenis "test" tidak pernah tampil sebagai notifikasi sistem.
+ *
+ * v1.3.10 — 10 FITUR NOTIFIKASI: kartu dibangun lewat AgsiNotifications
+ * (grouping + ringkasan, quick reply chat, deep link, badge angka, suara
+ * khas AGSI, rekam Pusat Notifikasi).
  */
 /** Jenis push yang BOLEH tampil sebagai notifikasi sistem (v1.3.8 —
  *  rekomendasi kontrol senyap #4) — sinkron dengan PushKind di
@@ -91,52 +92,32 @@ class PushService : FirebaseMessagingService() {
             return
         }
 
-        val intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP
-            )
-            putExtra(MainActivity.EXTRA_NAV_URL, url)
-        }
-        val pending = PendingIntent.getActivity(
-            this,
-            url.hashCode(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
         // Chat CS tampil di channel sendiri agar bisa diatur terpisah
         val channel = if (kind == "chat") AgsiApp.CHANNEL_CHAT else AgsiApp.CHANNEL_ORDERS
 
-        val notification = NotificationCompat.Builder(this, channel)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setLargeIcon(BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher))
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            // 🔒 Tampil PENUH di layar kunci (detail pesanan terbaca langsung)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            // ⏰ HP tidur/terkunci → layar DIBANGUNKAN & aplikasi tampil langsung
-            // di atas layar kunci (full-screen intent). Saat layar nyala & tidak
-            // terkunci, Android tetap memakai heads-up banner biasa.
-            .setFullScreenIntent(pending, true)
-            .setAutoCancel(true)
-            .setContentIntent(pending)
-            .build()
-
-        try {
-            NotificationManagerCompat.from(this).notify(tag, id, notification)
-        } catch (_: SecurityException) {
-            // izin notifikasi dicabut pengguna — abaikan
-        }
+        // v1.3.10: pembuatan kartu notifikasi dipindah ke AgsiNotifications —
+        // satu pintu untuk 10 fitur notifikasi (heads-up, layar kunci penuh +
+        // full-screen intent, suara khas AGSI, getar kuat, grouping +
+        // ringkasan, badge angka, quick reply chat, deep link, pusat
+        // notifikasi). Pesanan sama saling mengganti (id dari orderId).
+        AgsiNotifications.show(
+            this,
+            kind = kind,
+            tag = tag,
+            id = id,
+            title = title,
+            body = body,
+            url = url,
+            channel = channel,
+            chatQuickReply = kind == "chat",
+        )
     }
 
     /** Teruskan push ke halaman web (saat aplikasi terbuka): broadcast →
      *  MainActivity → event JS "agsi-push" → popup + suara + refresh instan.
-     *  Detail event dipakai watcher web (src/components/shared/NotifWatchers.tsx). */
+     *  Detail event dipakai watcher web (src/components/shared/NotifWatchers.tsx).
+     *  v1.3.10: push juga DIREKAM ke Pusat Notifikasi (NotifHistory) agar
+     *  kabar real-time ikut tercatat di halaman tersebut. */
     private fun forwardToPage(
         kind: String,
         title: String,
@@ -145,6 +126,7 @@ class PushService : FirebaseMessagingService() {
         orderId: String?,
         tag: String,
     ) {
+        NotifHistory.add(this, kind, tag, title, body, url)
         val payload = org.json.JSONObject().apply {
             put("kind", kind)
             put("title", title)

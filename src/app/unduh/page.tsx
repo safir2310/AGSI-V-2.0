@@ -71,27 +71,26 @@ export default function UnduhPage() {
         <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-3.5">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <p className="text-[11.5px] leading-relaxed text-amber-800">
-            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> NOTIFIKASI LATAR
-            BELAKANG DIHAPUS TOTAL — kartu layanan "AGSI aktif" (yang dulu
-            disembunyikan 0-piksel) kini tidak pernah dibuat lagi; daftar
-            notifikasi benar-benar bersih dari kartu layanan. Sebagai
-            gantinya, aplikasi MEMINTA IZIN BERJALAN DI LATAR BELAKANG
-            langsung dari HP: dialog sistem "izinkan AGSI mengabaikan
-            optimasi baterai" muncul otomatis saat aplikasi dibuka (selama
-            belum disetujui), sehingga pemantau pesanan tetap hidup tanpa
-            notifikasi layanan. PERBAIKAN CETAK STRUK di halaman Pesanan
-            admin (dan laporan): v1.3.8 memanggil simpan + cetak serentak
-            sehingga klik terasa mati tanpa keterangan — kini berurutan dan
-            SETIAP langkah muncul keterangan ("Menyimpan Struk…" → "Struk
-            Tersimpan ✓" → dialog cetak dibuka; gagal pun diberi tahu).
-            Tetap: kontrol notifikasi senyap (hanya pesanan/pembayaran/
-            status/chat/kurir, tanpa notifikasi uji &amp; kosong), izin
-            notifikasi sejak pembukaan pertama, suara NOTIFIKASI biasa,
-            tampil PENUH di layar kunci, layar tidur DIBANGUNKAN saat
-            pesanan masuk. Versi sebelumnya: kontrol senyap, izin
-            penyimpanan, cetak struk &amp; laporan, notifikasi real-time
-            pesanan/chat, lonceng &amp; badge, Lacak Kurir AGSI, Face ID /
-            sidik jari.
+            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> 10 FITUR NOTIFIKASI
+            LENGKAP: (1) NOTIFICATION CENTER — Pusat Notifikasi di lonceng
+            header: semua kabar terkumpul rapi, termasuk yang datang saat
+            aplikasi ditutup; (2) NOTIFICATION BADGE — angka belum dibaca di
+            lonceng &amp; ikon aplikasi, otomatis nol setelah dibuka; (3) LOCK
+            SCREEN PUSH — notifikasi tampil penuh di layar kunci; (4)
+            HEADS-UP BANNER — banner melayang saat pesanan/chat masuk; (5)
+            NOTIFICATION SOUND — suara KHAS AGSI "chime" ganda yang baru; (6)
+            VIBRATION ALERT — getar kuat khas pesanan masuk; (7) NOTIFICATION
+            GROUPING — notifikasi digabung rapi per jenis + ringkasan "N
+            kabar baru"; (8) QUICK REPLY — balas chat CS LANGSUNG dari
+            notifikasi tanpa membuka aplikasi; (9) DEEP LINK — tap notifikasi
+            kini benar-benar membuka halaman terkait (Pesanan / Chat —
+            sebelumnya 404); (10) BACKGROUND PUSH SERVICE — pemantau notifikasi
+            saat aplikasi ditutup (FCM + layanan pemantau). Tetap: tanpa
+            notifikasi layanan, izin berjalan di latar belakang langsung,
+            cetak struk otomatis tersimpan, kontrol notifikasi senyap. Versi
+            sebelumnya: izin berjalan-dilatarbelakang, perbaikan cetak struk
+            &amp; laporan, izin penyimpanan, notifikasi real-time, Lacak Kurir
+            AGSI, Face ID / sidik jari.
           </p>
         </div>
 

@@ -250,6 +250,7 @@ class NotifPollerService : Service() {
                     events.add(
                         Event(
                             tag = "chat",
+                            kind = "chat",
                             title = if (staff) "💬 Chat Pelanggan Baru!" else "💬 Pesan Baru dari CS",
                             body =
                                 if (unread > 1)
@@ -258,8 +259,9 @@ class NotifPollerService : Service() {
                                 else
                                     if (staff) "Seorang pelanggan baru mengirim pesan — segera dibalas ya!"
                                     else "CS AGSI membalas pesanmu — cek sekarang ya!",
-                            url = "/",
+                            url = "/chat",
                             channel = AgsiApp.CHANNEL_CHAT,
+                            unreadCount = unread,
                         )
                     )
                 }
@@ -312,6 +314,7 @@ class NotifPollerService : Service() {
                     events.add(
                         Event(
                             tag = "order-$id",
+                            kind = "new_order",
                             title = "🔔 Pesanan Baru Masuk!",
                             body = copyNewOrder(o),
                             url = "/orders",
@@ -328,6 +331,7 @@ class NotifPollerService : Service() {
                             events.add(
                                 Event(
                                     tag = "order-$id",
+                                    kind = "order_paid",
                                     title = "💰 QRIS Terbayar — Masuk Dapur!",
                                     body = "${o.optString("code", "")} • ${formatRp(o.optLong("total", 0))}\n${ringkasItems(o)}",
                                     url = "/orders",
@@ -338,6 +342,7 @@ class NotifPollerService : Service() {
                             events.add(
                                 Event(
                                     tag = "order-$id",
+                                    kind = "order_paid",
                                     title = "💳 Pembayaran Diterima!",
                                     body = "Dana pesanan ${o.optString("code", "")} sudah masuk. Pesanan otomatis lanjut ke dapur — pantau di menu Pesanan ya!",
                                     url = "/orders",
@@ -375,6 +380,7 @@ class NotifPollerService : Service() {
         }
         return Event(
             tag = "order-${o.optString("id", "")}",
+            kind = "order_status",
             title = title,
             body = body,
             url = "/orders",
@@ -411,57 +417,36 @@ class NotifPollerService : Service() {
 
     // ==================== Notifikasi ====================
 
-    private data class Event(val tag: String, val title: String, val body: String, val url: String, val channel: String)
+    private data class Event(
+        val tag: String,
+        val title: String,
+        val body: String,
+        val url: String,
+        val channel: String,
+        /** jenis push (new_order/order_paid/order_status/chat) — untuk riwayat */
+        val kind: String = "new_order",
+        /** jumlah pesan belum dibaca (badge angka notifikasi chat) */
+        val unreadCount: Int = 0,
+    )
 
+    /** v1.3.10: pembuatan kartu notifikasi dipindah ke AgsiNotifications —
+     *  satu pintu untuk 10 fitur notifikasi (heads-up, layar kunci, suara
+     *  khas AGSI, getar, grouping + ringkasan, badge angka, quick reply
+     *  chat, deep link, pusat notifikasi). */
     private fun notifyEvent(ev: Event) {
-        // Kontrol notifikasi senyap (v1.3.8 — rekomendasi #1 & #5): judul &
-        // isi kosong → JANGAN tampilkan + hapus sisa notifikasi kosong lama
-        // dengan tag sama dari NotificationManager.
-        if (ev.title.isBlank() && ev.body.isBlank()) {
-            try {
-                NotificationManagerCompat.from(this).cancel(ev.tag, ev.title.hashCode())
-            } catch (_: Exception) {
-            }
-            return
-        }
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) return
-
-        val intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP
-            )
-            putExtra(MainActivity.EXTRA_NAV_URL, ev.url)
-        }
-        val pending = PendingIntent.getActivity(
+        if (ev.title.isBlank() && ev.body.isBlank()) return
+        AgsiNotifications.show(
             this,
-            ev.url.hashCode(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            kind = ev.kind,
+            tag = ev.tag,
+            id = ev.tag.hashCode(), // pesanan sama saling mengganti, bukan menumpuk
+            title = ev.title,
+            body = ev.body,
+            url = ev.url,
+            channel = ev.channel,
+            unreadCount = ev.unreadCount,
+            chatQuickReply = ev.kind == "chat",
         )
-        val notification = NotificationCompat.Builder(this, ev.channel)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(ev.title)
-            .setContentText(ev.body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(ev.body))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            // 🔒 Tampil PENUH di layar kunci + ⏰ bangunkan layar HP yang tidur
-            // (full-screen intent — perilaku sama dengan jalur FCM PushService)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setFullScreenIntent(pending, true)
-            .setAutoCancel(true)
-            .setContentIntent(pending)
-            .build()
-        try {
-            NotificationManagerCompat.from(this).notify(ev.tag, ev.title.hashCode(), notification)
-        } catch (_: SecurityException) {
-            // izin dicabut pengguna — abaikan
-        }
     }
 
     // ==================== Util ====================

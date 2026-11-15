@@ -11,6 +11,8 @@ import { ConsentPopup } from "@/components/shared/ConsentPopup";
 import { MemberCardSheet } from "@/components/shared/MemberCardSheet";
 import { ChatSheet } from "@/components/shared/ChatSheet";
 import { AdminNewOrderWatcher, ChatNotifWatcher, CustomerNotifWatcher } from "@/components/shared/NotifWatchers";
+import { NotifCenterSheet } from "@/components/shared/NotifCenterSheet";
+import { CENTER_UPDATED_EVENT, listEntries, unreadCount } from "@/lib/notif-center";
 import { PushBridge } from "@/components/shared/PushBridge";
 import { initAudioUnlock } from "@/lib/sound";
 import { AuthView } from "@/components/auth/AuthView";
@@ -45,6 +47,9 @@ export function AppShell() {
   const [user, setUser] = useState<AppUser | null>(null);
   const [showSplash, setShowSplash] = useState(true);
   const [memberOpen, setMemberOpen] = useState(false);
+  // 🗂️ PUSAT NOTIFIKASI (v1.3.10): sheet daftar semua notifikasi + badge angka
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [centerUnread, setCenterUnread] = useState(0);
   const view = useAppStore((s) => s.view);
   const go = useAppStore((s) => s.go);
   const clearCart = useCartStore((s) => s.clear);
@@ -55,7 +60,52 @@ export function AppShell() {
   const chatTargetUserId = useUiStore((s) => s.chatTargetUserId);
   const closeChat = useUiStore((s) => s.closeChat);
   const chatUnread = useUiStore((s) => s.chatUnread);
+  // Angka badge lonceng = yang terbesar di antara chat belum dibaca & entri
+  // pusat notifikasi belum dibaca (kabar chat juga tercatat di pusat — max
+  // mencegah angka dobel).
+  const bellCount = Math.max(chatUnread, centerUnread);
   const splashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 🔔 BADGE + PUSAT NOTIFIKASI (v1.3.10): angka belum dibaca menyala saat
+  // ada kabar baru (push masuk / riwayat diperbarui) dan mati setelah pusat
+  // notifikasi dibuka.
+  const refreshCenterUnread = useCallback(() => {
+    setCenterUnread(unreadCount(listEntries()));
+  }, []);
+  useEffect(() => {
+    refreshCenterUnread();
+    window.addEventListener(CENTER_UPDATED_EVENT, refreshCenterUnread);
+    window.addEventListener("agsi-push", refreshCenterUnread);
+    return () => {
+      window.removeEventListener(CENTER_UPDATED_EVENT, refreshCenterUnread);
+      window.removeEventListener("agsi-push", refreshCenterUnread);
+    };
+  }, [refreshCenterUnread]);
+
+  // 🔗 DEEP LINK NOTIFIKASI (v1.3.10): aplikasi Android menyuntikkan event
+  // "agsi-nav" setelah tap notifikasi (MainActivity.onPageFinished) → buka
+  // halaman tujuan. Path "/orders" & "/chat" kini benar-benar berfungsi.
+  useEffect(() => {
+    const onNav = (e: Event) => {
+      const path = (e as CustomEvent<string>).detail ?? "";
+      if (path.startsWith("/chat")) {
+        useUiStore.getState().openChat();
+        return;
+      }
+      if (path.startsWith("/orders")) {
+        // Kurir tidak punya view "orders" — arahkan ke beranda tugas kurir
+        if (user?.role === "COURIER") {
+          go("kurir");
+          return;
+        }
+        go("orders");
+        return;
+      }
+      if (path.startsWith("/reports")) go("reports");
+    };
+    window.addEventListener("agsi-nav", onNav);
+    return () => window.removeEventListener("agsi-nav", onNav);
+  }, [user, go]);
 
   // ===== Buka "kunci" audio browser pada interaksi pertama (suara notifikasi) =====
   useEffect(() => {
@@ -268,21 +318,23 @@ export function AppShell() {
             </div>
             {user && (
               <div className="flex items-center gap-2">
-                {/* 🔔 LONCENG NOTIFIKASI — badge chat belum dibaca (dipoll
-                    ChatNotifWatcher); klik membuka chat CS dari mana saja. */}
+                {/* 🔔 LONCENG NOTIFIKASI — badge angka belum dibaca (kabar
+                    terkumpul di PUSAT NOTIFIKASI: notifikasi sistem saat
+                    aplikasi ditutup + popup real-time saat terbuka). Klik
+                    membuka pusat notifikasi. */}
                 <button
-                  onClick={() => useUiStore.getState().openChat()}
+                  onClick={() => setNotifOpen(true)}
                   aria-label={
-                    chatUnread > 0
-                      ? `${chatUnread} pesan chat belum dibaca — buka chat`
-                      : "Notifikasi & chat"
+                    bellCount > 0
+                      ? `${bellCount} notifikasi belum dibaca — buka pusat notifikasi`
+                      : "Buka pusat notifikasi"
                   }
                   className="press-effect relative flex h-9 w-9 items-center justify-center rounded-full bg-orange-50 ring-1 ring-orange-200 transition hover:bg-orange-100 hover:ring-orange-300"
                 >
                   <Bell className="h-4.5 w-4.5 text-orange-700" />
-                  {chatUnread > 0 && (
+                  {bellCount > 0 && (
                     <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-white shadow-md">
-                      {chatUnread > 99 ? "99+" : chatUnread}
+                      {bellCount > 99 ? "99+" : bellCount}
                     </span>
                   )}
                 </button>
@@ -351,7 +403,16 @@ export function AppShell() {
 
       {/* ===== CHAT CS GLOBAL (popup notifikasi / tombol 💬 kartu pesanan admin) ===== */}
       {user && (
-        <ChatSheet open={chatOpen} onClose={closeChat} user={user} targetUserId={chatTargetUserId} />
+        <>
+          <ChatSheet open={chatOpen} onClose={closeChat} user={user} targetUserId={chatTargetUserId} />
+          <NotifCenterSheet
+            open={notifOpen}
+            onClose={() => {
+              setNotifOpen(false);
+              refreshCenterUnread();
+            }}
+          />
+        </>
       )}
 
       {/* ===== GATE PERSETUJUAN SYARAT & KEBIJAKAN =====

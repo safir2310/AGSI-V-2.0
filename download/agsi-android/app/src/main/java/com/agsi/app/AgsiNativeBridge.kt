@@ -137,6 +137,19 @@ class AgsiNativeBridge(
     @JavascriptInterface
     fun isNotifPollingEnabled(): Boolean = NotifPollerService.isEnabled(appContext)
 
+    /**
+     * PUSAT NOTIFIKASI (v1.3.10): seluruh riwayat notifikasi sebagai JSON
+     * array [{ts, kind, tag, title, body, url}] — kartu sistem saat aplikasi
+     * ditutup (PushService/NotifPollerService) + kabar real-time saat
+     * aplikasi terbuka (forwardToPage). Terbaru di AKHIR array.
+     */
+    @JavascriptInterface
+    fun getNotifHistory(): String = NotifHistory.read(appContext)
+
+    /** Kosongkan riwayat pusat notifikasi (tombol "Kosongkan" di halaman). */
+    @JavascriptInterface
+    fun clearNotifHistory(): Boolean = NotifHistory.clear(appContext)
+
     private fun resolve(cbId: String, ok: Boolean, message: String) {
         hostProvider()?.resolveBridge(cbId, ok, message)
     }

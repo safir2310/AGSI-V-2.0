@@ -278,7 +278,13 @@ class MainActivity : AppCompatActivity() {
         registerNetworkCallback()
         ensureNotificationPermission()
 
-        loadSite(navUrlFromIntent(intent))
+        // DEEP LINK NOTIFIKASI (v1.3.10): path tujuan (mis. "/orders") tidak
+        // dimuat sebagai URL (SPA punya satu route — /orders menghasilkan
+        // 404) melainkan disimpan dan disuntikkan sebagai event "agsi-nav"
+        // setelah halaman selesai (onPageFinished) → AppShell membuka
+        // view/halaman tujuan.
+        navPathFromIntent(intent)?.let { pendingNavPath = it }
+        loadSite()
         // Ambil & daftarkan token FCM (anonim dulu; terikat akun setelah login
         // lewat jembatan AgsiNative — kontrak src/components/shared/PushBridge.tsx)
         PushRegistrar.fetchAndRegisterLater(this)
@@ -296,11 +302,22 @@ class MainActivity : AppCompatActivity() {
         maybeShowLockGate(savedInstanceState == null)
     }
 
+    /** DEEP LINK (v1.3.10): path SPA tujuan dari tap notifikasi — disuntikkan
+     *  sebagai event "agsi-nav" setelah halaman selesai dimuat. */
+    @Volatile
+    private var pendingNavPath: String? = null
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        val url = navUrlFromIntent(intent) ?: return
-        mainHandler.post { loadSite(url) }
+        val path = navPathFromIntent(intent) ?: return
+        if (path.startsWith("http")) {
+            // URL penuh (bukan path SPA) → muat langsung
+            mainHandler.post { loadSite(path) }
+            return
+        }
+        pendingNavPath = path
+        mainHandler.post { loadSite() }
     }
 
     override fun onResume() {
@@ -451,15 +468,14 @@ class MainActivity : AppCompatActivity() {
 
     // ==================== Muat halaman & offline ====================
 
-    private fun navUrlFromIntent(intent: Intent?): String? {
-        // EXTRA_NAV_URL = tap notifikasi lokal (PushService/NotifPollerService);
-        // "url" = data payload FCM yang ditampilkan sistem saat app di latar
-        // belakang (auto-display) — keduanya membuka halaman yang dituju.
-        val path = intent?.getStringExtra(EXTRA_NAV_URL)?.trim()?.takeIf { it.isNotEmpty() }
+    /** DEEP LINK (v1.3.10): EXTRA_NAV_URL = tap notifikasi lokal
+     *  (PushService/NotifPollerService/AgsiNotifications); "url" = data
+     *  payload FCM. Mengembalikan PATH SPA mentah (mis. "/orders") — halaman
+     *  tujuan dibuka via event "agsi-nav" setelah halaman selesai dimuat
+     *  (SPA punya satu route, memuat /orders langsung menghasilkan 404). */
+    private fun navPathFromIntent(intent: Intent?): String? {
+        return intent?.getStringExtra(EXTRA_NAV_URL)?.trim()?.takeIf { it.isNotEmpty() }
             ?: intent?.getStringExtra("url")?.trim()?.takeIf { it.isNotEmpty() }
-            ?: return null
-        if (path.startsWith("http")) return path
-        return SiteConfig.BASE_URL + if (path.startsWith("/")) path else "/$path"
     }
 
     private fun loadSite(url: String? = SiteConfig.BASE_URL) {
@@ -1279,6 +1295,18 @@ class MainActivity : AppCompatActivity() {
             // dulu merender (dialog muncul di atas halaman yang sudah siap).
             if (url != null && SiteConfig.isAllowedHost(Uri.parse(url).host)) {
                 mainHandler.postDelayed({ maybeOfferBiometric() }, 900)
+            }
+            // DEEP LINK NOTIFIKASI (v1.3.10): suntikkan event "agsi-nav" ke
+            // SPA — AppShell memetakan path ("/orders" → view pesanan,
+            // "/chat" → buka chat CS). Dikirim dua kali (segera + setelah SPA
+            // terhidrasi) agar sampai walau render lambat.
+            pendingNavPath?.let { path ->
+                pendingNavPath = null
+                val safe = path.replace("\\", "\\\\").replace("\"", "\\\"")
+                val script =
+                    "window.dispatchEvent(new CustomEvent('agsi-nav',{detail:\"$safe\"}))"
+                view?.evaluateJavascript(script, null)
+                mainHandler.postDelayed({ view?.evaluateJavascript(script, null) }, 900)
             }
         }
 

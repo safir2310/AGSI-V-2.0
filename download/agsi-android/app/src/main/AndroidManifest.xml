@@ -91,9 +91,15 @@
             android:name=".NotifPollerService"
             android:exported="false" />
 
+        <!-- QUICK REPLY (v1.3.10): balas chat langsung dari notifikasi
+             (RemoteInput → POST /api/chat dengan cookie sesi web). -->
+        <receiver
+            android:name=".ChatReplyReceiver"
+            android:exported="false" />
+
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="agsi_orders_v3" />
+            android:value="agsi_orders_v4" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/ic_notification" />

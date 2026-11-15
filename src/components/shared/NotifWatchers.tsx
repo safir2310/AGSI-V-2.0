@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/api";
 import { useAppStore, useNoticeStore, useUiStore, type NoticeType } from "@/lib/store";
+import { recordBrowserEntry } from "@/lib/notif-center";
 import { useOrdersStore } from "@/lib/hooks";
 import { formatIDR, type AppUser, type OrderData } from "@/lib/types";
 import { playAgsiChat, playAgsiOrder, playAgsiStatus } from "@/lib/sound";
@@ -119,6 +120,18 @@ export function AdminNewOrderWatcher({ user }: { user: AppUser }) {
             { label: "Nanti" },
           ],
         });
+
+        // 🗂️ Pusat notifikasi (browser): rekam tiap pesanan baru masuk
+        for (const o of fresh) {
+          recordBrowserEntry({
+            ts: Date.now(),
+            kind: "new_order",
+            tag: o.id,
+            title: "🔔 Pesanan Baru Masuk!",
+            body: `${o.code} • ${o.customerName}${o.tableNo ? ` (Meja ${o.tableNo})` : ""} • ${formatIDR(o.total)}`,
+            url: "/orders",
+          });
+        }
       } catch {
         // offline — coba lagi di tick berikutnya
       }
@@ -246,6 +259,19 @@ export function CustomerNotifWatcher({ user }: { user: AppUser }) {
                 autoCloseMs: 8000,
                 actions: [{ label: "Lihat Pesanan", onClick: () => go("orders") }, { label: "Tutup" }],
               });
+
+              // 🗂️ Pusat notifikasi (browser): rekam tiap perubahan status/pembayaran
+              for (const c of changes) {
+                const n2 = statusNotif(c);
+                recordBrowserEntry({
+                  ts: Date.now(),
+                  kind: c.paymentStatus === "PAID" ? "order_paid" : "order_status",
+                  tag: c.id,
+                  title: n2.title,
+                  body: n2.message,
+                  url: "/orders",
+                });
+              }
             }
           }
           for (const o of orders)
@@ -302,6 +328,17 @@ export function ChatNotifWatcher({ user }: { user: AppUser }) {
         // Sedang membuka chat → pesan dianggap dibaca, jangan bunyi
         if (prevUnread !== null && unread > prevUnread && !chatOpen) {
           playAgsiChat();
+          // 🗂️ Pusat notifikasi (browser): rekam chat masuk
+          recordBrowserEntry({
+            ts: Date.now(),
+            kind: "chat",
+            title: staff ? "💬 Chat Pelanggan Baru!" : "💬 Pesan Baru dari CS",
+            body:
+              unread > 1
+                ? `${unread} pesan menunggumu di chat AGSI.`
+                : "Ada pesan baru di chat AGSI.",
+            url: "/chat",
+          });
           if (staff) {
             showNotice({
               type: "info",
