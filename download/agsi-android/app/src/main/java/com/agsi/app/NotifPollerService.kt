@@ -458,8 +458,14 @@ class NotifPollerService : Service() {
         }
     }
 
-    /** Notifikasi layanan — TERSEMBUNYI (channel IMPORTANCE_NONE + SECRET):
-     *  wajib di-post utk foreground service, tapi tidak pernah tampil. */
+    /** Notifikasi layanan — TAK TERLIHAT TOTAL (v1.3.6):
+     *  foreground service WAJIB mem-post notifikasi (syarat Android), dan
+     *  channel IMPORTANCE_NONE (v1.3.1) menyembunyikannya di Android stok —
+     *  TAPI sebagian ROM (MIUI/HyperOS, dsb.) memaksakan menampilkan
+     *  notifikasi FGS walau channel NONE, apalagi sejak izin notifikasi
+     *  v1.3.5 disetujui. Solusi: isi dikosongkan + ikon transparan — walau
+     *  dipaksakan tampil, bentuknya 0 piksel: status bar bersih, daftar
+     *  notifikasi tak ada kartu yang terlihat. Layanan tetap sah jalan. */
     private fun buildServiceNotification(): Notification {
         val intent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -472,11 +478,10 @@ class NotifPollerService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(this, AgsiApp.CHANNEL_SERVICE_HIDDEN)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(R.string.notif_service_title))
-            .setContentText(getString(R.string.notif_service_text))
+            .setSmallIcon(R.drawable.ic_notification_hidden)
+            .setShowWhen(false)
             .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setOngoing(false)
+            .setOngoing(true)
             .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .setContentIntent(pending)
             .build()

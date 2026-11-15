@@ -129,10 +129,12 @@ class AgsiApp : Application() {
         nm.createNotificationChannel(chat)
 
         // Channel layanan pemantau — TERSEMBUNYI TOTAL (IMPORTANCE_NONE):
-        // notifikasi foreground service tidak pernah tampil di status bar /
-        // daftar notifikasi / lock screen (permintaan pemilik v1.3.1:
-        // "sembunyikan notifikasi AGSI aktif"). Notifikasi tetap di-post
-        // karena wajib untuk foreground service, tapi user tidak melihatnya.
+        // notifikasi foreground service tidak tampil di status bar /
+        // daftar notifikasi / lock screen (permintaan pemilik v1.3.1).
+        // v1.3.6: isi notifikasi DIKOSONGKAN + ikon transparan pula (lihat
+        // NotifPollerService.buildServiceNotification) karena sebagian ROM
+        // memaksakan menampilkan notifikasi FGS walau channel NONE — walau
+        // tampil paksa, bentuknya 0 piksel (tak terlihat sama sekali).
         val service = NotificationChannel(
             CHANNEL_SERVICE_HIDDEN,
             getString(R.string.channel_service_name),
