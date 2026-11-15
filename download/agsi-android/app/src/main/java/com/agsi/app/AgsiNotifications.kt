@@ -49,10 +49,10 @@ object AgsiNotifications {
     private const val REPLY_KEY = "agsi_reply"
     private const val REPLY_OK_TAG = "agsi_reply_ok"
 
-    /** Kartu per kelompok: tag → (judul, waktu) — bahan ringkasan grup. */
+    /** Kartu per kelompok: tag → (judul, waktu, senyap?) — bahan ringkasan. */
     private val groupCards = linkedMapOf(
-        GROUP_ORDERS to linkedMapOf<String, Pair<String, Long>>(),
-        GROUP_CHAT to linkedMapOf<String, Pair<String, Long>>(),
+        GROUP_ORDERS to linkedMapOf<String, Triple<String, Long, Boolean>>(),
+        GROUP_CHAT to linkedMapOf<String, Triple<String, Long, Boolean>>(),
     )
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -80,6 +80,9 @@ object AgsiNotifications {
      *
      * @param unreadCount jumlah pesan belum dibaca (badge angka; 0 = tanpa angka)
      * @param chatQuickReply true → sertakan aksi "Balas" (quick reply)
+     * @param silent true → kartu SENYAP (dipakai saat aplikasi TERBUKA):
+     *   tetap mengisi status bar & layar kunci, tetapi tanpa suara/getar/
+     *   heads-up — suara tetap satu, dari popup halaman (anti suara dobel).
      */
     fun show(
         ctx: Context,
@@ -92,6 +95,7 @@ object AgsiNotifications {
         channel: String,
         unreadCount: Int = 0,
         chatQuickReply: Boolean = false,
+        silent: Boolean = false,
     ) {
         // Pusat Notifikasi: rekam SEKALIAN KALAU PUN izin notifikasi mati —
         // riwayat tetap lengkap saat pengguna membuka pusat notifikasi.
@@ -107,20 +111,34 @@ object AgsiNotifications {
         val content = deepLinkIntent(ctx, url)
         val group = if (channel == AgsiApp.CHANNEL_CHAT) GROUP_CHAT else GROUP_ORDERS
 
+        // v1.3.11: kartu SENYAP hanya saat aplikasi sedang TERBUKA — status
+        // bar & layar kunci tetap terisi, suara/getar tetap dari popup
+        // halaman (anti suara dobel). Saat aplikasi ditutup / layar terkunci
+        // → kartu PENUH: status bar + layar kunci + suara khas AGSI + getar
+        // + heads-up + full-screen intent, SEMUA BERSAMAAN.
         val builder = NotificationCompat.Builder(ctx, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            // 🔒 Tampil PENUH di layar kunci + ⏰ bangunkan layar yang tidur
+            // 🔒 Tampil PENUH di layar kunci — detail terbaca tanpa buka kunci
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setFullScreenIntent(content, true)
             .setAutoCancel(true)
             .setContentIntent(content)
             .setGroup(group)
-            .setDefaults(android.app.Notification.DEFAULT_LIGHTS)
+        if (silent) {
+            builder
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setSilent(true)
+        } else {
+            builder
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                // ⏰ Bangunkan layar yang tidur (full-screen intent) — suara,
+                // getar & heads-up mengikuti setelan channel v4
+                .setFullScreenIntent(content, true)
+                .setDefaults(android.app.Notification.DEFAULT_LIGHTS)
+        }
         if (unreadCount > 0) builder.setNumber(unreadCount)
         if (chatQuickReply) builder.addAction(replyAction(ctx, tag, id))
 
@@ -129,14 +147,20 @@ object AgsiNotifications {
         } catch (_: SecurityException) {
             return
         }
-        trackGroupAndSummarize(ctx, group, tag, title)
+        trackGroupAndSummarize(ctx, group, tag, title, silent)
     }
 
     // ==================== Pengelompokan + ringkasan ====================
 
-    private fun trackGroupAndSummarize(ctx: Context, group: String, tag: String, title: String) {
+    private fun trackGroupAndSummarize(
+        ctx: Context,
+        group: String,
+        tag: String,
+        title: String,
+        silent: Boolean,
+    ) {
         val cards = groupCards[group] ?: return
-        cards[tag] = (title to System.currentTimeMillis())
+        cards[tag] = Triple(title, System.currentTimeMillis(), silent)
         // Buang kartu yang tercatat lebih dari 10 menit lalu (sudah lama tak relevan)
         val now = System.currentTimeMillis()
         cards.entries.removeIf { now - it.value.second > 10 * 60_000L }
@@ -154,7 +178,11 @@ object AgsiNotifications {
             .setContentTitle("AGSI — ${cards.size} kabar baru")
             .setContentText(latest.lastOrNull()?.value?.first ?: "")
             .setStyle(style)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(
+                if (silent) NotificationCompat.PRIORITY_DEFAULT
+                else NotificationCompat.PRIORITY_HIGH
+            )
+            .setSilent(silent)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setGroup(group)

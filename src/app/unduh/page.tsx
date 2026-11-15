@@ -71,26 +71,25 @@ export default function UnduhPage() {
         <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-3.5">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <p className="text-[11.5px] leading-relaxed text-amber-800">
-            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> 10 FITUR NOTIFIKASI
-            LENGKAP: (1) NOTIFICATION CENTER — Pusat Notifikasi di lonceng
-            header: semua kabar terkumpul rapi, termasuk yang datang saat
-            aplikasi ditutup; (2) NOTIFICATION BADGE — angka belum dibaca di
-            lonceng &amp; ikon aplikasi, otomatis nol setelah dibuka; (3) LOCK
-            SCREEN PUSH — notifikasi tampil penuh di layar kunci; (4)
-            HEADS-UP BANNER — banner melayang saat pesanan/chat masuk; (5)
-            NOTIFICATION SOUND — suara KHAS AGSI "chime" ganda yang baru; (6)
-            VIBRATION ALERT — getar kuat khas pesanan masuk; (7) NOTIFICATION
-            GROUPING — notifikasi digabung rapi per jenis + ringkasan "N
-            kabar baru"; (8) QUICK REPLY — balas chat CS LANGSUNG dari
-            notifikasi tanpa membuka aplikasi; (9) DEEP LINK — tap notifikasi
-            kini benar-benar membuka halaman terkait (Pesanan / Chat —
-            sebelumnya 404); (10) BACKGROUND PUSH SERVICE — pemantau notifikasi
-            saat aplikasi ditutup (FCM + layanan pemantau). Tetap: tanpa
-            notifikasi layanan, izin berjalan di latar belakang langsung,
-            cetak struk otomatis tersimpan, kontrol notifikasi senyap. Versi
-            sebelumnya: izin berjalan-dilatarbelakang, perbaikan cetak struk
-            &amp; laporan, izin penyimpanan, notifikasi real-time, Lacak Kurir
-            AGSI, Face ID / sidik jari.
+            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> NOTIFIKASI TAMPIL
+            BERSAMAAN — status bar, layar kunci &amp; suara khas AGSI kini
+            muncul SEKALIGUS di setiap kabar penting: saat aplikasi ditutup /
+            layar terkunci, kartu notifikasi MEMBANGUNKAN LAYAR (full-screen
+            intent kini berlaku di SEMUA push — sebelumnya layar tidur tidak
+            ikut menyala), tampil penuh di layar kunci, berbunyi chime khas
+            AGSI + getar kuat. Saat aplikasi SEDANG TERBUKA, kartu juga
+            selalu muncul di status bar (senyap — popup halaman yang
+            berbunyi, tanpa suara dobel). Teknis: push kini data-only sehingga
+            SEMUA kartu dibangun aplikasi sendiri — grouping, quick reply
+            &amp; deep link berlaku di semua jalur. Tetap: 10 fitur
+            notifikasi (Pusat Notifikasi, badge angka, layar kunci, heads-up,
+            suara khas, getar, grouping, quick reply, deep link, background
+            service), tanpa notifikasi layanan, izin berjalan di latar
+            belakang langsung, cetak struk otomatis tersimpan. Versi
+            sebelumnya: 10 fitur notifikasi lengkap, izin
+            berjalan-dilatarbelakang, perbaikan cetak struk &amp; laporan,
+            izin penyimpanan, notifikasi real-time, Lacak Kurir AGSI, Face ID
+            / sidik jari.
           </p>
         </div>
 

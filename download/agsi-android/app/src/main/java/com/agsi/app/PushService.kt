@@ -10,13 +10,19 @@ import com.google.firebase.messaging.RemoteMessage
 /**
  * Layanan FCM — menerima push dari backend (src/lib/push.ts + src/lib/fcm.ts).
  *
- * - Aplikasi di BACKGROUND: SDK FCM menampilkan notifikasi otomatis dengan
- *   channel default (meta-data di AndroidManifest) — tap membuka MainActivity.
- *   Chat memakai channel "agsi_chat" (channel_id dari payload server).
- * - Aplikasi di FOREGROUND: push DITERUSKAN KE HALAMAN WEB lewat broadcast →
- *   event JS "agsi-push" — popup + suara + daftar pesanan/chat di halaman
- *   menyala INSTAN (real-time), tanpa notifikasi sistem ganda.
- * - data.url berisi path tujuan setelah banner diketuk (mis. "/orders").
+ * v1.3.11: server mengirim pesan DATA-ONLY (tanpa blok "notification") —
+ * SEMUA push diproses lewat onMessageReceived, sehingga kartu notifikasi
+ * seragam dari AgsiNotifications: STATUS BAR + LAYAR KUNCI PENUH + SUARA
+ * KHAS AGSI + getar + heads-up + full-screen intent (membangunkan layar
+ * tidur) tampil BERSAMAAN saat aplikasi ditutup. Sebelumnya, push saat app
+ * ditutup ditampilkan otomatis SDK FCM TANPA full-screen intent (layar
+ * tidak ikut menyala) dan tanpa grouping/quick reply.
+ *
+ * - Aplikasi di BACKGROUND (atau layar terkunci): kartu PENUH + suara.
+ * - Aplikasi di FOREGROUND: kartu status bar SENYAP (popup halaman yang
+ *   berbunyi — tanpa suara dobel) + push diteruskan ke halaman web lewat
+ *   broadcast → event JS "agsi-push" (popup + suara + refresh instan).
+ * - data.url berisi path tujuan setelah kartu diketuk (mis. "/orders").
  *
  * KONTROL NOTIFIKASI SENYAP (v1.3.8):
  *  - judul & isi kosong → tanpa notifikasi + sisa notifikasi kosong dihapus
@@ -75,8 +81,24 @@ class PushService : FirebaseMessagingService() {
             return
         }
 
-        // ===== Aplikasi TERBUKA: real-time ke halaman, tanpa notifikasi ganda
+        // ===== Aplikasi TERBUKA (v1.3.11): kartu status bar SENYAP tetap
+        // dibuat (permintaan pemilik: status bar, layar kunci & suara
+        // selalu muncul bersamaan) + real-time ke halaman — popup & suara
+        // halaman yang berbunyi, kartu senyap mencegah suara DOBEL.
         if (AgsiApp.isForeground) {
+            val channelFg = if (kind == "chat") AgsiApp.CHANNEL_CHAT else AgsiApp.CHANNEL_ORDERS
+            AgsiNotifications.show(
+                this,
+                kind = kind,
+                tag = tag,
+                id = id,
+                title = title,
+                body = body,
+                url = url,
+                channel = channelFg,
+                chatQuickReply = kind == "chat",
+                silent = true,
+            )
             forwardToPage(kind, title, body, url, orderId, tag)
             return
         }
@@ -116,8 +138,8 @@ class PushService : FirebaseMessagingService() {
     /** Teruskan push ke halaman web (saat aplikasi terbuka): broadcast →
      *  MainActivity → event JS "agsi-push" → popup + suara + refresh instan.
      *  Detail event dipakai watcher web (src/components/shared/NotifWatchers.tsx).
-     *  v1.3.10: push juga DIREKAM ke Pusat Notifikasi (NotifHistory) agar
-     *  kabar real-time ikut tercatat di halaman tersebut. */
+     *  v1.3.11: perekaman Pusat Notifikasi cukup di AgsiNotifications.show()
+     *  (kartu senyap foreground juga lewat sana) — tidak direkam dobel di sini. */
     private fun forwardToPage(
         kind: String,
         title: String,
@@ -126,7 +148,6 @@ class PushService : FirebaseMessagingService() {
         orderId: String?,
         tag: String,
     ) {
-        NotifHistory.add(this, kind, tag, title, body, url)
         val payload = org.json.JSONObject().apply {
             put("kind", kind)
             put("title", title)

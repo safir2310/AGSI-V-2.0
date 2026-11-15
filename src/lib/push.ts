@@ -6,10 +6,13 @@ import { formatIDR } from "@/lib/types";
  * LAYANAN PUSH NOTIFIKASI AGSI (FCM) — satu pintu untuk semua pengiriman.
  *
  * Target perangkat: token di tabel PushToken (Chrome Android / aplikasi
- * Android native). Semua pesan dibangun dengan prioritas TINGGI di kedua
- * platform agar tampil sebagai HEADS-UP (banner melayang di atas layar):
- *   - Android : android.priority "HIGH" + channel "agsi_orders" (IMPORTANCE_HIGH)
- *   - Web     : webpush.headers.Urgency "high" (Chrome Android heads-up)
+ * Android native). Semua pesan berbentuk DATA-ONLY dengan prioritas TINGGI
+ * (v1.3.11) — kartu notifikasi dibangun oleh penerima masing-masing:
+ *   - Android : onMessageReceived → AgsiNotifications — STATUS BAR, LAYAR
+ *     KUNCI PENUH, suara khas AGSI & full-screen intent (membangunkan layar
+ *     tidur) tampil BERSAMAAN; grouping + quick reply + deep link berlaku.
+ *   - Web     : service worker membaca data.* → showNotification
+ *     (webpush.headers.Urgency "high" = heads-up di Chrome Android).
  *
  * Semua helper notify* aman dipakai fire-and-forget (`void notify...()`):
  * tidak pernah melempar, kegagalan hanya dicatat di log server.
@@ -47,20 +50,19 @@ function buildMessage(p: PushPayload, token: string): FcmMessage {
     tag: p.tag ?? "agsi",
   };
   if (p.orderId) data.orderId = p.orderId;
+  // v1.3.11: DATA-ONLY (tanpa blok "notification") — saat aplikasi ditutup,
+  // push TIDAK lagi ditampilkan otomatis oleh SDK FCM (cara lama tampil
+  // TANPA full-screen intent: layar tidur tidak menyala, tanpa grouping/
+  // quick reply). Kini onMessageReceived selalu berjalan dan aplikasi
+  // membangun kartu seragam: status bar + layar kunci + suara khas AGSI +
+  // getar + bangunkan layar, SEKALIGUS. Aplikasi versi lama (≤1.3.9) tetap
+  // aman — kode lamanya juga membangun kartu sendiri dari data payload.
   return {
     token,
-    notification: { title: p.title, body: p.body },
     data,
     android: {
       priority: "HIGH",
       ttl: "3600s",
-      notification: {
-        // chat tampil di channel "Chat CS" terpisah agar bisa diatur sendiri
-        channel_id: p.kind === "chat" ? ANDROID_CHAT_CHANNEL_ID : ANDROID_CHANNEL_ID,
-        sound: "default",
-        tag: p.tag ?? "agsi",
-        // click_action default → launcher activity; URL dibaca aplikasi dari data.url
-      },
     },
     webpush: {
       headers: { Urgency: "high", TTL: "86400" },
