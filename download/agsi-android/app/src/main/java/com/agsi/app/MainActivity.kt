@@ -157,6 +157,24 @@ class MainActivity : AppCompatActivity() {
             if (params != null) openFileChooser(params, includeCamera = granted)
         }
 
+    /** Hasil dialog izin PENYIMPANAN (Android 8–9, WRITE_EXTERNAL_STORAGE):
+     *  disetujui → struk/laporan disimpan LANGSUNG ke Unduhan/AGSI;
+     *  ditolak → fallback dialog "Simpan ke" (SAF). Android 10+ tidak
+     *  butuh izin ini (MediaStore). */
+    private val storagePermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val cbId = pendingSaveCbId
+            val bytes = pendingSaveBytes
+            val mime = pendingSaveMime ?: "application/octet-stream"
+            val name = pendingSaveName ?: "agsi-file"
+            if (cbId == null || bytes == null) return@registerForActivityResult
+            if (granted) {
+                writeToPublicDownloads(cbId, bytes, name, mime)
+            } else {
+                launchSaveFileDialog(cbId, bytes, name, mime)
+            }
+        }
+
     /** Hasil dialog izin notifikasi — DITOLAK → popup penjelasan + pintasan
      *  ke setelan notifikasi aplikasi (dibatasi 1×/24 jam agar tidak mengganggu). */
     private val notifPermissionLauncher =
@@ -845,9 +863,10 @@ class MainActivity : AppCompatActivity() {
     /**
      * Simpan file (base64 dari web) ke folder Unduhan.
      *  - Android 10+ : MediaStore Downloads → Unduhan/AGSI, tanpa dialog,
-     *    plus toast konfirmasi.
-     *  - Android 8–9 : dialog "Simpan ke" (SAF ACTION_CREATE_DOCUMENT) —
-     *    tanpa izin penyimpanan.
+     *    tanpa izin, plus toast konfirmasi.
+     *  - Android 8–9 : izin WRITE_EXTERNAL_STORAGE diminta sekali (runtime)
+     *    → simpan LANGSUNG ke Unduhan/AGSI; bila izin ditolak → dialog
+     *    "Simpan ke" (SAF ACTION_CREATE_DOCUMENT) sebagai fallback.
      */
     fun saveFileToDownloads(cbId: String, base64: String, fileName: String, mimeType: String) {
         val bytes = try {
@@ -880,7 +899,22 @@ class MainActivity : AppCompatActivity() {
                 launchSaveFileDialog(cbId, bytes, fileName, mimeType)
             }
         } else {
-            launchSaveFileDialog(cbId, bytes, fileName, mimeType)
+            // Android 8–9 (API 26–28): butuh izin WRITE_EXTERNAL_STORAGE untuk
+            // simpan LANGSUNG ke Unduhan/AGSI. Belum disetujui → minta dulu
+            // (payload disimpan sementara di pendingSave*); ditolak → SAF.
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                pendingSaveCbId = cbId
+                pendingSaveBytes = bytes
+                pendingSaveMime = mimeType
+                pendingSaveName = fileName
+                storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            } else {
+                writeToPublicDownloads(cbId, bytes, fileName, mimeType)
+            }
         }
     }
 
@@ -904,6 +938,49 @@ class MainActivity : AppCompatActivity() {
             pendingSaveMime = null
             pendingSaveName = null
             resolveBridge(cbId, false, "perangkat tidak menyediakan dialog simpan")
+        }
+    }
+
+    /**
+     * Simpan LANGSUNG ke Unduhan/AGSI di Android 8–9 — dipanggil setelah izin
+     * WRITE_EXTERNAL_STORAGE disetujui (storagePermissionLauncher). Nama file
+     * yang sudah ada diberi akhiran (1), (2), … (pola sama dengan MediaStore).
+     * Gagal → fallback dialog "Simpan ke" (SAF), pesanan web tetap terjawab.
+     */
+    private fun writeToPublicDownloads(
+        cbId: String,
+        bytes: ByteArray,
+        fileName: String,
+        mimeType: String,
+    ) {
+        pendingSaveCbId = null
+        pendingSaveBytes = null
+        pendingSaveMime = null
+        pendingSaveName = null
+        try {
+            @Suppress("DEPRECATION")
+            val dir = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                "AGSI"
+            )
+            if (!dir.exists() && !dir.mkdirs()) {
+                throw IOException("Tidak bisa membuat folder Unduhan/AGSI")
+            }
+            val dot = fileName.lastIndexOf('.')
+            val base = if (dot > 0) fileName.substring(0, dot) else fileName
+            val ext = if (dot > 0) fileName.substring(dot) else ""
+            var target = File(dir, fileName)
+            var i = 1
+            while (target.exists()) {
+                target = File(dir, "$base (${i})$ext")
+                i++
+            }
+            target.outputStream().use { it.write(bytes) }
+            Toast.makeText(this, getString(R.string.file_saved, target.name), Toast.LENGTH_LONG).show()
+            resolveBridge(cbId, true, target.name)
+        } catch (e: Exception) {
+            Log.w(TAG, "Simpan langsung Unduhan gagal — pakai dialog Simpan-ke (SAF)", e)
+            launchSaveFileDialog(cbId, bytes, fileName, mimeType)
         }
     }
 

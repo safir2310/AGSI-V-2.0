@@ -23,6 +23,16 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Penyimpanan (v1.3.7): struk & laporan disimpan LANGSUNG ke folder
+         Unduhan/AGSI di Android 8–9 (Android 10+ memakai MediaStore — tanpa
+         izin). maxSdkVersion 32: Android 13+ memakai izin granular &
+         Scoped Storage, izin legacy ini tidak berlaku. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 
     <uses-feature
         android:name="android.hardware.camera"
