@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { apiFetch } from "@/lib/api";
-import { useAppStore, useNoticeStore, useUiStore, type NoticeType } from "@/lib/store";
+import { useAppStore, useUiStore, type NoticeType } from "@/lib/store";
+import { notifySuite } from "@/lib/notif-suite";
 import { recordBrowserEntry } from "@/lib/notif-center";
 import { useOrdersStore } from "@/lib/hooks";
 import { formatIDR, type AppUser, type OrderData } from "@/lib/types";
@@ -52,7 +53,6 @@ function isAdmin(role: string) {
 /* ================= ADMIN: POPUP PESANAN BARU MASUK ================= */
 
 export function AdminNewOrderWatcher({ user }: { user: AppUser }) {
-  const showNotice = useNoticeStore((s) => s.show);
   const go = useAppStore((s) => s.go);
   const admin = isAdmin(user.role);
 
@@ -99,27 +99,42 @@ export function AdminNewOrderWatcher({ user }: { user: AppUser }) {
         // Daftar dari server urut terbaru dulu → fresh[0] = paling baru
         const t = fresh[0];
         const ringkas = t.items.map((i) => `${i.name} ×${i.qty}`).join(" • ");
-        showNotice({
-          type: "success",
-          mascot: true,
-          autoCloseMs: 9000,
-          title:
-            fresh.length > 1
-              ? `🔔 ${fresh.length} Pesanan Baru Masuk!`
-              : "🔔 Pesanan Baru Masuk!",
-          message:
-            fresh.length > 1
-              ? `Terbaru: ${t.code} — ${t.customerName}${
-                  t.tableNo ? ` (Meja ${t.tableNo})` : ""
-                } • ${formatIDR(t.total)}\n${ringkas}\nSegera diproses ya!`
-              : `${t.code} • ${t.customerName}${
-                  t.tableNo ? ` • Meja ${t.tableNo}` : ""
-                } • ${formatIDR(t.total)}\n${ringkas}`,
-          actions: [
-            { label: "Lihat Pesanan", onClick: () => go("orders") },
-            { label: "Nanti" },
-          ],
-        });
+        // v1.3.13 — SUITE 5 GAYA: POPUP tengah (kritis) + HEADS-UP + BANNER +
+        // FLOATING gelembung muncul BERSAMAAN untuk pesanan baru masuk.
+        notifySuite(
+          {
+            kind: "new_order",
+            title:
+              fresh.length > 1
+                ? `🔔 ${fresh.length} Pesanan Baru Masuk!`
+                : "🔔 Pesanan Baru Masuk!",
+            body: `${t.code} • ${t.customerName}${
+              t.tableNo ? ` (Meja ${t.tableNo})` : ""
+            } • ${formatIDR(t.total)} — ${ringkas}`,
+            url: "/orders",
+          },
+          "critical",
+          {
+            type: "success",
+            mascot: true,
+            title:
+              fresh.length > 1
+                ? `🔔 ${fresh.length} Pesanan Baru Masuk!`
+                : "🔔 Pesanan Baru Masuk!",
+            message:
+              fresh.length > 1
+                ? `Terbaru: ${t.code} — ${t.customerName}${
+                    t.tableNo ? ` (Meja ${t.tableNo})` : ""
+                  } • ${formatIDR(t.total)}\n${ringkas}\nSegera diproses ya!`
+                : `${t.code} • ${t.customerName}${
+                    t.tableNo ? ` • Meja ${t.tableNo}` : ""
+                  } • ${formatIDR(t.total)}\n${ringkas}`,
+            actions: [
+              { label: "Lihat Pesanan", onClick: () => go("orders") },
+              { label: "Nanti" },
+            ],
+          },
+        );
 
         // 🗂️ Pusat notifikasi (browser): rekam tiap pesanan baru masuk
         for (const o of fresh) {
@@ -145,7 +160,7 @@ export function AdminNewOrderWatcher({ user }: { user: AppUser }) {
       clearInterval(iv);
       pushTicks.delete(tick);
     };
-  }, [admin, showNotice, go]);
+  }, [admin, go]);
 
   return null;
 }
@@ -218,7 +233,6 @@ function statusNotif(o: OrderData): {
 }
 
 export function CustomerNotifWatcher({ user }: { user: AppUser }) {
-  const showNotice = useNoticeStore((s) => s.show);
   const go = useAppStore((s) => s.go);
   const customer = user.role === "CUSTOMER";
 
@@ -254,11 +268,32 @@ export function CustomerNotifWatcher({ user }: { user: AppUser }) {
 
               playAgsiStatus();
               const n = statusNotif(changes[0]);
-              showNotice({
-                ...n,
-                autoCloseMs: 8000,
-                actions: [{ label: "Lihat Pesanan", onClick: () => go("orders") }, { label: "Tutup" }],
-              });
+              // v1.3.13 — SUITE 5 GAYA: momen KRITIS (pembayaran masuk &
+              // pesanan SIAP) tetap POPUP tengah + heads-up + banner +
+              // gelembung; pembaruan lain cukup heads-up + banner + gelembung.
+              const c0 = changes[0];
+              const critical = c0.paymentStatus === "PAID" || c0.status === "READY";
+              notifySuite(
+                {
+                  kind: c0.paymentStatus === "PAID" ? "order_paid" : "order_status",
+                  title: n.title,
+                  body: n.message,
+                  url: "/orders",
+                },
+                critical ? "critical" : "important",
+                critical
+                  ? {
+                      type: n.type,
+                      mascot: n.mascot,
+                      title: n.title,
+                      message: n.message,
+                      actions: [
+                        { label: "Lihat Pesanan", onClick: () => go("orders") },
+                        { label: "Tutup" },
+                      ],
+                    }
+                  : undefined,
+              );
 
               // 🗂️ Pusat notifikasi (browser): rekam tiap perubahan status/pembayaran
               for (const c of changes) {
@@ -290,7 +325,7 @@ export function CustomerNotifWatcher({ user }: { user: AppUser }) {
       clearInterval(iv);
       pushTicks.delete(tick);
     };
-  }, [customer, showNotice, go]);
+  }, [customer, go]);
 
   return null;
 }
@@ -306,7 +341,6 @@ export function CustomerNotifWatcher({ user }: { user: AppUser }) {
  * Bila sheet chat sedang terbuka, pesan dianggap sudah dibaca → tidak bunyi.
  */
 export function ChatNotifWatcher({ user }: { user: AppUser }) {
-  const showNotice = useNoticeStore((s) => s.show);
   const staff = isAdmin(user.role);
   const enabled = staff || user.role === "CUSTOMER";
 
@@ -339,35 +373,23 @@ export function ChatNotifWatcher({ user }: { user: AppUser }) {
                 : "Ada pesan baru di chat AGSI.",
             url: "/chat",
           });
-          if (staff) {
-            showNotice({
-              type: "info",
-              autoCloseMs: 8000,
-              title: "💬 Chat Pelanggan Baru!",
-              message:
+          // v1.3.13 — SUITE 5 GAYA: chat masuk → HEADS-UP + BANNER + FLOATING
+          // (tanpa popup tengah — overlay chat punya pintu sendiri); tap
+          // kartu langsung membuka chat. Pesan tetap direkam Pusat Notifikasi.
+          notifySuite(
+            {
+              kind: "chat",
+              title: staff ? "💬 Chat Pelanggan Baru!" : "💬 Pesan Baru dari CS",
+              body:
                 unread > 1
-                  ? `${unread} pesan pelanggan menunggumu di daftar chat CS.`
-                  : "Seorang pelanggan baru mengirim pesan — segera dibalas ya!",
-              actions: [
-                { label: "Buka Chat", onClick: () => useUiStore.getState().openChat() },
-                { label: "Nanti" },
-              ],
-            });
-          } else {
-            showNotice({
-              type: "info",
-              autoCloseMs: 8000,
-              title: "💬 Pesan Baru dari CS",
-              message:
-                unread > 1
-                  ? `${unread} balasan baru dari CS AGSI menunggumu di chat.`
-                  : "CS AGSI membalas pesanmu — cek sekarang ya!",
-              actions: [
-                { label: "Buka Chat", onClick: () => useUiStore.getState().openChat() },
-                { label: "Nanti" },
-              ],
-            });
-          }
+                  ? `${unread} pesan menunggumu di chat AGSI.`
+                  : staff
+                    ? "Seorang pelanggan baru mengirim pesan — segera dibalas ya!"
+                    : "CS AGSI membalas pesanmu — cek sekarang ya!",
+              url: "/chat",
+            },
+            "important",
+          );
         }
         prevUnread = unread;
       } catch {
@@ -383,7 +405,7 @@ export function ChatNotifWatcher({ user }: { user: AppUser }) {
       clearInterval(iv);
       pushTicks.delete(tick);
     };
-  }, [enabled, staff, showNotice]);
+  }, [enabled, staff]);
 
   return null;
 }

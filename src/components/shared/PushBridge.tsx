@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { useAppStore, useNoticeStore, useUiStore } from "@/lib/store";
+import { useAppStore, useUiStore } from "@/lib/store";
+import { notifySuite, type SuiteKind } from "@/lib/notif-suite";
 import { playAgsiChat, playAgsiOrder, playAgsiStatus } from "@/lib/sound";
 import { registerNativeTokenIfPresent } from "@/lib/push-client";
 import type { AppUser } from "@/lib/types";
@@ -22,8 +23,6 @@ import type { AppUser } from "@/lib/types";
  */
 
 export function PushBridge({ user }: { user: AppUser }) {
-  const showNotice = useNoticeStore((s) => s.show);
-
   // 1) Ikat token perangkat Android native ke sesi yang sedang masuk
   useEffect(() => {
     void (async () => {
@@ -68,18 +67,39 @@ export function PushBridge({ user }: { user: AppUser }) {
               { label: "Tutup" },
             ];
 
-      showNotice({
-        type: isError ? "error" : kind === "chat" ? "info" : "success",
-        mascot: kind === "new_order" || kind === "order_paid",
-        autoCloseMs: 9000,
-        title: d.title,
-        message: d.body ?? "",
-        actions,
-      });
+      // v1.3.13 — SUITE 5 GAYA: pesanan baru/pembayaran → POPUP tengah +
+      // heads-up + banner + gelembung; lainnya → heads-up + banner + gelembung.
+      const suiteKind: SuiteKind =
+        kind === "new_order" ||
+        kind === "order_paid" ||
+        kind === "order_status" ||
+        kind === "chat" ||
+        kind === "courier_task"
+          ? kind
+          : "info";
+      const url =
+        kind === "chat"
+          ? "/chat"
+          : isCourierTask && user.role === "COURIER"
+            ? "/kurir"
+            : "/orders";
+      notifySuite(
+        { kind: suiteKind, title: d.title, body: d.body ?? "", url },
+        kind === "new_order" || kind === "order_paid" ? "critical" : "important",
+        kind === "new_order" || kind === "order_paid"
+          ? {
+              type: isError ? "error" : "success",
+              mascot: true,
+              title: d.title,
+              message: d.body ?? "",
+              actions,
+            }
+          : undefined,
+      );
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
-  }, [showNotice, user.role]);
+  }, [user.role]);
 
   return null;
 }

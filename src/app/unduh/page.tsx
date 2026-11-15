@@ -71,24 +71,24 @@ export default function UnduhPage() {
         <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-3.5">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <p className="text-[11.5px] leading-relaxed text-amber-800">
-            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> IZIN BERJALAN DI
-            LATAR BELAKANG DIPERKUAT — notifikasi lebih andal saat aplikasi
-            ditutup: (1) baris status baru "Berjalan di Latar Belakang" di
-            Pengaturan Notifikasi (Profil ▸ Notifikasi Push) lengkap dengan
-            tombol IZINKAN BATERAI yang membuka dialog sistem langsung,
-            tanpa menunggu permintaan otomatis; (2) tombol AUTOSTART untuk
-            HP Xiaomi (MIUI), OPPO/realme, vivo &amp; Huawei/Honor — di HP
-            tersebut AGSI harus diaktifkan di layar Autostart milik
-            pabrikan, kalau tidak layanan notifikasi dimatikan sistem walau
-            hemat baterai sudah dikecualikan; (3) dialog izin baterai
-            otomatis saat aplikasi dibuka tetap berjalan (tiap 3 hari sampai
-            disetujui). Tetap: notifikasi tampil bersamaan (status bar +
-            layar kunci + suara khas AGSI), 10 fitur notifikasi, tanpa
+            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> SUITE 5 GAYA
+            NOTIFIKASI IN-APP — saat aplikasi TERBUKA, setiap kabar penting
+            kini tampil dalam lima bentuk: (1) HEADS-UP — kartu melayang
+            turun dari atas layar, auto-tutup ±6 detik, ketuk untuk langsung
+            membuka halaman; (2) BANNER — strip "N kabar baru" menempel di
+            atas sampai kabar dibuka; (3) FLOATING — gelembung oranye
+            melayang yang bisa DISESER (drag) ke mana saja + angka kabar,
+            ketuk untuk membuka; (4) POPUP — modal tengah layar untuk momen
+            paling kritiss (pesanan baru masuk, pembayaran diterima, pesanan
+            siap); (5) TOAST — pil kecil di bawah layar untuk pembaruan
+            ringan &amp; konfirmasi. Saat aplikasi DITUTUP, notifikasi
+            sistem tetap bekerja (status bar + layar kunci + suara khas
+            AGSI). Tetap: izin berjalan di latar belakang + tombol Izinkan
+            Baterai &amp; Autostart OEM, 10 fitur notifikasi, tanpa
             notifikasi layanan, cetak struk otomatis tersimpan. Versi
-            sebelumnya: notifikasi tampil bersamaan (full-screen intent di
-            semua push, kartu senyap saat app terbuka), 10 fitur notifikasi
-            lengkap, perbaikan cetak struk &amp; laporan, izin penyimpanan,
-            notifikasi real-time, Lacak Kurir AGSI, Face ID / sidik jari.
+            sebelumnya: izin berjalan-dilatarbelakang diperkuat, notifikasi
+            tampil bersamaan, 10 fitur notifikasi lengkap, Lacak Kurir AGSI,
+            Face ID / sidik jari.
           </p>
         </div>
 

@@ -11,6 +11,7 @@ import { ConsentPopup } from "@/components/shared/ConsentPopup";
 import { MemberCardSheet } from "@/components/shared/MemberCardSheet";
 import { ChatSheet } from "@/components/shared/ChatSheet";
 import { AdminNewOrderWatcher, ChatNotifWatcher, CustomerNotifWatcher } from "@/components/shared/NotifWatchers";
+import { NotifSuite } from "@/components/shared/NotifSuite";
 import { NotifCenterSheet } from "@/components/shared/NotifCenterSheet";
 import { CENTER_UPDATED_EVENT, listEntries, unreadCount } from "@/lib/notif-center";
 import { PushBridge } from "@/components/shared/PushBridge";
@@ -391,6 +392,11 @@ export function AppShell() {
 
       {/* ===== POPUP NOTIFIKASI TENGAH LAYAR ===== */}
       <CenterNotice />
+
+      {/* ===== SUITE NOTIFIKASI IN-APP (v1.3.13): HEADS-UP atas + BANNER strip
+             + FLOATING gelembung + TOAST — gaya ke-5 (POPUP tengah) tetap di
+             CenterNotice; event dari NotifWatchers & PushBridge ===== */}
+      {user && <NotifSuite user={user} />}
 
       {/* ===== WATCHER NOTIFIKASI MASUK (popup + suara khas AGSI) ===== */}
       {user && <AdminNewOrderWatcher user={user} />}
