@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.app.DownloadManager
+import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.ContentValues
@@ -156,8 +157,12 @@ class MainActivity : AppCompatActivity() {
             if (params != null) openFileChooser(params, includeCamera = granted)
         }
 
+    /** Hasil dialog izin notifikasi — DITOLAK → popup penjelasan + pintasan
+     *  ke setelan notifikasi aplikasi (dibatasi 1×/24 jam agar tidak mengganggu). */
     private val notifPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (!granted) maybeShowNotifNudge()
+        }
 
     /** Hasil dialog izin lokasi — balas callback geolokasi WebView yang menunggu.
      *  Granted → halaman boleh memakai navigator.geolocation (pin GPS rumah). */
@@ -1035,13 +1040,67 @@ class MainActivity : AppCompatActivity() {
 
     // ==================== Notifikasi ====================
 
+    /**
+     * Minta izin notifikasi secara AKTIF agar notifikasi tampil MAKSIMAL:
+     *  - Android 13+ (API 33): izin runtime POST_NOTIFICATIONS WAJIB diminta —
+     *    tanpa ini notifikasi BISU total walau channel & FCM benar. Dialog
+     *    sistem diminta SETIAP aplikasi dibuka selama belum disetujui; bila
+     *    user menolak permanen, hasil "ditolak" kembali instan → jebakan
+     *    pengingat via notifPermissionLauncher (popup + pintasan setelan).
+     *  - Semua versi: bila notifikasi dimatikan lewat setelan sistem
+     *    (Pengaturan ▸ Aplikasi ▸ AGSI ▸ Notifikasi), tampilkan penjelasan
+     *    + pintasan langsung ke setelan notifikasi aplikasi.
+     */
     private fun ensureNotificationPermission() {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
         ) {
             notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
         }
+        // Izin runtime sudah OK (atau < Android 13) — cek saklar notifikasi
+        // di setelan sistem yang bisa dimatikan user kapan saja. Ditunda
+        // sedetik agar tidak berebut dengan gate kunci biometrik saat start.
+        mainHandler.postDelayed(
+            {
+                val nm = getSystemService(NotificationManager::class.java)
+                if (nm != null && !nm.areNotificationsEnabled()) maybeShowNotifNudge()
+            },
+            1200L
+        )
+    }
+
+    /** Popup penjelasan "kenapa notifikasi penting" + tombol pintasan ke
+     *  setelan notifikasi aplikasi — dibatasi 1× per 24 jam (SharedPreferences)
+     *  agar tidak mengganggu, tetapi terus mengingatkan selama belum aktif. */
+    private fun maybeShowNotifNudge() {
+        val prefs = getSharedPreferences("agsi_prefs", Context.MODE_PRIVATE)
+        val last = prefs.getLong("notif_nudge_at", 0L)
+        if (System.currentTimeMillis() - last < 24 * 60 * 60 * 1000L) return
+        prefs.edit().putLong("notif_nudge_at", System.currentTimeMillis()).apply()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.notif_perm_title)
+            .setMessage(R.string.notif_perm_message)
+            .setPositiveButton(R.string.notif_perm_open_settings) { _, _ ->
+                try {
+                    startActivity(
+                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                    )
+                } catch (e: ActivityNotFoundException) {
+                    // Fallback: layar detail aplikasi (saklar notifikasi ada di sana)
+                    try {
+                        startActivity(
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                .setData(Uri.parse("package:$packageName"))
+                        )
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+            .setNegativeButton(R.string.notif_perm_later, null)
+            .show()
     }
 
     // ==================== Util ====================

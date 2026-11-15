@@ -68,4 +68,10 @@
     <string name="biometric_not_enrolled">Daftarkan sidik jari / wajah di Pengaturan HP (Keamanan &amp; Layar Kunci) terlebih dulu ya</string>
     <string name="biometric_enroll_unavailable">Tidak bisa membuka pengaturan pendaftaran biometrik. Buka manual: Pengaturan HP → Keamanan &amp; layar kunci.</string>
     <string name="biometric_no_hardware">Perangkat ini tidak memiliki sensor sidik jari / wajah</string>
+
+    <!-- Izin notifikasi runtime (v1.3.5) — minta aktif agar notifikasi maksimal -->
+    <string name="notif_perm_title">Aktifkan Notifikasi AGSI</string>
+    <string name="notif_perm_message">Tanpa izin notifikasi, pesanan baru, chat CS, dan pembayaran masuk TIDAK berbunyi / tidak muncul popup — bisa ada pesanan yang terlewat. Aktifkan notifikasi AGSI agar tidak ada pesanan yang nyasar.</string>
+    <string name="notif_perm_open_settings">Buka Setelan Notifikasi</string>
+    <string name="notif_perm_later">Nanti</string>
 </resources>
