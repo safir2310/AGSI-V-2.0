@@ -1,6 +1,7 @@
 package com.agsi.app
 
 import android.content.Context
+import android.os.PowerManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import org.json.JSONObject
@@ -136,6 +137,44 @@ class AgsiNativeBridge(
     /** Status saklar notifikasi latar belakang (default: aktif). */
     @JavascriptInterface
     fun isNotifPollingEnabled(): Boolean = NotifPollerService.isEnabled(appContext)
+
+    /**
+     * IZIN BERJALAN DI LATAR BELAKANG (v1.3.12): true bila AGSI sudah
+     * dikecualikan dari optimasi baterai (dialog sistem "izinkan AGSI
+     * mengabaikan optimasi baterai" pernah disetujui). Dipakai baris status
+     * "Berjalan di Latar Belakang" di Pengaturan Notifikasi (web).
+     */
+    @JavascriptInterface
+    fun isBatteryUnrestricted(): Boolean {
+        val pm = appContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+        return pm.isIgnoringBatteryOptimizations(appContext.packageName)
+    }
+
+    /**
+     * Tombol "Izinkan Baterai" di Pengaturan Notifikasi → dialog sistem
+     * langsung TANPA jeda (permintaan otomatis saat aplikasi dibuka berjeda
+     * 3 hari). Return false bila aplikasi tidak aktif.
+     */
+    @JavascriptInterface
+    fun requestBatteryUnrestriction(): Boolean {
+        val activity = hostProvider() ?: return false
+        activity.main.post { activity.openBatteryExemptionRequest() }
+        return true
+    }
+
+    /**
+     * Tombol "Autostart" di Pengaturan Notifikasi → layar Autostart milik
+     * pabrikan (Xiaomi MIUI, OPPO/realme, vivo, Huawei/Honor) — di HP
+     * tersebut sistem mematikan layanan notifikasi AGSI saat aplikasi
+     * ditutup sampai Autostart diaktifkan, walau baterai sudah dikecualikan.
+     * Pabrikan lain → layar detail aplikasi. Return false bila tidak aktif.
+     */
+    @JavascriptInterface
+    fun openAutostartSettings(): Boolean {
+        val activity = hostProvider() ?: return false
+        activity.main.post { activity.openAutostartSettings() }
+        return true
+    }
 
     /**
      * PUSAT NOTIFIKASI (v1.3.10): seluruh riwayat notifikasi sebagai JSON

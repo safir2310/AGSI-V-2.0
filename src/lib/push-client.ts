@@ -66,12 +66,53 @@ export function isNativeAndroidApp(): boolean {
 type NativeBridge = {
   getFcmToken: () => string;
   getAppVersion?: () => string;
+  /** v1.3.12 — true = AGSI dikecualikan optimasi baterai (boleh berjalan
+   *  di latar belakang); tanpa metode ini = aplikasi versi lama. */
+  isBatteryUnrestricted?: () => boolean;
+  /** v1.3.12 — buka dialog sistem "izinkan AGSI mengabaikan optimasi
+   *  baterai" seketika (tanpa jeda permintaan otomatis 3 hari). */
+  requestBatteryUnrestriction?: () => boolean;
+  /** v1.3.12 — buka layar Autostart pabrikan (Xiaomi MIUI, OPPO/realme,
+   *  vivo, Huawei/Honor). Pabrikan lain → detail aplikasi. */
+  openAutostartSettings?: () => boolean;
 };
 
 export function getNativeBridge(): NativeBridge | null {
   if (typeof window === "undefined") return null;
   const b = (window as unknown as { AgsiNative?: unknown }).AgsiNative;
   return b && typeof (b as NativeBridge).getFcmToken === "function" ? (b as NativeBridge) : null;
+}
+
+/** v1.3.12 — izin berjalan di latar belakang: true = diizinkan,
+ *  false = belum, null = bukan aplikasi native / versi lama tanpa metode. */
+export function batteryUnrestricted(): boolean | null {
+  const b = getNativeBridge();
+  if (!b?.isBatteryUnrestricted) return null;
+  try {
+    return b.isBatteryUnrestricted() === true;
+  } catch {
+    return null;
+  }
+}
+
+/** Buka dialog sistem "izinkan AGSI mengabaikan optimasi baterai" (native). */
+export function requestBatteryUnrestriction(): boolean {
+  const b = getNativeBridge();
+  try {
+    return b?.requestBatteryUnrestriction?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Buka layar Autostart pabrikan (Xiaomi/OPPO/vivo/Huawei) — native. */
+export function openAutostartSettings(): boolean {
+  const b = getNativeBridge();
+  try {
+    return b?.openAutostartSettings?.() === true;
+  } catch {
+    return false;
+  }
 }
 
 export function webPushSupported(): boolean {

@@ -14,14 +14,18 @@ import {
   Smartphone,
   TriangleAlert,
   X,
+  Zap,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useNoticeStore } from "@/lib/store";
 import {
+  batteryUnrestricted,
   disableWebPush,
   enableWebPush,
   fetchPushConfig,
+  openAutostartSettings,
   readPushStatus,
+  requestBatteryUnrestriction,
   type PushConfig,
   type PushStatus,
 } from "@/lib/push-client";
@@ -78,6 +82,14 @@ export function PushSettingsSheet({ open, onClose }: { open: boolean; onClose: (
     if (open) void refresh();
   }, [open, refresh]);
 
+  /** v1.3.12 — izin berjalan di latar belakang (hanya aplikasi native):
+   *  true = diizinkan, false = belum, null = tak terdeteksi / bukan native. */
+  const [bgOk, setBgOk] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (open && st.status?.native) setBgOk(batteryUnrestricted());
+    else setBgOk(null);
+  }, [open, st.status?.native]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -108,6 +120,22 @@ export function PushSettingsSheet({ open, onClose }: { open: boolean; onClose: (
       setSt((s) => ({ ...s, busy: null }));
     }
   }, [st.config, refresh, showNotice]);
+
+  /** v1.3.12 — tombol "Izinkan Baterai": buka dialog sistem "izinkan AGSI
+   *  mengabaikan optimasi baterai" TANPA jeda (permintaan otomatis aplikasi
+   *  berjeda 3 hari), lalu periksa ulang statusnya. */
+  const allowBatteryExemption = useCallback(() => {
+    requestBatteryUnrestriction();
+    setTimeout(() => setBgOk(batteryUnrestricted()), 2_000);
+    setTimeout(() => setBgOk(batteryUnrestricted()), 5_000);
+  }, []);
+
+  /** Tombol "Autostart": layar pabrikan (Xiaomi MIUI, OPPO/realme, vivo,
+   *  Huawei/Honor) — tanpa izin autostart, sistem mematikan layanan
+   *  notifikasi AGSI saat aplikasi ditutup. */
+  const openAutostartScreen = useCallback(() => {
+    openAutostartSettings();
+  }, []);
 
   const disable = useCallback(async () => {
     if (!st.config) return;
@@ -248,6 +276,40 @@ export function PushSettingsSheet({ open, onClose }: { open: boolean; onClose: (
                           : "Chrome / Firefox / WebView di perangkat ini",
                         ok: status?.native ? true : status?.supported ? undefined : "warn",
                       })}
+                      {/* v1.3.12 — izin berjalan di latar belakang (native):
+                          status + tombol izinkan baterai & autostart OEM */}
+                      {status?.native && (
+                        <>
+                          <div className="h-px bg-neutral-200/70" />
+                          {statusRow({
+                            icon: <Zap className="h-4 w-4" />,
+                            label: "Berjalan di Latar Belakang",
+                            value:
+                              bgOk === true
+                                ? "Diizinkan — notifikasi muncul walau aplikasi ditutup"
+                                : bgOk === false
+                                  ? "Belum diizinkan — notifikasi bisa terlambat / mati"
+                                  : "Tidak dapat membaca status",
+                            ok: bgOk === true ? true : bgOk === false ? "warn" : false,
+                          })}
+                          {bgOk !== true && (
+                            <div className="flex flex-wrap gap-2 pl-12">
+                              <button
+                                onClick={allowBatteryExemption}
+                                className="press-effect rounded-xl bg-orange-600 px-3 py-1.5 text-[10.5px] font-black text-white hover:bg-orange-700"
+                              >
+                                Izinkan Baterai
+                              </button>
+                              <button
+                                onClick={openAutostartScreen}
+                                className="press-effect rounded-xl border border-neutral-300 bg-white px-3 py-1.5 text-[10.5px] font-black text-neutral-700 hover:bg-neutral-50"
+                              >
+                                Autostart (Xiaomi dll.)
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
                       <div className="h-px bg-neutral-200/70" />
                       {statusRow({
                         icon: <Bell className="h-4 w-4" />,

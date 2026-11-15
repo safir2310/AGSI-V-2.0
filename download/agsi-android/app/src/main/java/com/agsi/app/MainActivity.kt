@@ -7,6 +7,7 @@ import android.app.DownloadManager
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -1227,6 +1228,67 @@ class MainActivity : AppCompatActivity() {
                 )
             } catch (_: Exception) {
             }
+        }
+    }
+
+    /**
+     * Dialog sistem "izinkan AGSI mengabaikan optimasi baterai" TANPA jeda —
+     * dipakai tombol "Izinkan Baterai" di Pengaturan Notifikasi (v1.3.12,
+     * lewat jembatan web). Versi otomatis (ensureBackgroundRunningPermission)
+     * tetap berjeda 3 hari agar tidak mengganggu; tombol manual ini harus
+     * selalu merespons seketika.
+     */
+    fun openBatteryExemptionRequest() {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                    .setData(Uri.parse("package:$packageName"))
+            )
+        } catch (e: ActivityNotFoundException) {
+            // Fallback: daftar aplikasi yang boleh mengabaikan hemat baterai
+            try {
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /**
+     * PINTASAN AUTOSTART OEM (v1.3.12): layar "Autostart"/"Startup" milik
+     * pabrikan (Xiaomi MIUI, OPPO/realme ColorOS, vivo FuntouchOS, Huawei/
+     * Honor EMUI) — di ROM tersebut layanan notifikasi latar belakang
+     * DIMATIKAN sistem sampai aplikasi diizinkan Autostart, walau optimasi
+     * baterai sudah dikecualikan. Komponen dicoba satu per satu (tidak ada
+     * di ROM → kandidat berikutnya); pabrikan lain (mis. Samsung) → layar
+     * detail aplikasi yang memuat saklar baterai & izin.
+     */
+    fun openAutostartSettings() {
+        val candidates = listOf(
+            // Xiaomi MIUI / HyperOS
+            ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+            // OPPO ColorOS / realme UI
+            ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+            ComponentName("com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity"),
+            // vivo FuntouchOS
+            ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
+            // Huawei / Honor EMUI
+            ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+            ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"),
+        )
+        for (cn in candidates) {
+            try {
+                startActivity(Intent().setComponent(cn).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return
+            } catch (_: Exception) {
+                // komponen tak ada di ROM ini — coba kandidat berikutnya
+            }
+        }
+        try {
+            startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.parse("package:$packageName"))
+            )
+        } catch (_: Exception) {
         }
     }
 
