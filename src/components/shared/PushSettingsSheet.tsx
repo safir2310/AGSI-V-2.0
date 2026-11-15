@@ -35,7 +35,8 @@ import { cn } from "@/lib/utils";
  *  - WEB  : tombol Aktifkan (izin → token FCM → daftar server) / Nonaktifkan.
  *  - NATIVE (aplikasi Android android/…) : status otomatis dari jembatan
  *    AgsiNative — token didaftarkan aplikasi, tidak butuh aksi di sini.
- *  - ADMIN/OWNER : tombol "Kirim Notifikasi Uji" ke perangkat sendiri.
+ *  - Notifikasi uji DIHAPUS dari UI (v1.3.8 — kontrol notifikasi senyap:
+ *    endpoint /api/push/send juga 403 di production).
  *
  * Bila server belum dikonfigurasi (.env FIREBASE_* kosong) tampil kartu
  * kuning berisi petunjuk singkat — bukan error yang bikin bingung.
@@ -45,11 +46,11 @@ type SheetState = {
   config: PushConfig | null;
   status: PushStatus | null;
   loading: boolean;
-  busy: "enable" | "disable" | "test" | null;
+  busy: "enable" | "disable" | null;
   error: string | null;
 };
 
-export function PushSettingsSheet({ open, onClose, user }: { open: boolean; onClose: () => void; user: AppUser }) {
+export function PushSettingsSheet({ open, onClose }: { open: boolean; onClose: () => void; user: AppUser }) {
   const prefersReduced = useReducedMotion();
   const showNotice = useNoticeStore((s) => s.show);
   const [st, setSt] = useState<SheetState>({
@@ -59,8 +60,6 @@ export function PushSettingsSheet({ open, onClose, user }: { open: boolean; onCl
     busy: null,
     error: null,
   });
-
-  const isAdmin = user.role === "ADMIN" || user.role === "OWNER";
 
   const refresh = useCallback(async () => {
     setSt((s) => ({ ...s, loading: true, error: null }));
@@ -122,39 +121,6 @@ export function PushSettingsSheet({ open, onClose, user }: { open: boolean; onCl
       setSt((s) => ({ ...s, busy: null }));
     }
   }, [st.config, refresh]);
-
-  const sendTest = useCallback(async () => {
-    setSt((s) => ({ ...s, busy: "test", error: null }));
-    try {
-      const res = await apiFetch("/api/push/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scope: "self" }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setSt((s) => ({ ...s, error: data.error ?? "Gagal mengirim notifikasi uji." }));
-        return;
-      }
-      if (!data.configured) {
-        setSt((s) => ({
-          ...s,
-          error: "Server belum terhubung ke Firebase. Isi kredensial di .env (lihat PUSH_SETUP.md).",
-        }));
-        return;
-      }
-      showNotice({
-        type: "success",
-        autoCloseMs: 4200,
-        title: "Notifikasi Uji Dikirim 🚀",
-        message: `Terkirim ke ${data.sent} perangkat${data.sent === 0 ? " — aktifkan dulu di perangkatmu" : ""}.`,
-      });
-    } catch {
-      setSt((s) => ({ ...s, error: "Tidak dapat menghubungi server." }));
-    } finally {
-      setSt((s) => ({ ...s, busy: null }));
-    }
-  }, [showNotice]);
 
   // ===== Turunan status tampilan =====
   const status = st.status;
@@ -365,16 +331,6 @@ export function PushSettingsSheet({ open, onClose, user }: { open: boolean; onCl
                     {blocked ? "Izin Diblokir — Ubah dari Pengaturan Browser" : "Aktifkan Tidak Tersedia"}
                   </button>
                 )
-              )}
-              {isAdmin && (
-                <button
-                  onClick={() => void sendTest()}
-                  disabled={st.busy !== null}
-                  className="press-effect flex w-full items-center justify-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 py-3 text-sm font-black text-orange-700 transition hover:bg-orange-100 disabled:opacity-60"
-                >
-                  {st.busy === "test" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  Kirim Notifikasi Uji ke Perangkat Saya
-                </button>
               )}
             </footer>
           </motion.div>

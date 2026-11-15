@@ -175,11 +175,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-    /** Hasil dialog izin notifikasi — DITOLAK → popup penjelasan + pintasan
-     *  ke setelan notifikasi aplikasi (dibatasi 1×/24 jam agar tidak mengganggu). */
+    /** Hasil dialog izin notifikasi — DITOLAK: penolakan pertama → popup
+     *  penjelasan + pintasan setelan; penolakan kedua dst → LANGSUNG buka
+     *  setelan notifikasi aplikasi (tetap dibatasi 1×/24 jam). */
     private val notifPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (!granted) maybeShowNotifNudge()
+            if (!granted) onNotifPermissionDenied()
         }
 
     /** Hasil dialog izin lokasi — balas callback geolokasi WebView yang menunggu.
@@ -1160,24 +1161,51 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.notif_perm_title)
             .setMessage(R.string.notif_perm_message)
             .setPositiveButton(R.string.notif_perm_open_settings) { _, _ ->
-                try {
-                    startActivity(
-                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-                    )
-                } catch (e: ActivityNotFoundException) {
-                    // Fallback: layar detail aplikasi (saklar notifikasi ada di sana)
-                    try {
-                        startActivity(
-                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                                .setData(Uri.parse("package:$packageName"))
-                        )
-                    } catch (_: Exception) {
-                    }
-                }
+                openAppNotificationSettings()
             }
             .setNegativeButton(R.string.notif_perm_later, null)
             .show()
+    }
+
+    /** Izin notifikasi DITOLAK pengguna (v1.3.8 — permintaan pemilik: izin
+     *  langsung ke pengaturan). Penolakan PERTAMA → popup penjelasan instan
+     *  (tanpa menunggu 24 jam) + tombol pintasan setelan; penolakan KEDUA
+     *  dst → LANGSUNG buka setelan notifikasi aplikasi (dibatasi 1×/24 jam
+     *  agar tidak mengganggu). */
+    private fun onNotifPermissionDenied() {
+        val prefs = getSharedPreferences("agsi_prefs", Context.MODE_PRIVATE)
+        val denials = prefs.getInt("notif_denied_count", 0) + 1
+        prefs.edit().putInt("notif_denied_count", denials).apply()
+        if (denials >= 2) {
+            openAppNotificationSettings(minIntervalMs = 24 * 60 * 60 * 1000L)
+        } else {
+            maybeShowNotifNudge()
+        }
+    }
+
+    /** Buka setelan notifikasi aplikasi (Pengaturan ▸ Aplikasi ▸ AGSI ▸
+     *  Notifikasi). minIntervalMs membatasi frekuensi lompatan OTOMATIS
+     *  (default 0 = selalu buka — dipakai tombol manual di popup). */
+    private fun openAppNotificationSettings(minIntervalMs: Long = 0L) {
+        val prefs = getSharedPreferences("agsi_prefs", Context.MODE_PRIVATE)
+        val last = prefs.getLong("notif_settings_at", 0L)
+        if (minIntervalMs > 0 && System.currentTimeMillis() - last < minIntervalMs) return
+        prefs.edit().putLong("notif_settings_at", System.currentTimeMillis()).apply()
+        try {
+            startActivity(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+            )
+        } catch (e: ActivityNotFoundException) {
+            // Fallback: layar detail aplikasi (saklar notifikasi ada di sana)
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                        .setData(Uri.parse("package:$packageName"))
+                )
+            } catch (_: Exception) {
+            }
+        }
     }
 
     // ==================== Util ====================

@@ -71,23 +71,24 @@ export default function UnduhPage() {
         <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-3.5">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <p className="text-[11.5px] leading-relaxed text-amber-800">
-            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> Struk &amp; laporan
-            kini tersimpan LANGSUNG ke folder Unduhan/AGSI di penyimpanan file
-            HP (Android 8–9: izin penyimpanan diminta sekali; Android 10+
-            lewat MediaStore tanpa izin &amp; tanpa dialog pilih lokasi) —
-            tetap bisa DICETAK lewat dialog cetak sistem (simpan sebagai PDF
-            atau kirim ke printer). Juga: notifikasi layanan "AGSI aktif"
-            TERSEMBUNYI TOTAL di semua HP, dan aplikasi AKTIF meminta izin
-            notifikasi (Android 13+) tiap dibuka selama belum disetujui —
-            bila ditolak muncul penjelasan + pintasan ke setelan notifikasi,
-            supaya tidak ada pesanan yang terlewat. Tetap: suara NOTIFIKASI
-            biasa, tampil PENUH di layar kunci, layar tidur/terkunci
-            DIBANGUNKAN menampilkan pesanan masuk. Di situs, pembayaran
-            E-Wallet (DOKU Wallet / DANA / OVO / ShopeePay) bisa
+            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> KONTROL NOTIFIKASI
+            SENYAP: notifikasi hanya muncul untuk hal penting — pesanan,
+            pembayaran, status, chat &amp; kurir; notifikasi uji dimatikan di
+            produksi; notifikasi berjudul &amp; isi kosong tidak pernah dibuat
+            (sisa notifikasi kosong otomatis dihapus dari pemberitahuan HP).
+            Cetak struk &amp; laporan kini OTOMATIS TERSIMPAN dulu ke folder
+            Unduhan/AGSI sebelum dialog cetak dibuka (Simpan sebagai PDF /
+            kirim ke printer) — tombol Simpan pun langsung ke penyimpanan
+            file. Izin notifikasi: dialog sistem muncul sejak pembukaan
+            pertama; bila ditolak lagi, aplikasi langsung membuka setelan
+            notifikasi. Tetap: notifikasi layanan "AGSI aktif" tersembunyi
+            total, suara NOTIFIKASI biasa, tampil PENUH di layar kunci, layar
+            tidur/terkunci DIBANGUNKAN menampilkan pesanan masuk. Di situs,
+            pembayaran E-Wallet (DOKU Wallet / DANA / OVO / ShopeePay) bisa
             dinonaktifkan TERPISAH dari QRIS lewat Profil Admin → Pengaturan
-            Toko. Versi sebelumnya: suara alarm + getar kuat, notifikasi
-            real-time pesanan/chat, lonceng &amp; badge, Lacak Kurir AGSI,
-            Face ID / sidik jari.
+            Toko. Versi sebelumnya: izin penyimpanan, suara alarm + getar
+            kuat, notifikasi real-time pesanan/chat, lonceng &amp; badge,
+            Lacak Kurir AGSI, Face ID / sidik jari.
           </p>
         </div>
 

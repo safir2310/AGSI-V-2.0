@@ -418,6 +418,16 @@ class NotifPollerService : Service() {
     private data class Event(val tag: String, val title: String, val body: String, val url: String, val channel: String)
 
     private fun notifyEvent(ev: Event) {
+        // Kontrol notifikasi senyap (v1.3.8 — rekomendasi #1 & #5): judul &
+        // isi kosong → JANGAN tampilkan + hapus sisa notifikasi kosong lama
+        // dengan tag sama dari NotificationManager.
+        if (ev.title.isBlank() && ev.body.isBlank()) {
+            try {
+                NotificationManagerCompat.from(this).cancel(ev.tag, ev.title.hashCode())
+            } catch (_: Exception) {
+            }
+            return
+        }
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED

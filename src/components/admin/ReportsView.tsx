@@ -65,6 +65,88 @@ const STATUS_LABELS: Record<string, string> = {
  *  jalur sama dengan tombol cetak struk), di browser biasa via window.print().
  *  Keduanya menawarkan "Simpan sebagai PDF" — jadi laporan bisa langsung
  *  terunduh ke penyimpanan. */
+/** HTML LAPORAN MANDIRI (v1.3.8) — dipakai tombol CETAK di aplikasi: file
+ *  laporan OTOMATIS tersimpan ke folder Unduhan/AGSI sebelum dialog cetak
+ *  dibuka. Gaya inline (tanpa Tailwind) sehingga berdiri sendiri — bisa
+ *  dibuka & dicetak ulang di browser mana pun tanpa aplikasi. */
+function buildLaporanFileHtml(data: ReportData, days: number): string {
+  const s = data.summary;
+  const now = new Date();
+  const dicetak = now.toLocaleString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const mulai = new Date(now.getTime() - days * 86_400_000).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  const sampai = now.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const rp = (n: number) => "Rp" + Math.round(n).toLocaleString("id-ID");
+  const statusNama: Record<string, string> = {
+    NEW: "Baru",
+    PREPARING: "Dimasak",
+    READY: "Siap",
+    COMPLETED: "Selesai",
+    CANCELLED: "Dibatalkan",
+  };
+  const kategoriRows = data.categoryRevenue
+    .slice()
+    .sort((a, b) => b.value - a.value)
+    .map(
+      (k) =>
+        `<tr><td>${esc(k.name)}</td><td class="num">${rp(k.value)}</td></tr>`,
+    )
+    .join("");
+  const statusRows = Object.entries(data.statusCount)
+    .filter(([, n]) => n > 0)
+    .map(
+      ([status, n]) =>
+        `<tr><td>${esc(statusNama[status] ?? status)}</td><td class="num">${n}</td></tr>`,
+    )
+    .join("");
+  const harianRows = data.daily
+    .map(
+      (h) =>
+        `<tr><td>${esc(h.label)}</td><td class="num">${rp(h.revenue)}</td><td class="num">${h.orders}</td></tr>`,
+    )
+    .join("");
+  return `<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Laporan AGSI ${days} Hari</title>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:24px;font-size:13px}
+h1{font-size:18px;margin:0 0 4px}
+h2{font-size:13px;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px}
+table{width:100%;border-collapse:collapse;margin-bottom:14px}
+th,td{border:1px solid #999;padding:5px 8px;text-align:left}
+th{background:#eee;text-transform:uppercase;font-size:10px;letter-spacing:.5px}
+.num{text-align:right}
+.meta{color:#555;font-size:11px;margin-bottom:16px}
+</style>
+</head>
+<body>
+<h1>AGSI — Ayam Geprek Sambal Ijo</h1>
+<p><b>Laporan Penjualan · ${mulai} – ${sampai} (${days} hari)</b></p>
+<p class="meta">Dicetak: ${dicetak}</p>
+<h2>Ringkasan</h2>
+<table>
+<tr><th>Total Pendapatan</th><th>Rata-rata / Pesanan</th><th>Total Pesanan</th><th>Selesai</th><th>Dibatalkan</th><th>Pelanggan</th></tr>
+<tr><td class="num">${rp(s.revenueTotal)}</td><td class="num">${rp(s.avgOrder)}</td><td class="num">${s.ordersTotal}</td><td class="num">${s.completedCount}</td><td class="num">${s.cancelledCount}</td><td class="num">${s.customerCount}</td></tr>
+</table>
+${kategoriRows ? `<h2>Pendapatan per Kategori</h2><table><tr><th>Kategori</th><th>Pendapatan</th></tr>${kategoriRows}</table>` : ""}
+${statusRows ? `<h2>Pesanan per Status</h2><table><tr><th>Status</th><th>Jumlah</th></tr>${statusRows}</table>` : ""}
+${harianRows ? `<h2>Rincian Harian</h2><table><tr><th>Tanggal</th><th>Pendapatan</th><th>Pesanan</th></tr>${harianRows}</table>` : ""}
+</body>
+</html>`;
+}
+
 type LaporanPrintProps = { data: ReportData; days: number };
 
 function LaporanPrintPortal({ data, days }: LaporanPrintProps) {
@@ -306,13 +388,19 @@ export function ReportsView() {
 
   const s = data?.summary;
 
-  /** Cetak laporan — aplikasi: dialog cetak sistem Android (PrintManager,
-   *  bisa "Simpan sebagai PDF" → langsung terunduh ke penyimpanan);
+  /** Cetak laporan — aplikasi: file HTML laporan OTOMATIS tersimpan dulu ke
+   *  folder Unduhan/AGSI (v1.3.8), lalu dialog cetak sistem Android
+   *  (PrintManager) dibuka — bisa "Simpan sebagai PDF" / kirim ke printer;
    *  browser: window.print(). Kertas memakai portal .laporan-print-portal
    *  yang sudah terpasang di body sejak data laporan tersedia. */
   const printReport = () => {
     if (!data) return;
     if (nativePrintSupported()) {
+      void nativeSaveFile(
+        buildLaporanFileHtml(data, days),
+        `laporan-agsi-${days}-hari.html`,
+        "text/html",
+      );
       void nativePrintPage(`Laporan AGSI ${days} Hari`);
       return;
     }

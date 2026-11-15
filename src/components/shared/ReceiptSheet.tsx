@@ -269,6 +269,10 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
     // cetak sistem (PrintManager) lewat jembatan native. Aturan @media print
     // tetap berlaku sehingga hanya struk yang tercetak.
     if (nativePrintSupported()) {
+      // v1.3.8: klik CETAK struk → file HTML struk OTOMATIS tersimpan dulu
+      // ke folder Unduhan/AGSI (toast konfirmasi dari aplikasi), lalu dialog
+      // cetak sistem dibuka — Simpan sebagai PDF / kirim ke printer.
+      if (d) void nativeSaveFile(buildStrukFileHtml(d), strukFileName(d.code), "text/html");
       void nativePrintPage(`Struk ${order.code}`);
       return;
     }

@@ -13,6 +13,11 @@ import { sendTestPush } from "@/lib/push";
  *
  * Bila FCM belum dikonfigurasi (.env kosong), tetap 200 dengan
  * { configured: false } agar UI bisa menampilkan petunjuk — bukan error.
+ *
+ * NOTIFIKASI UJI DIMATIKAN DI PRODUCTION (v1.3.8 — kontrol notifikasi senyap
+ * AGSI): fitur uji hanya tersedia saat development (npm run dev). Di jalur
+ * aplikasi Android, PushService juga menolak kind "test" sebagai notifikasi
+ * sistem (lapis kedua).
  */
 
 export async function POST(req: NextRequest) {
@@ -22,6 +27,15 @@ export async function POST(req: NextRequest) {
   }
   if (!isAdminRole(user.role)) {
     return NextResponse.json({ error: "Hanya admin/owner yang bisa mengirim push." }, { status: 403 });
+  }
+
+  // Gerbang production (v1.3.8): tanpa ini, admin bisa men-trigger push uji
+  // "Notifikasi Uji AGSI" ke perangkat asli di deployment publik.
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      { error: "Notifikasi uji dimatikan di production." },
+      { status: 403 },
+    );
   }
 
   try {

@@ -20,7 +20,25 @@ import com.google.firebase.messaging.RemoteMessage
  *   event JS "agsi-push" — popup + suara + daftar pesanan/chat di halaman
  *   menyala INSTAN (real-time), tanpa notifikasi sistem ganda.
  * - data.url berisi path tujuan setelah banner diketuk (mis. "/orders").
+ *
+ * KONTROL NOTIFIKASI SENYAP (v1.3.8):
+ *  - judul & isi kosong → tanpa notifikasi + sisa notifikasi kosong dihapus
+ *    dari NotificationManager;
+ *  - hanya jenis penting (SYSTEM_NOTIF_KINDS) yang jadi notifikasi sistem;
+ *  - jenis "test" tidak pernah tampil sebagai notifikasi sistem.
  */
+/** Jenis push yang BOLEH tampil sebagai notifikasi sistem (v1.3.8 —
+ *  rekomendasi kontrol senyap #4) — sinkron dengan PushKind di
+ *  src/lib/push.ts. "test" sengaja TIDAK termasuk; jenis tak dikenal juga
+ *  ditolak sehingga hanya pesanan/pembayaran/status/chat/kurir yang tampil. */
+private val SYSTEM_NOTIF_KINDS = setOf(
+    "new_order",
+    "order_paid",
+    "order_status",
+    "chat",
+    "courier_task",
+)
+
 class PushService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
@@ -31,13 +49,30 @@ class PushService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
         val kind = data["kind"] ?: ""
-        val title = message.notification?.title ?: data["title"] ?: return
+        val title = message.notification?.title ?: data["title"] ?: ""
         val body = message.notification?.body ?: data["body"] ?: ""
         val url = data["url"] ?: "/"
         val tag = data["tag"] ?: "agsi"
         val orderId = data["orderId"]
         // Pesanan sama saling mengganti, bukan menumpuk (sinkron data.tag server)
         val id = (orderId ?: title).hashCode()
+
+        // ===== Kontrol notifikasi senyap (v1.3.8) =====
+        // 1. Notifikasi uji TIDAK PERNAH tampil sebagai notifikasi sistem
+        //    (endpoint uji juga dimatikan di production — api/push/send).
+        //    Saat aplikasi terbuka tetap diteruskan ke halaman agar uji di
+        //    lingkungan development tetap terlihat real-time.
+        if (kind == "test") {
+            if (AgsiApp.isForeground) forwardToPage(kind, title, body, url, orderId, tag)
+            return
+        }
+        // 2. Judul & isi kosong → jangan buat notifikasi apa pun + hapus sisa
+        //    notifikasi kosong lama dengan tag sama dari NotificationManager
+        //    (rekomendasi #1 & #5).
+        if (title.isBlank() && body.isBlank()) {
+            NotificationManagerCompat.from(this).cancel(tag, id)
+            return
+        }
 
         // ===== Aplikasi TERBUKA: real-time ke halaman, tanpa notifikasi ganda
         if (AgsiApp.isForeground) {
@@ -46,6 +81,9 @@ class PushService : FirebaseMessagingService() {
         }
 
         // ===== Aplikasi di latar belakang: heads-up notifikasi sistem
+        // 3. Hanya jenis PENTING yang tampil sebagai notifikasi sistem
+        //    (rekomendasi #4); jenis lain = data senyap untuk halaman saja.
+        if (kind !in SYSTEM_NOTIF_KINDS) return
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
