@@ -389,19 +389,48 @@ export function ReportsView() {
   const s = data?.summary;
 
   /** Cetak laporan — aplikasi: file HTML laporan OTOMATIS tersimpan dulu ke
-   *  folder Unduhan/AGSI (v1.3.8), lalu dialog cetak sistem Android
+   *  folder Unduhan/AGSI (hasil ditunggu), lalu dialog cetak sistem Android
    *  (PrintManager) dibuka — bisa "Simpan sebagai PDF" / kirim ke printer;
-   *  browser: window.print(). Kertas memakai portal .laporan-print-portal
-   *  yang sudah terpasang di body sejak data laporan tersedia. */
+   *  browser: window.print(). v1.3.9: berurutan + keterangan di setiap
+   *  langkah (v1.3.8 fire-and-forget membuat klik terasa mati akibat
+   *  tabrakan slot callback jembatan satu-slot). Kertas memakai portal
+   *  .laporan-print-portal yang sudah terpasang di body sejak data laporan
+   *  tersedia. */
   const printReport = () => {
     if (!data) return;
     if (nativePrintSupported()) {
-      void nativeSaveFile(
-        buildLaporanFileHtml(data, days),
-        `laporan-agsi-${days}-hari.html`,
-        "text/html",
-      );
-      void nativePrintPage(`Laporan AGSI ${days} Hari`);
+      showNotice({
+        type: "info",
+        autoCloseMs: 6000,
+        title: "Menyimpan Laporan…",
+        message: "Laporan otomatis disimpan ke Unduhan/AGSI, lalu dialog cetak dibuka.",
+      });
+      void (async () => {
+        const name = `laporan-agsi-${days}-hari.html`;
+        const saved = await nativeSaveFile(buildLaporanFileHtml(data, days), name, "text/html");
+        if (saved.ok) {
+          showNotice({
+            type: "success",
+            autoCloseMs: 4200,
+            title: "Laporan Tersimpan ✓",
+            message: `File ${name} otomatis tersimpan di folder Unduhan/AGSI.`,
+          });
+        } else if (saved.message !== "dibatalkan" && saved.message !== "timeout") {
+          showNotice({
+            type: "error",
+            title: "Simpan Laporan Gagal",
+            message: saved.message || "File laporan tidak dapat ditulis ke penyimpanan.",
+          });
+        }
+        const printed = await nativePrintPage(`Laporan AGSI ${days} Hari`);
+        if (!printed.ok) {
+          showNotice({
+            type: "error",
+            title: "Dialog Cetak Gagal",
+            message: printed.message || "Cetak tidak dapat dibuka — gunakan tombol Ekspor.",
+          });
+        }
+      })();
       return;
     }
     // Di aplikasi Android TANPA jembatan cetak (APK < 1.2.5): window.print()

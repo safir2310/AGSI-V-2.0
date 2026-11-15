@@ -71,24 +71,27 @@ export default function UnduhPage() {
         <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-3.5">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <p className="text-[11.5px] leading-relaxed text-amber-800">
-            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> KONTROL NOTIFIKASI
-            SENYAP: notifikasi hanya muncul untuk hal penting — pesanan,
-            pembayaran, status, chat &amp; kurir; notifikasi uji dimatikan di
-            produksi; notifikasi berjudul &amp; isi kosong tidak pernah dibuat
-            (sisa notifikasi kosong otomatis dihapus dari pemberitahuan HP).
-            Cetak struk &amp; laporan kini OTOMATIS TERSIMPAN dulu ke folder
-            Unduhan/AGSI sebelum dialog cetak dibuka (Simpan sebagai PDF /
-            kirim ke printer) — tombol Simpan pun langsung ke penyimpanan
-            file. Izin notifikasi: dialog sistem muncul sejak pembukaan
-            pertama; bila ditolak lagi, aplikasi langsung membuka setelan
-            notifikasi. Tetap: notifikasi layanan "AGSI aktif" tersembunyi
-            total, suara NOTIFIKASI biasa, tampil PENUH di layar kunci, layar
-            tidur/terkunci DIBANGUNKAN menampilkan pesanan masuk. Di situs,
-            pembayaran E-Wallet (DOKU Wallet / DANA / OVO / ShopeePay) bisa
-            dinonaktifkan TERPISAH dari QRIS lewat Profil Admin → Pengaturan
-            Toko. Versi sebelumnya: izin penyimpanan, suara alarm + getar
-            kuat, notifikasi real-time pesanan/chat, lonceng &amp; badge,
-            Lacak Kurir AGSI, Face ID / sidik jari.
+            <b>Apa yang baru di v{LATEST_APP_VERSION}?</b> NOTIFIKASI LATAR
+            BELAKANG DIHAPUS TOTAL — kartu layanan "AGSI aktif" (yang dulu
+            disembunyikan 0-piksel) kini tidak pernah dibuat lagi; daftar
+            notifikasi benar-benar bersih dari kartu layanan. Sebagai
+            gantinya, aplikasi MEMINTA IZIN BERJALAN DI LATAR BELAKANG
+            langsung dari HP: dialog sistem "izinkan AGSI mengabaikan
+            optimasi baterai" muncul otomatis saat aplikasi dibuka (selama
+            belum disetujui), sehingga pemantau pesanan tetap hidup tanpa
+            notifikasi layanan. PERBAIKAN CETAK STRUK di halaman Pesanan
+            admin (dan laporan): v1.3.8 memanggil simpan + cetak serentak
+            sehingga klik terasa mati tanpa keterangan — kini berurutan dan
+            SETIAP langkah muncul keterangan ("Menyimpan Struk…" → "Struk
+            Tersimpan ✓" → dialog cetak dibuka; gagal pun diberi tahu).
+            Tetap: kontrol notifikasi senyap (hanya pesanan/pembayaran/
+            status/chat/kurir, tanpa notifikasi uji &amp; kosong), izin
+            notifikasi sejak pembukaan pertama, suara NOTIFIKASI biasa,
+            tampil PENUH di layar kunci, layar tidur DIBANGUNKAN saat
+            pesanan masuk. Versi sebelumnya: kontrol senyap, izin
+            penyimpanan, cetak struk &amp; laporan, notifikasi real-time
+            pesanan/chat, lonceng &amp; badge, Lacak Kurir AGSI, Face ID /
+            sidik jari.
           </p>
         </div>
 

@@ -1,19 +1,14 @@
 package com.agsi.app
 
-import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.pm.ServiceInfo
-import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.PowerManager
-import android.provider.Settings
 import android.util.Log
 import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
@@ -44,10 +39,11 @@ import java.util.concurrent.Executors
  *                                tidak dobel dengan push FCM)
  *
  * Cara kerja:
- *  - Foreground service (tipe specialUse) dengan notifikasi TERSEMBUNYI
- *    (v1.3.1: channel IMPORTANCE_NONE — tidak pernah tampil di status bar /
- *    daftar notifikasi) supaya Android mengizinkan polling jangka panjang
- *    (START_STICKY, dijalankan ulang saat boot oleh BootReceiver).
+ *  - v1.3.9: layanan BIASA TANPA notifikasi (permintaan pemilik — kartu
+ *    layanan "AGSI aktif" yang dulu disembunyikan 0-piksel kini dihapus
+ *    total). start() hanya dari aplikasi yang sedang di depan; polling
+ *    jangka panjang dilindungi izin pengecualian baterai yang diminta
+ *    LANGSUNG dari MainActivity saat aplikasi dibuka.
  *  - Hanya memantau saat aplikasi DI LATAR BELAKANG; saat aplikasi tampil di
  *    depan, popup + suara di halaman web (NotifWatchers) yang bekerja —
  *    siklus pertama setelah kembali ke latar belakang dipakai sebagai
@@ -68,15 +64,12 @@ class NotifPollerService : Service() {
         private const val TAG = "AGSI/Poll"
         private const val PREFS = "agsi_notif"
         private const val KEY_ENABLED = "notif_enabled"
-        private const val KEY_BATTERY_ASKED = "battery_asked"
         private const val KEY_ROLE = "poll_role"
         private const val KEY_SEEN = "seen_orders"
         private const val KEY_STATE = "order_state"
         private const val KEY_CHAT = "chat_unread"
         private const val KEY_FCM_ACTIVE = "fcm_active"
         private const val KEY_FCM_CHECKED_AT = "fcm_checked_at"
-
-        private const val NOTIF_SERVICE_ID = 42001
 
         /** Interval polling normal — seimbang untuk baterai & kecepatan kabar */
         private const val POLL_MS = 45_000L
@@ -119,9 +112,11 @@ class NotifPollerService : Service() {
 
         fun start(ctx: Context) {
             try {
-                ContextCompat.startForegroundService(
-                    ctx, Intent(ctx, NotifPollerService::class.java)
-                )
+                // v1.3.9: layanan BIASA tanpa notifikasi — startForegroundService
+                // (wajib menampilkan notifikasi layanan) tidak dipakai lagi.
+                // start() hanya dipanggil dari aplikasi yang berada di depan
+                // (MainActivity), jadi startService biasa sah di semua versi.
+                ctx.startService(Intent(ctx, NotifPollerService::class.java))
             } catch (e: Exception) {
                 Log.w(TAG, "Gagal memulai layanan notifikasi", e)
             }
@@ -160,8 +155,9 @@ class NotifPollerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        startForegroundCompat()
-        maybeRequestBatteryExemption()
+        // v1.3.9: TANPA notifikasi layanan & TANPA startForeground — kartu
+        // "AGSI aktif" tidak pernah dibuat lagi. Izin berjalan di latar
+        // belakang (pengecualian baterai) diminta langsung dari MainActivity.
         stopped = false
         wasForeground = true
         handler.postDelayed(tick, 4_000)
@@ -465,71 +461,6 @@ class NotifPollerService : Service() {
             NotificationManagerCompat.from(this).notify(ev.tag, ev.title.hashCode(), notification)
         } catch (_: SecurityException) {
             // izin dicabut pengguna — abaikan
-        }
-    }
-
-    /** Notifikasi layanan — TAK TERLIHAT TOTAL (v1.3.6):
-     *  foreground service WAJIB mem-post notifikasi (syarat Android), dan
-     *  channel IMPORTANCE_NONE (v1.3.1) menyembunyikannya di Android stok —
-     *  TAPI sebagian ROM (MIUI/HyperOS, dsb.) memaksakan menampilkan
-     *  notifikasi FGS walau channel NONE, apalagi sejak izin notifikasi
-     *  v1.3.5 disetujui. Solusi: isi dikosongkan + ikon transparan — walau
-     *  dipaksakan tampil, bentuknya 0 piksel: status bar bersih, daftar
-     *  notifikasi tak ada kartu yang terlihat. Layanan tetap sah jalan. */
-    private fun buildServiceNotification(): Notification {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            putExtra(MainActivity.EXTRA_NAV_URL, "/")
-        }
-        val pending = PendingIntent.getActivity(
-            this,
-            1,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        return NotificationCompat.Builder(this, AgsiApp.CHANNEL_SERVICE_HIDDEN)
-            .setSmallIcon(R.drawable.ic_notification_hidden)
-            .setShowWhen(false)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setOngoing(true)
-            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
-            .setContentIntent(pending)
-            .build()
-    }
-
-    private fun startForegroundCompat() {
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(
-                NOTIF_SERVICE_ID,
-                buildServiceNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
-            )
-        } else {
-            startForeground(NOTIF_SERVICE_ID, buildServiceNotification())
-        }
-    }
-
-    /** Sekali seumur hidup: minta pengecualian hemat baterai agar polling
-     *  tidak ditunda Doze (dialog sistem; hanya saat aplikasi di depan).
-     *  Tidak diminta bila FCM aktif — pemantau akan berhenti sendiri. */
-    private fun maybeRequestBatteryExemption() {
-        val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (prefs.getBoolean(KEY_BATTERY_ASKED, false)) return
-        if (prefs.getBoolean(KEY_FCM_ACTIVE, false) &&
-            PushRegistrar.cachedToken(this).isNotBlank()
-        ) return
-        if (!AgsiApp.isForeground) return
-        prefs.edit().putBoolean(KEY_BATTERY_ASKED, true).apply()
-        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        if (pm.isIgnoringBatteryOptimizations(packageName)) return
-        try {
-            startActivity(
-                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                    .setData(Uri.parse("package:$packageName"))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
-        } catch (e: Exception) {
-            Log.w(TAG, "Dialog pengecualian baterai tidak tersedia", e)
         }
     }
 

@@ -18,10 +18,10 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- Masuk biometrik: Face ID / sidik jari (layar buka kunci AppLock) -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-    <!-- Notifikasi di luar aplikasi: layanan pemantau latar belakang -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Berjalan di latar belakang (v1.3.9): dialog sistem "abaikan
+         optimasi baterai" diminta LANGSUNG saat aplikasi dibuka. Layanan
+         pemantau kini service BIASA tanpa notifikasi — izin
+         FOREGROUND_SERVICE(_SPECIAL_USE) dihapus (v1.3.9). -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Penyimpanan (v1.3.7): struk & laporan disimpan LANGSUNG ke folder
          Unduhan/AGSI di Android 8–9 (Android 10+ memakai MediaStore — tanpa
@@ -84,24 +84,12 @@
 
         <!-- Pemantau notifikasi latar belakang (tanpa FCM): polling ringan
              API AGSI tiap ±45 detik selama aplikasi ditutup — pesanan baru,
-             update status & chat muncul sebagai notifikasi layar. -->
+             update status & chat muncul sebagai notifikasi layar. v1.3.9:
+             service BIASA TANPA notifikasi latar belakang; start hanya dari
+             aplikasi yang sedang di depan (FCM di atas = mekanisme utama). -->
         <service
             android:name=".NotifPollerService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Notifikasi realtime pesanan, update status dan chat AGSI saat aplikasi di latar belakang" />
-        </service>
-
-        <!-- Nyalakan ulang pemantau notifikasi setelah HP direstart -->
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
+            android:exported="false" />
 
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"

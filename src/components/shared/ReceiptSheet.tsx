@@ -269,11 +269,45 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
     // cetak sistem (PrintManager) lewat jembatan native. Aturan @media print
     // tetap berlaku sehingga hanya struk yang tercetak.
     if (nativePrintSupported()) {
-      // v1.3.8: klik CETAK struk → file HTML struk OTOMATIS tersimpan dulu
-      // ke folder Unduhan/AGSI (toast konfirmasi dari aplikasi), lalu dialog
-      // cetak sistem dibuka — Simpan sebagai PDF / kirim ke printer.
-      if (d) void nativeSaveFile(buildStrukFileHtml(d), strukFileName(d.code), "text/html");
-      void nativePrintPage(`Struk ${order.code}`);
+      // v1.3.9: BERURUTAN — file HTML struk otomatis tersimpan dulu ke
+      // Unduhan/AGSI (hasil ditunggu), baru dialog cetak dibuka. v1.3.8
+      // memanggil keduanya fire-and-forget: slot callback jembatan yang
+      // satu-slot saling menimpa sehingga balasan cetak tak pernah sampai
+      // dan klik terasa mati. Kini SETIAP langkah diberi keterangan layar.
+      showNotice({
+        type: "info",
+        autoCloseMs: 6000,
+        title: "Menyimpan Struk…",
+        message: "Struk otomatis disimpan ke Unduhan/AGSI, lalu dialog cetak dibuka.",
+      });
+      void (async () => {
+        if (d) {
+          const name = strukFileName(d.code);
+          const saved = await nativeSaveFile(buildStrukFileHtml(d), name, "text/html");
+          if (saved.ok) {
+            showNotice({
+              type: "success",
+              autoCloseMs: 4200,
+              title: "Struk Tersimpan ✓",
+              message: `File ${name} otomatis tersimpan di folder Unduhan/AGSI.`,
+            });
+          } else if (saved.message !== "dibatalkan" && saved.message !== "timeout") {
+            showNotice({
+              type: "error",
+              title: "Simpan Struk Gagal",
+              message: saved.message || "File struk tidak dapat ditulis ke penyimpanan.",
+            });
+          }
+        }
+        const printed = await nativePrintPage(`Struk ${order.code}`);
+        if (!printed.ok) {
+          showNotice({
+            type: "error",
+            title: "Dialog Cetak Gagal",
+            message: printed.message || "Cetak tidak dapat dibuka — gunakan tombol Simpan.",
+          });
+        }
+      })();
       return;
     }
     // Di aplikasi Android TANPA jembatan cetak (APK < 1.2.5): jangan diam —

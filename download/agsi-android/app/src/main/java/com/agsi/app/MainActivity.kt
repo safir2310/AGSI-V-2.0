@@ -25,6 +25,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.os.PowerManager
 import android.print.PrintAttributes
 import android.print.PrintManager
 import android.provider.MediaStore
@@ -285,6 +286,11 @@ class MainActivity : AppCompatActivity() {
         // status & chat tetap muncul sebagai notifikasi layar walau aplikasi
         // ditutup (bisa dimatikan dari Profil → Notifikasi Push).
         NotifPollerService.startIfEnabled(this)
+        // Izin BERJALAN DI LATAR BELAKANG (v1.3.9): dialog sistem "izinkan
+        // AGSI mengabaikan optimasi baterai" diminta LANGSUNG saat aplikasi
+        // dibuka — ditunda 3 detik agar tidak berebut dengan dialog izin
+        // notifikasi & gate kunci biometrik.
+        mainHandler.postDelayed({ ensureBackgroundRunningPermission() }, 3_000L)
         // Layar buka kunci biometrik — hanya saat aplikasi benar-benar baru
         // dibuka (bukan rotasi/rekreasi) dan sesi login masih tersimpan.
         maybeShowLockGate(savedInstanceState == null)
@@ -1203,6 +1209,36 @@ class MainActivity : AppCompatActivity() {
                     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                         .setData(Uri.parse("package:$packageName"))
                 )
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /**
+     * Izin BERJALAN DI LATAR BELAKANG (v1.3.9 — permintaan pemilik: minta
+     * izin dari HP langsung). Dialog sistem "izinkan AGSI mengabaikan
+     * optimasi baterai" muncul langsung saat aplikasi dibuka. Sebelumnya
+     * permintaan dicoba dari DALAM layanan latar belakang — Android 10+
+     * memblokir peluncuran aktivitas dari latar belakang, jadi dialog tak
+     * pernah tampil; dari MainActivity (di depan) dialog selalu muncul.
+     * Ulang tiap 3 hari selama belum disetujui, berhenti setelah disetujui.
+     */
+    private fun ensureBackgroundRunningPermission() {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) return
+        val prefs = getSharedPreferences("agsi_prefs", Context.MODE_PRIVATE)
+        val last = prefs.getLong("battery_asked_at", 0L)
+        if (System.currentTimeMillis() - last < 3 * 24 * 60 * 60 * 1000L) return
+        prefs.edit().putLong("battery_asked_at", System.currentTimeMillis()).apply()
+        try {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                    .setData(Uri.parse("package:$packageName"))
+            )
+        } catch (e: ActivityNotFoundException) {
+            // Fallback: daftar aplikasi yang boleh mengabaikan hemat baterai
+            try {
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             } catch (_: Exception) {
             }
         }
