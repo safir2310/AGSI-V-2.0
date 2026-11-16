@@ -42,18 +42,27 @@ const FRESH_WINDOW_MS = 3 * 60 * 1000;
  *  kartu notifikasi dibuat native di status bar, bukan di dalam halaman. */
 const NATIVE_APP = isNativeAndroidApp();
 
-/* ===== REAL-TIME: tick instan saat push FCM diteruskan aplikasi (v1.3.2+) =====
- * Aplikasi Android meneruskan push ke halaman lewat event JS "agsi-push"
- * (MainActivity → evaluateJavascript) saat aplikasi TERBUKA. Semua watcher
- * mendaftarkan fungsi tick-nya di sini, jadi popup + suara + segarkan daftar
- * pesanan/chat terjadi SEKETIKA — tidak menunggu interval polling 8–10 detik.
- * Di browser murni event ini tidak pernah menyala — polling tetap jalur
- * cadangan; saat aplikasi di latar belakang, notifikasi sistem FCM yang
- * bekerja dan watcher menangkap perubahan saat halaman kembali aktif. */
-const pushTicks = new Set<() => void>();
+/* ===== TICK INSTAN: push FCM (agsi-push) & SSE real-time (agsi-sync) =====
+ * Dua sumber memicu tick watcher TANPA menunggu interval polling 8–10 detik:
+ *  - "agsi-push" — push FCM diteruskan aplikasi Android saat TERBUKA
+ *    (MainActivity → evaluateJavascript) → SEMUA tick dijalankan.
+ *  - "agsi-sync" — sinkronisasi real-time SSE (/api/realtime): server
+ *    memberi tahu begitu data berubah di database (±1–2 detik) dengan
+ *    lingkup "orders" / "chat" → hanya tick terkait yang dijalankan.
+ * Setiap watcher mendaftarkan tick-nya beserta lingkup di sini. Di browser
+ * murni "agsi-push" tidak pernah menyala — polling tetap jalur cadangan;
+ * saat aplikasi di latar belakang, notifikasi sistem FCM yang bekerja dan
+ * watcher menangkap perubahan saat halaman kembali aktif. */
+type PushTick = { fn: () => void; scopes: Array<"orders" | "chat"> };
+const pushTicks = new Set<PushTick>();
+function fireTicks(scope?: "orders" | "chat") {
+  for (const t of pushTicks) if (!scope || t.scopes.includes(scope)) void t.fn();
+}
 if (typeof window !== "undefined") {
-  window.addEventListener("agsi-push", () => {
-    for (const tick of pushTicks) void tick();
+  window.addEventListener("agsi-push", () => fireTicks());
+  window.addEventListener("agsi-sync", (e) => {
+    const d = (e as CustomEvent).detail as { scope?: "orders" | "chat" } | null;
+    fireTicks(d?.scope);
   });
 }
 
@@ -170,12 +179,13 @@ export function AdminNewOrderWatcher({ user }: { user: AppUser }) {
     };
 
     void tick();
-    pushTicks.add(tick); // push FCM masuk → tick instan (popup real-time)
+    const reg = { fn: tick, scopes: ["orders"] as Array<"orders" | "chat"> };
+    pushTicks.add(reg); // push FCM & SSE real-time → tick instan (kabar real-time)
     const iv = setInterval(tick, 10000);
     return () => {
       alive = false;
       clearInterval(iv);
-      pushTicks.delete(tick);
+      pushTicks.delete(reg);
     };
   }, [admin, go]);
 
@@ -339,12 +349,13 @@ export function CustomerNotifWatcher({ user }: { user: AppUser }) {
     };
 
     void tick();
-    pushTicks.add(tick); // push FCM masuk → tick instan (popup real-time)
+    const reg = { fn: tick, scopes: ["orders"] as Array<"orders" | "chat"> };
+    pushTicks.add(reg); // push FCM & SSE real-time → tick instan (kabar real-time)
     const iv = setInterval(tick, 8000);
     return () => {
       alive = false;
       clearInterval(iv);
-      pushTicks.delete(tick);
+      pushTicks.delete(reg);
     };
   }, [customer, go]);
 
@@ -422,12 +433,13 @@ export function ChatNotifWatcher({ user }: { user: AppUser }) {
     };
 
     void tick();
-    pushTicks.add(tick); // push FCM masuk → tick instan (popup real-time)
+    const reg = { fn: tick, scopes: ["chat"] as Array<"orders" | "chat"> };
+    pushTicks.add(reg); // push FCM & SSE real-time → tick instan (badge & kabar chat)
     const iv = setInterval(tick, 8000);
     return () => {
       alive = false;
       clearInterval(iv);
-      pushTicks.delete(tick);
+      pushTicks.delete(reg);
     };
   }, [enabled, staff]);
 

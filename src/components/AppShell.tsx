@@ -15,6 +15,7 @@ import { NotifSuite } from "@/components/shared/NotifSuite";
 import { NotifCenterSheet } from "@/components/shared/NotifCenterSheet";
 import { CENTER_UPDATED_EVENT, listEntries, unreadCount } from "@/lib/notif-center";
 import { PushBridge } from "@/components/shared/PushBridge";
+import { SyncBridge } from "@/components/shared/SyncBridge";
 import { initAudioUnlock } from "@/lib/sound";
 import { AuthView } from "@/components/auth/AuthView";
 import { HomeView } from "@/components/customer/HomeView";
@@ -406,6 +407,10 @@ export function AppShell() {
 
       {/* ===== PUSH FCM (jembatan token Android native + popup push saat app terbuka) ===== */}
       {user && <PushBridge user={user} />}
+
+      {/* ===== SINKRONISASI REAL-TIME (SSE — pesanan & chat segar ±1–2 detik
+           di semua perangkat: web admin, kasir, pelanggan, kurir, aplikasi) ===== */}
+      {user && <SyncBridge user={user} />}
 
       {/* ===== CHAT CS GLOBAL (popup notifikasi / tombol 💬 kartu pesanan admin) ===== */}
       {user && (

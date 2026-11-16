@@ -159,6 +159,24 @@ export function ChatSheet({ open, onClose, user, targetUserId = null }: ChatShee
     return () => clearInterval(iv);
   }, [open, isAdmin, openThreadId, fetchMessages, fetchThreads]);
 
+  /** REAL-TIME (SSE /api/realtime): pesan/utas berubah di server → tarik
+   *  instan (lingkup "chat"), tanpa menunggu interval polling 4 detik. */
+  useEffect(() => {
+    if (!open) return;
+    const onSync = (e: Event) => {
+      const d = (e as CustomEvent).detail as { scope?: string } | null;
+      if (d && d.scope !== "chat") return;
+      if (isAdmin) {
+        if (openThreadId) void fetchMessages(openThreadId);
+        else void fetchThreads();
+      } else {
+        void fetchMessages();
+      }
+    };
+    window.addEventListener("agsi-sync", onSync);
+    return () => window.removeEventListener("agsi-sync", onSync);
+  }, [open, isAdmin, openThreadId, fetchMessages, fetchThreads]);
+
   /** Tutup dengan Escape */
   useEffect(() => {
     if (!open) return;
