@@ -277,6 +277,7 @@ class MainActivity : AppCompatActivity() {
         attachWebView()
         registerPushForwarder()
         registerNetworkCallback()
+        registerScreenLockCloser()
         ensureNotificationPermission()
 
         // DEEP LINK NOTIFIKASI (v1.3.10): path tujuan (mis. "/orders") tidak
@@ -345,6 +346,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
         pushReceiver = null
+        screenOffReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (_: Exception) {
+                // sudah tidak terdaftar
+            }
+        }
+        screenOffReceiver = null
         fileChooserCallback?.onReceiveValue(null)
         fileChooserCallback = null
         dismissPopup()
@@ -527,6 +536,36 @@ class MainActivity : AppCompatActivity() {
     /** Terima push dari PushService (aplikasi terbuka) → dispatch event JS
      *  "agsi-push" ke halaman web: popup + suara + segarkan data notifikasi
      *  INSTAN (real-time), tanpa menunggu interval polling halaman. */
+    /** v1.3.22 — LAYAR TERKUNCI → APLIKASI LANGSUNG DITUTUP (permintaan
+     *  pemilik): begitu layar mati/kunci (ACTION_SCREEN_OFF) aktivitas utama
+     *  ditutup habis (finishAndRemoveTask — ikut hilang dari daftar terkini)
+     *  sehingga tidak ada yang bisa membuka kunci layar lalu membaca data
+     *  penjualan. NOTIFIKASI TETAP BERJALAN: push FCM (PushService) dan
+     *  pemantau latar belakang (NotifPollerService) adalah layanan, bukan
+     *  aktivitas — kartu status bar tetap muncul walau aplikasi tertutup. */
+    private var screenOffReceiver: BroadcastReceiver? = null
+
+    private fun registerScreenLockCloser() {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action != Intent.ACTION_SCREEN_OFF) return
+                Log.i(TAG, "Layar terkunci — aplikasi ditutup otomatis")
+                finishAndRemoveTask()
+            }
+        }
+        screenOffReceiver = receiver
+        try {
+            ContextCompat.registerReceiver(
+                this,
+                receiver,
+                IntentFilter(Intent.ACTION_SCREEN_OFF),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Penutup layar terkunci tidak tersedia", e)
+        }
+    }
+
     private fun registerPushForwarder() {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
@@ -899,8 +938,16 @@ class MainActivity : AppCompatActivity() {
 
     // ==================== Simpan file dari web & cetak (jembatan AgsiNative) ====================
 
+    /** v1.3.22 — cbId yang sudah dibalas (IDEMPOTEN): pengawas dialog cetak
+     *  tidak boleh mengirim balasan kedua bila dialog ternyata terbuka —
+     *  slot callback jembatan tunggal di web akan saling menimpa. */
+    private val resolvedBridgeIds = HashSet<String>()
+
     /** Kirim hasil operasi bridge ke web: window.__agsiNativeResult({id, ok, message}) */
     fun resolveBridge(cbId: String, ok: Boolean, message: String) {
+        synchronized(resolvedBridgeIds) {
+            if (!resolvedBridgeIds.add(cbId)) return
+        }
         val payload = JSONObject().apply {
             put("id", cbId)
             put("ok", ok)
@@ -1046,13 +1093,28 @@ class MainActivity : AppCompatActivity() {
             resolveBridge(cbId, false, "halaman tidak siap")
             return
         }
+        // v1.3.22 — pengawas: bila dialog cetak TIDAK terbuka dalam 12 dtk
+        // (spooler cetak nonaktif/beku di beberapa OEM), halaman tetap menerima
+        // balasan penjelasan — dulu diam sampai batas waktu web (15 dtk) dan
+        // pengguna hanya melihat "Dialog Cetak Gagal" tanpa tahu sebabnya.
+        mainHandler.postDelayed({
+            resolveBridge(
+                cbId,
+                false,
+                "Dialog cetak tidak terbuka. Aktifkan 'Cetak' di Pengaturan ▸ Aplikasi ▸ Tampilkan aplikasi sistem, atau pasang plugin printer Anda.",
+            )
+        }, 12_000)
         try {
             val printManager = getSystemService(Context.PRINT_SERVICE) as PrintManager
-            printManager.print(title, wv.createPrintDocumentAdapter(title), PrintAttributes.Builder().build())
+            val job = printManager.print(title, wv.createPrintDocumentAdapter(title), PrintAttributes.Builder().build())
+            if (job == null) {
+                resolveBridge(cbId, false, "Layanan cetak sistem tidak merespons. Periksa layanan cetak di Pengaturan.")
+                return
+            }
             resolveBridge(cbId, true, "dialog cetak dibuka")
         } catch (e: Exception) {
             Log.w(TAG, "Gagal membuka dialog cetak", e)
-            resolveBridge(cbId, false, "perangkat tidak mendukung cetak")
+            resolveBridge(cbId, false, "Perangkat tidak dapat membuka dialog cetak: ${e.message ?: "tidak diketahui"}")
         }
     }
 

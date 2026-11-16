@@ -145,6 +145,8 @@ export function nativePrintPage(title: string): Promise<NativeResult> {
     cbId,
     (id) => printPage(id, title),
     15_000,
-    "Dialog cetak tidak muncul. Coba lagi atau gunakan tombol Simpan.",
+    // v1.3.22 — pengawas native (12 dtk) kini menjelaskan sebabnya sebelum
+    // batas waktu ini tercapai; teks ini hanya muncul bila jembatan mati.
+    "Jembatan cetak tidak merespons. Tutup dan buka ulang aplikasi AGSI, lalu coba lagi.",
   );
 }
