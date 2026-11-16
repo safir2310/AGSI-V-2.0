@@ -43,6 +43,17 @@ class AgsiNativeBridge(
     @JavascriptInterface
     fun getFcmToken(): String = PushRegistrar.cachedToken(appContext)
 
+    /** v1.3.21 — true bila Firebase ter-inisialisasi di APK ini (google-services
+     *  .json ada saat build). false = APK dibangun TANPA kredensial Firebase →
+     *  token FCM tidak akan PERNAH ada; halaman menampilkan petunjuk update
+     *  alih-alih "tunggu beberapa detik" yang sia-sia. */
+    @JavascriptInterface
+    fun isPushAvailable(): Boolean = try {
+        com.google.firebase.FirebaseApp.getApps(appContext).isNotEmpty()
+    } catch (e: Throwable) {
+        false
+    }
+
     @JavascriptInterface
     fun getAppVersion(): String = BuildConfig.VERSION_NAME
 
