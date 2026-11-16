@@ -300,10 +300,11 @@ class MainActivity : AppCompatActivity() {
         // status & chat tetap muncul sebagai notifikasi layar walau aplikasi
         // ditutup (bisa dimatikan dari Profil → Notifikasi Push).
         NotifPollerService.startIfEnabled(this)
-        // Izin BERJALAN DI LATAR BELAKANG (v1.3.9): dialog sistem "izinkan
-        // AGSI mengabaikan optimasi baterai" diminta LANGSUNG saat aplikasi
-        // dibuka — ditunda 3 detik agar tidak berebut dengan dialog izin
-        // notifikasi & gate kunci biometrik.
+        // Izin BERJALAN DI LATAR BELAKANG (v1.3.9): v1.3.26 memakai dialog
+        // milik aplikasi (teks pendek: satu kalimat + TOLAK/IZINKAN) — bukan
+        // dialog sistem panjang. Diminta LANGSUNG saat aplikasi dibuka,
+        // ditunda 3 detik agar tidak berebut dengan dialog izin notifikasi
+        // & gate kunci biometrik.
         mainHandler.postDelayed({ ensureBackgroundRunningPermission() }, 3_000L)
         // Layar buka kunci biometrik — hanya saat aplikasi benar-benar baru
         // dibuka (bukan rotasi/rekreasi) dan sesi login masih tersimpan.
@@ -1435,11 +1436,13 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Izin BERJALAN DI LATAR BELAKANG (v1.3.9 — permintaan pemilik: minta
-     * izin dari HP langsung). Dialog sistem "izinkan AGSI mengabaikan
-     * optimasi baterai" muncul langsung saat aplikasi dibuka. Sebelumnya
-     * permintaan dicoba dari DALAM layanan latar belakang — Android 10+
-     * memblokir peluncuran aktivitas dari latar belakang, jadi dialog tak
-     * pernah tampil; dari MainActivity (di depan) dialog selalu muncul.
+     * izin dari HP langsung).
+     * v1.3.26 — dialog SISTEM "izinkan AGSI mengabaikan optimasi baterai"
+     * memuat 3 paragraf penjelasan panjang; teksnya digambar OS sehingga tak
+     * bisa dipendekkan dari aplikasi (permintaan pemilik: "tanpa teks lain").
+     * Karena itu dialog milik aplikasi menggantikannya: SATU kalimat +
+     * TOLAK/IZINKAN. IZINKAN → langsung halaman baterai aplikasi di Setelan
+     * (pilih "Tidak dibatasi" sekali — tanpa dialog OS panjang lagi).
      * Ulang tiap 3 hari selama belum disetujui, berhenti setelah disetujui.
      */
     private fun ensureBackgroundRunningPermission() {
@@ -1449,18 +1452,25 @@ class MainActivity : AppCompatActivity() {
         val last = prefs.getLong("battery_asked_at", 0L)
         if (System.currentTimeMillis() - last < 3 * 24 * 60 * 60 * 1000L) return
         prefs.edit().putLong("battery_asked_at", System.currentTimeMillis()).apply()
-        try {
-            startActivity(
-                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                    .setData(Uri.parse("package:$packageName"))
-            )
-        } catch (e: ActivityNotFoundException) {
-            // Fallback: daftar aplikasi yang boleh mengabaikan hemat baterai
-            try {
-                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-            } catch (_: Exception) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.battery_dialog_title)
+            .setPositiveButton(R.string.battery_btn_allow) { _, _ ->
+                Toast.makeText(this, R.string.battery_toast_hint, Toast.LENGTH_LONG).show()
+                try {
+                    startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                            .setData(Uri.parse("package:$packageName"))
+                    )
+                } catch (_: Exception) {
+                    // Fallback: daftar aplikasi yang boleh mengabaikan hemat baterai
+                    try {
+                        startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    } catch (_: Exception) {
+                    }
+                }
             }
-        }
+            .setNegativeButton(R.string.battery_btn_deny, null)
+            .show()
     }
 
     // ==================== Util ====================

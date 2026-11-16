@@ -41,6 +41,13 @@
     <string name="notif_service_title">Notifikasi AGSI aktif</string>
     <string name="notif_service_text">Pesanan &amp; chat dipantau di latar belakang — banner muncul walau aplikasi ditutup</string>
 
+    <!-- Izin berjalan di latar belakang (v1.3.26 — dialog milik aplikasi,
+         teks pendek sesuai permintaan pemilik: satu kalimat tanpa penjelasan) -->
+    <string name="battery_dialog_title">Izinkan aplikasi berjalan di latar belakang?</string>
+    <string name="battery_btn_deny">Tolak</string>
+    <string name="battery_btn_allow">Izinkan</string>
+    <string name="battery_toast_hint">Pilih Baterai → Tidak dibatasi</string>
+
     <!-- Layar buka kunci biometrik (Face ID / sidik jari) -->
     <string name="lock_subtitle">Masuk cepat dengan sidik jari / wajah</string>
     <string name="lock_verify">Verifikasi untuk membuka aplikasi</string>
