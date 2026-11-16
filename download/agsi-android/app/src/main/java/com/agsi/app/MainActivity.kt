@@ -481,6 +481,19 @@ class MainActivity : AppCompatActivity() {
         }, 2500)
     }
 
+    /** v1.3.21 — diteruskan ke halaman web: token FCM siap/terdaftar →
+     *  PushBridge mengikat ulang token ke sesi login (event "agsi-fcm-ready")
+     *  — tanpa ini, token yang siap SETELAH login tetap anonim dan push
+     *  pesanan staf tidak pernah sampai ke perangkat ini. */
+    fun dispatchPushTokenReady() {
+        webView?.post {
+            webView?.evaluateJavascript(
+                "window.dispatchEvent(new Event('agsi-fcm-ready'));",
+                null,
+            )
+        }
+    }
+
     // ==================== Muat halaman & offline ====================
 
     /** DEEP LINK (v1.3.10): EXTRA_NAV_URL = tap notifikasi lokal
@@ -1358,22 +1371,6 @@ class MainActivity : AppCompatActivity() {
             } else {
                 launchExternal(url) // situs luar → browser/aplikasi eksternal
             }
-        }
-
-        /** v1.3.21 — render process WebView mati (kehabisan memori di perangkat
-         *  lama): Chromium TIDAK memasang ulang @JavascriptInterface bila halaman
-         *  sekadar di-reload setelah kejadian ini → stub AgsiNative mati dan
-         *  setiap panggilan jembatan melempar "non-injected object" (kasus
-         *  "Application error" berulang). Solusi tuntas: buat ulang WebView —
-         *  attachWebView() memasang ulang interface pasti. */
-        override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
-            Log.e(TAG, "Render process WebView hilang — dibuat ulang")
-            if (view === webView) {
-                mainHandler.post { recreateWebView() }
-            } else {
-                view?.destroy()
-            }
-            return true
         }
 
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
