@@ -88,7 +88,16 @@ function callBridgeWithCallback(
       w.__agsiNativeResult = prev;
       resolve({ ok: !!payload.ok, message: payload.message ?? "" });
     };
-    invoke(cbId);
+    try {
+      invoke(cbId);
+    } catch {
+      // v1.3.21 — bridge mati (interface tak terpasang ulang pasca WebView
+      // dibuat ulang) → selesaikan sebagai gagal; exception jembatan tidak
+      // boleh lolos keluar konstruktor Promise dan meruntuhkan React.
+      clearTimeout(timeout);
+      w.__agsiNativeResult = prev;
+      resolve({ ok: false, message: timeoutMessage });
+    }
   });
 }
 

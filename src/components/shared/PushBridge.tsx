@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useAppStore, useUiStore } from "@/lib/store";
 import { notifySuite, type SuiteKind } from "@/lib/notif-suite";
 import { playAgsiChat, playAgsiOrder, playAgsiStatus } from "@/lib/sound";
@@ -23,17 +23,39 @@ import type { AppUser } from "@/lib/types";
  */
 
 export function PushBridge({ user }: { user: AppUser }) {
-  // 1) Ikat token perangkat Android native ke sesi yang sedang masuk
-  useEffect(() => {
-    void (async () => {
+  // 1) Ikat token perangkat Android native ke sesi yang sedang masuk.
+  //    v1.3.21 — hasil ikatan (role server) disimpan untuk panel status sheet
+  //    notifikasi; ikatan DIPICU ULANG oleh event "agsi-fcm-ready" dari native
+  //    saat token FCM siap (install baru / token diperbarui) — dulu bila token
+  //    kosong saat login, ikatan dilewati sekali dan tidak pernah diulang →
+  //    token tetap anonim → push pesanan staf tidak pernah sampai.
+  const bindNativeToken = useCallback(async () => {
+    try {
+      const r = await registerNativeTokenIfPresent();
+      if (!r.ok) return;
       try {
-        await registerNativeTokenIfPresent();
+        localStorage.setItem(
+          "agsi_push_binding",
+          JSON.stringify({ ok: r.ok, role: r.role, at: Date.now() }),
+        );
+        window.dispatchEvent(new Event("agsi-push-binding"));
       } catch {
-        // token belum siap / jaringan gagal — PushService native & sesi berikut
-        // akan mencoba lagi otomatis
+        /* penyimpanan diblokir — abaikan */
       }
-    })();
-  }, [user.id]);
+    } catch {
+      // token belum siap / jaringan gagal — registerNativeTokenIfPresent
+      // sudah mengulang internal; sesi berikut mencoba lagi otomatis
+    }
+  }, []);
+
+  useEffect(() => {
+    void bindNativeToken();
+  }, [user.id, bindNativeToken]);
+
+  useEffect(() => {
+    window.addEventListener("agsi-fcm-ready", bindNativeToken);
+    return () => window.removeEventListener("agsi-fcm-ready", bindNativeToken);
+  }, [bindNativeToken]);
 
   // 2) Pesan push saat aplikasi tampil di depan (dikirim service worker)
   useEffect(() => {

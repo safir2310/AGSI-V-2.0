@@ -378,7 +378,19 @@ export function enableAppBiometric(): Promise<{ ok: boolean; message: string }> 
       w.__agsiNativeResult = prev;
       resolve({ ok: !!payload.ok, message: payload.message ?? "" });
     };
-    nativeEnable(cbId);
+    try {
+      nativeEnable(cbId);
+    } catch {
+      // v1.3.21 — bridge mati (interface tak terpasang ulang pasca WebView
+      // dibuat ulang) → selesaikan sebagai gagal, bukan exception tak
+      // tertangkap keluar konstruktor Promise.
+      clearTimeout(timeout);
+      w.__agsiNativeResult = prev;
+      resolve({
+        ok: false,
+        message: "Jembatan native tidak tersedia. Buka ulang aplikasi AGSI lalu coba lagi.",
+      });
+    }
   });
 }
 

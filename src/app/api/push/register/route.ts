@@ -44,6 +44,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       boundToUser: !!user,
+      // v1.3.21 — role ikatan dikembalikan untuk panel status perangkat
+      // (sheet Notifikasi Push): ikatan anonim (role null) = push staf lewat.
+      role: user?.role ?? null,
       platform,
     });
   } catch {

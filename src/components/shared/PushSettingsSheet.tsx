@@ -25,6 +25,7 @@ import {
   fetchPushConfig,
   openAutostartSettings,
   readPushStatus,
+  registerNativeTokenIfPresent,
   requestBatteryUnrestriction,
   type PushConfig,
   type PushStatus,
@@ -89,6 +90,79 @@ export function PushSettingsSheet({ open, onClose }: { open: boolean; onClose: (
     if (open && st.status?.native) setBgOk(batteryUnrestricted());
     else setBgOk(null);
   }, [open, st.status?.native]);
+
+  /** v1.3.21 — ikatan token perangkat NATIVE ke akun/role server (ditulis
+   *  PushBridge; di sini bisa diperiksa & diikat ulang sendiri bila lepas —
+   *  ikatan anonim = push pesanan staf tidak pernah sampai ke perangkat ini). */
+  const [binding, setBinding] = useState<{ ok: boolean; role: string | null } | null>(null);
+  const [rebinding, setRebinding] = useState(false);
+  const readBinding = useCallback(() => {
+    try {
+      const raw = localStorage.getItem("agsi_push_binding");
+      setBinding(raw ? (JSON.parse(raw) as { ok: boolean; role: string | null }) : null);
+    } catch {
+      setBinding(null);
+    }
+  }, []);
+  useEffect(() => {
+    if (open && st.status?.native) {
+      readBinding();
+      window.addEventListener("agsi-push-binding", readBinding);
+      return () => window.removeEventListener("agsi-push-binding", readBinding);
+    }
+    setBinding(null);
+  }, [open, st.status?.native, readBinding]);
+
+  const rebind = useCallback(async () => {
+    setRebinding(true);
+    try {
+      const r = await registerNativeTokenIfPresent();
+      if (r.ok) {
+        try {
+          localStorage.setItem(
+            "agsi_push_binding",
+            JSON.stringify({ ok: r.ok, role: r.role, at: Date.now() }),
+          );
+        } catch {
+          /* penyimpanan diblokir — abaikan */
+        }
+        showNotice({
+          type: r.role ? "success" : "info",
+          autoCloseMs: 5200,
+          title: r.role ? `Perangkat terikat role ${r.role} ✓` : "Perangkat terdaftar (anonim)",
+          message: r.role
+            ? "Push pesanan & chat sesuai role kini diarahkan ke perangkat ini."
+            : "Masuk sebagai staf (admin/owner/kasir) agar push pesanan diarahkan ke perangkat ini.",
+        });
+      } else {
+        const pesan: Record<string, { title: string; message: string }> = {
+          "no-bridge": {
+            title: "Bukan di aplikasi Android",
+            message: "Buka dari aplikasi AGSI Android (bukan browser), lalu coba lagi.",
+          },
+          "dead-bridge": {
+            title: "Jembatan native tidak merespons",
+            message: "Tutup dan buka ulang aplikasi AGSI, lalu coba lagi.",
+          },
+          "no-firebase": {
+            title: "Aplikasi belum berisi Firebase",
+            message:
+              "APK ini dibangun tanpa kredensial Firebase — perbarui aplikasi ke versi 1.3.21+ dari menu Unduh, lalu coba lagi.",
+          },
+          "no-token": {
+            title: "Token FCM belum siap",
+            message:
+              "Biasanya siap ±30 detik setelah aplikasi dibuka. Tunggu sebentar lalu coba lagi.",
+          },
+        };
+        const p = pesan[r.reason] ?? { title: "Gagal mengikat", message: "Coba lagi beberapa saat." };
+        showNotice({ type: "error", autoCloseMs: 6000, title: p.title, message: p.message });
+      }
+      readBinding();
+    } finally {
+      setRebinding(false);
+    }
+  }, [readBinding, showNotice]);
 
   useEffect(() => {
     if (!open) return;
@@ -305,6 +379,32 @@ export function PushSettingsSheet({ open, onClose }: { open: boolean; onClose: (
                                 className="press-effect rounded-xl border border-neutral-300 bg-white px-3 py-1.5 text-[10.5px] font-black text-neutral-700 hover:bg-neutral-50"
                               >
                                 Autostart (Xiaomi dll.)
+                              </button>
+                            </div>
+                          )}
+                          {/* v1.3.21 — ikatan akun & role (target push per peran);
+                              anonim/lepas → tombol ikat ulang perangkat */}
+                          <div className="h-px bg-neutral-200/70" />
+                          {statusRow({
+                            icon: <Send className="h-4 w-4" />,
+                            label: "Ikatan Akun & Role",
+                            value:
+                              binding?.ok && binding.role
+                                ? `Terikat ke role ${binding.role} — push sesuai role aktif`
+                                : binding?.ok
+                                  ? "Terdaftar anonim — push pesanan staf TIDAK sampai ke sini"
+                                  : "Belum terikat ke sesi login",
+                            ok: binding?.ok && binding.role ? true : binding?.ok ? "warn" : false,
+                          })}
+                          {(!binding?.ok || !binding?.role) && (
+                            <div className="flex gap-2 pl-12">
+                              <button
+                                onClick={() => void rebind()}
+                                disabled={rebinding}
+                                className="press-effect flex items-center gap-1.5 rounded-xl bg-orange-600 px-3 py-1.5 text-[10.5px] font-black text-white hover:bg-orange-700 disabled:opacity-60"
+                              >
+                                {rebinding && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                Ikat Ulang Perangkat
                               </button>
                             </div>
                           )}

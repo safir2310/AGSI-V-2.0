@@ -159,6 +159,37 @@ export function ChatSheet({ open, onClose, user, targetUserId = null }: ChatShee
     return () => clearInterval(iv);
   }, [open, isAdmin, openThreadId, fetchMessages, fetchThreads]);
 
+  /** v1.3.15 — GAYA WHATSAPP di aplikasi native: percakapan yang SEDANG
+   *  DIBUKA di halaman disenyapkan lewat jembatan window.AgsiNative
+   *  .setChatOpen — kartu notifikasi untuk utas ini tidak membunyikan HP
+   *  saat pengguna sedang membacanya (kartu percakapan lain tetap penuh).
+   *  v1.3.19/21 — SEMUA panggilan jembatan dibungkus try/catch: stub JS bisa
+   *  tetap ada walau objek Javanya mati (interface tak terpasang ulang pasca
+   *  render process hilang) dan melempar "non-injected object" — exception
+   *  jembatan TIDAK BOLEH meruntuhkan React. Bridge mati = fitur dilewati. */
+  useEffect(() => {
+    try {
+      const setChatOpen = (
+        window as unknown as { AgsiNative?: { setChatOpen?: (v: string) => void } }
+      ).AgsiNative?.setChatOpen;
+      if (!setChatOpen) return;
+      if (!open) {
+        setChatOpen("");
+        return;
+      }
+      setChatOpen(isAdmin ? (openThread?.userId ?? "") : "me");
+      return () => {
+        try {
+          setChatOpen("");
+        } catch {
+          /* bridge mati — abaikan */
+        }
+      };
+    } catch {
+      /* bridge mati — abaikan */
+    }
+  }, [open, isAdmin, openThread]);
+
   /** REAL-TIME (SSE /api/realtime): pesan/utas berubah di server → tarik
    *  instan (lingkup "chat"), tanpa menunggu interval polling 4 detik. */
   useEffect(() => {

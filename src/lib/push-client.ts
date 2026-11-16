@@ -65,6 +65,9 @@ export function isNativeAndroidApp(): boolean {
 
 type NativeBridge = {
   getFcmToken: () => string;
+  /** v1.3.21 — true = APK memuat kredensial Firebase (google-services.json
+   *  ada saat build); false = token FCM tidak akan PERNAH ada. */
+  isPushAvailable?: () => boolean;
   getAppVersion?: () => string;
   /** v1.3.12 — true = AGSI dikecualikan optimasi baterai (boleh berjalan
    *  di latar belakang); tanpa metode ini = aplikasi versi lama. */
@@ -154,7 +157,10 @@ export async function readPushStatus(): Promise<PushStatus> {
 
 /* ================= PENDAFTARAN TOKEN ================= */
 
-async function registerToken(token: string, platform: "web" | "android"): Promise<void> {
+async function registerToken(
+  token: string,
+  platform: "web" | "android",
+): Promise<{ role?: string | null } | null> {
   const res = await apiFetch("/api/push/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -164,6 +170,7 @@ async function registerToken(token: string, platform: "web" | "android"): Promis
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error ?? "Gagal mendaftarkan perangkat ke server.");
   }
+  return (await res.json().catch(() => null)) as { role?: string | null } | null;
 }
 
 async function unregisterToken(token: string): Promise<void> {
@@ -174,19 +181,49 @@ async function unregisterToken(token: string): Promise<void> {
   }).catch(() => undefined);
 }
 
-/** Daftarkan token aplikasi Android native (jembatan) dengan sesi login. */
-export async function registerNativeTokenIfPresent(): Promise<boolean> {
+/** Hasil pengikatan token native ke sesi login (dipakai panel status). */
+export type PushBindOutcome =
+  | { ok: true; role: string | null }
+  | { ok: false; reason: "no-bridge" | "dead-bridge" | "no-firebase" | "no-token" };
+
+/** Daftarkan token aplikasi Android native (jembatan) dengan sesi login.
+ *  v1.3.21 — (a) INSTALL BARU: SDK FCM butuh beberapa detik menyiapkan token —
+ *  diulang sampai siap (maks 8× tiap 3 dtk); dulu bila token kosong saat login,
+ *  ikatan role DILEWATI SEKALI dan tidak pernah diulang → token tetap ANONIM
+ *  → push pesanan staf tidak pernah sampai, padahal notifikasi dalam aplikasi
+ *  tetap tampil (dari DB). (b) APK tanpa kredensial Firebase terdeteksi via
+ *  isPushAvailable() → alasan "no-firebase", bukan "tunggu sebentar" sia-sia. */
+export async function registerNativeTokenIfPresent(): Promise<PushBindOutcome> {
   const bridge = getNativeBridge();
-  if (!bridge) return false;
-  let token = "";
-  try {
-    token = bridge.getFcmToken() || "";
-  } catch {
-    return false;
+  if (!bridge) return { ok: false, reason: "no-bridge" };
+  if (typeof bridge.isPushAvailable === "function") {
+    let avail: boolean;
+    try {
+      avail = bridge.isPushAvailable() === true;
+    } catch {
+      return { ok: false, reason: "dead-bridge" };
+    }
+    if (!avail) return { ok: false, reason: "no-firebase" };
   }
-  if (!token) return false;
-  await registerToken(token, "android");
-  return true;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    let token = "";
+    try {
+      token = bridge.getFcmToken() || "";
+    } catch {
+      return { ok: false, reason: "dead-bridge" }; // jembatan mati — jangan berputar
+    }
+    if (!token) {
+      await new Promise((r) => setTimeout(r, 3_000));
+      continue;
+    }
+    try {
+      const data = await registerToken(token, "android");
+      return { ok: true, role: data?.role ?? null };
+    } catch {
+      await new Promise((r) => setTimeout(r, 3_000)); // jaringan gagal — ulangi
+    }
+  }
+  return { ok: false, reason: "no-token" };
 }
 
 /* ================= WEB PUSH (Chrome dsb.) ================= */
