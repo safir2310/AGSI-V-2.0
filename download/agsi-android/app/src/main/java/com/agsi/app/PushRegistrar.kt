@@ -7,6 +7,7 @@ import android.util.Log
 import android.webkit.CookieManager
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.messaging.FirebaseMessaging
+import java.lang.ref.WeakReference
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.ExecutorService
@@ -32,6 +33,17 @@ object PushRegistrar {
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /** v1.3.21 — host aktif (MainActivity): setelah token terdaftar, halaman
+     *  web diberi tahu (event "agsi-fcm-ready") supaya PushBridge MENGIKAT
+     *  ULANG token ke sesi login — tanpa ini, token yang siap SETELAH login
+     *  tetap anonim dan push pesanan staf tidak pernah sampai. */
+    private var hostRef: WeakReference<MainActivity>? = null
+
+    private fun notifyHostTokenReady() {
+        val host = hostRef?.get() ?: return
+        mainHandler.post { host.dispatchPushTokenReady() }
+    }
+
     /** Token ter-cache — dibaca AgsiNativeBridge.getFcmToken() dari JS. */
     fun cachedToken(ctx: Context): String =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -39,6 +51,7 @@ object PushRegistrar {
 
     /** Ambil token dari SDK FCM lalu simpan + daftarkan bila berubah. */
     fun syncRegistration(ctx: Context) {
+        (ctx as? MainActivity)?.let { hostRef = WeakReference(it) }
         executor.execute {
             val appCtx = ctx.applicationContext
             val token = try {
@@ -100,6 +113,7 @@ object PushRegistrar {
                     ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                         .edit().putBoolean(KEY_REGISTERED, true).apply()
                     Log.i(TAG, "Token push terdaftar ke server (HTTP $code)")
+                    notifyHostTokenReady()
                     return true
                 }
                 Log.w(TAG, "Registrasi push gagal HTTP $code (percobaan ${attempt + 1})")

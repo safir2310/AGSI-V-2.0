@@ -453,6 +453,15 @@ class MainActivity : AppCompatActivity() {
         return wv
     }
 
+    /** v1.3.21 — JS pembersih service worker & CacheStorage (recreateWebView). */
+    private val SW_CLEANUP_JS =
+        "(function(){try{if(navigator.serviceWorker)" +
+            "navigator.serviceWorker.getRegistrations()" +
+            ".then(function(r){r.forEach(function(x){x.unregister()})});" +
+            "if(window.caches&&caches.keys)caches.keys()" +
+            ".then(function(k){k.forEach(function(x){caches.delete(x)})})}" +
+            "catch(e){}})()"
+
     /** Bangun ulang WebView setelah render process mati (anti crash/layar putih). */
     private fun recreateWebView() {
         val old = webView
@@ -465,6 +474,11 @@ class MainActivity : AppCompatActivity() {
         attachWebView()
         loadSite()
         Toast.makeText(this, R.string.webview_recovered, Toast.LENGTH_SHORT).show()
+        // v1.3.21 — pembersih service worker & CacheStorage di WebView BARU
+        // setelah halaman hidup kembali — cegah SW basi menyajikan bundle lama.
+        mainHandler.postDelayed({
+            webView?.evaluateJavascript(SW_CLEANUP_JS, null)
+        }, 2500)
     }
 
     // ==================== Muat halaman & offline ====================
@@ -1344,6 +1358,22 @@ class MainActivity : AppCompatActivity() {
             } else {
                 launchExternal(url) // situs luar → browser/aplikasi eksternal
             }
+        }
+
+        /** v1.3.21 — render process WebView mati (kehabisan memori di perangkat
+         *  lama): Chromium TIDAK memasang ulang @JavascriptInterface bila halaman
+         *  sekadar di-reload setelah kejadian ini → stub AgsiNative mati dan
+         *  setiap panggilan jembatan melempar "non-injected object" (kasus
+         *  "Application error" berulang). Solusi tuntas: buat ulang WebView —
+         *  attachWebView() memasang ulang interface pasti. */
+        override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+            Log.e(TAG, "Render process WebView hilang — dibuat ulang")
+            if (view === webView) {
+                mainHandler.post { recreateWebView() }
+            } else {
+                view?.destroy()
+            }
+            return true
         }
 
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
