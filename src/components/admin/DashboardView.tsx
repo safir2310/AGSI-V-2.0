@@ -13,7 +13,6 @@ import {
 } from "recharts";
 import {
   ArrowUpRight,
-  Bell,
   ChefHat,
   ClipboardList,
   Coins,
@@ -23,7 +22,6 @@ import {
   Users,
 } from "lucide-react";
 import { SourceBadge, StatusBadge } from "@/components/shared/StatusBadge";
-import { PushSettingsSheet } from "@/components/shared/PushSettingsSheet";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime, formatIDR, type AppUser } from "@/lib/types";
 import type { AppView } from "@/lib/store";
@@ -63,7 +61,6 @@ export function DashboardView({
   user?: AppUser | null;
 }) {
   const [data, setData] = useState<ReportData | null>(null);
-  const [pushOpen, setPushOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const prefersReduced = useReducedMotion();
 
@@ -122,16 +119,6 @@ export function DashboardView({
           <p className="text-xs text-neutral-400">Ringkasan bisnis 7 hari terakhir</p>
         </div>
         <div className="flex shrink-0 gap-2">
-          {user && (
-            <button
-              onClick={() => setPushOpen(true)}
-              aria-label="Pengaturan notifikasi pesanan"
-              title="Pengaturan notifikasi pesanan"
-              className="press-effect flex h-9 w-9 items-center justify-center rounded-full border border-orange-200 bg-white text-orange-600 shadow-sm hover:bg-orange-50"
-            >
-              <Bell className="h-4 w-4" />
-            </button>
-          )}
           <button
             onClick={load}
             aria-label="Muat ulang data"
@@ -292,9 +279,6 @@ export function DashboardView({
         </span>
         <ArrowUpRight className="h-5 w-5" />
       </motion.button>
-
-      {/* Pengaturan notifikasi pesanan (push) — admin & owner */}
-      {user && <PushSettingsSheet open={pushOpen} onClose={() => setPushOpen(false)} user={user} />}
     </div>
   );
 }

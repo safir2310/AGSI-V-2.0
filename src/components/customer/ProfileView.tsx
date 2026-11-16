@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   BadgeCheck,
-  Bell,
   Bike,
   ChevronRight,
   ClipboardList,
@@ -37,9 +36,7 @@ import { BannerSettingsSheet } from "@/components/admin/BannerSettingsSheet";
 import { QrisManagerSheet } from "@/components/admin/QrisManagerSheet";
 import { PosterGeneratorSheet } from "@/components/admin/PosterGeneratorSheet";
 import { LegalSheet } from "@/components/shared/LegalSheet";
-import { PushSettingsSheet } from "@/components/shared/PushSettingsSheet";
 import { CourierTrackingSheet } from "@/components/customer/CourierTrackingSheet";
-import { readPushStatus, type PushStatus } from "@/lib/push-client";
 import { listBiometricCredentials } from "@/lib/biometric-client";
 import { apiFetch } from "@/lib/api";
 import { useNoticeStore, useUiStore, type AppView } from "@/lib/store";
@@ -85,11 +82,9 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const [setoranBadge, setSetoranBadge] = useState(0);
   const [qrisDesc, setQrisDesc] = useState<string | null>(null);
   const [policyOpen, setPolicyOpen] = useState(false);
-  const [pushOpen, setPushOpen] = useState(false);
   const [bioOpen, setBioOpen] = useState(false);
   const [courierOpen, setCourierOpen] = useState(false);
   const [bioCount, setBioCount] = useState(0);
-  const [pushStatus, setPushStatus] = useState<PushStatus | null>(null);
   const [chatUnread, setChatUnread] = useState(0);
   const isAdmin = user.role === "ADMIN" || user.role === "OWNER";
 
@@ -203,13 +198,6 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const legalAllOk = termsOk && dataOk;
   const legalOutdated = !legalAllOk && (!!user.appTermsAt || !!user.dataConsentAt);
 
-  // Status push perangkat utk deskripsi menu — segar saat sheet dibuka/ditutup
-  useEffect(() => {
-    void readPushStatus()
-      .then(setPushStatus)
-      .catch(() => undefined);
-  }, [pushOpen]);
-
   // Jumlah perangkat biometrik terdaftar — segar saat sheet dibuka/ditutup
   useEffect(() => {
     if (!bioOpen) return;
@@ -259,19 +247,6 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
         ? `Aktif ✓ — ${bioCount} perangkat terdaftar — kelola di sini`
         : "Masuk pakai pemindaian wajah / sidik jari — aktifkan",
     onClick: () => setBioOpen(true),
-  };
-
-  const pushMenu: MenuItem = {
-    icon: Bell,
-    label: "Notifikasi Push",
-    desc: pushStatus?.native
-      ? "Aplikasi Android — heads-up aktif ✓"
-      : pushStatus?.webToken && pushStatus.permission === "granted"
-        ? "Aktif ✓ — kelola perangkat ini"
-        : pushStatus?.permission === "denied"
-          ? "Izin diblokir — ketuk untuk panduan"
-          : "Update pesanan & chat ke layar HP — aktifkan",
-    onClick: () => setPushOpen(true),
   };
 
   const courierMenu: MenuItem = {
@@ -339,7 +314,6 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
           desc: qrisDesc ?? "Dana masuk, status & tanggal transaksi QRIS — kelola di sini",
           onClick: () => setQrisOpen(true),
         },
-        pushMenu,
         bioMenu,
         policyMenu,
         { icon: Monitor, label: "Buka Mode POS Kasir", desc: "Tampilan desktop/tablet untuk transaksi", onClick: () => go("pos") },
@@ -353,7 +327,6 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
         { icon: MessageCircle, label: "Chat CS AGSI", desc: chatUnread > 0 ? `${chatUnread} balasan baru dari CS` : "Tanya stok, pesanan, & poin member", onClick: openChat, badge: chatUnread },
         { icon: ClipboardList, label: "Riwayat Pesanan", desc: `${orders.length} pesanan telah dibuat`, onClick: () => go("orders") },
         courierMenu,
-        pushMenu,
         bioMenu,
         policyMenu,
         helpMenu,
@@ -508,9 +481,6 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
       {/* Sheet syarat & kebijakan aplikasi — semua role; setuju di sini
           langsung menyinkronkan status ke AppShell (popup gate hilang) */}
       <LegalSheet open={policyOpen} onClose={() => setPolicyOpen(false)} user={user} onAccepted={onUserUpdate} />
-
-      {/* Sheet notifikasi push FCM — semua role (web + status aplikasi Android) */}
-      <PushSettingsSheet open={pushOpen} onClose={() => setPushOpen(false)} user={user} />
 
       {/* Sheet Lacak Kurir AGSI — pantau pesanan antar berjalan (kurir, kontak, rute) */}
       <CourierTrackingSheet open={courierOpen} onClose={() => setCourierOpen(false)} />

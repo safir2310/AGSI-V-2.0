@@ -7,17 +7,15 @@ import { Download, Printer, X } from "lucide-react";
 import type { OrderData } from "@/lib/types";
 import { STORE_ADDRESS, STORE_PHONE } from "@/lib/store-info";
 import { isAgsiApp, pesanPerluPembaruan } from "@/lib/app-release";
-import {
-  nativePrintPage,
-  nativePrintSupported,
-  nativeSaveFile,
-  nativeSaveSupported,
-} from "@/lib/native-file";
+import { nativeSaveFile, nativeSaveSupported } from "@/lib/native-file";
+import { buildStrukPdf } from "@/lib/struk-pdf";
 import { useNoticeStore } from "@/lib/store";
 
 /**
- * Sheet "Cetak Struk" (admin) — pratinjau struk gaya kertas termal lalu
- * mencetaknya lewat window.print(). HTML struk dipasang sebagai PORTAL
+ * Sheet "Cetak Struk" (admin) — pratinjau struk gaya kertas termal.
+ * v1.3.23: di aplikasi Android, Cetak/Simpan menulis file PDF struk ke
+ * Unduhan/AGSI (buildStrukPdf — tanpa dialog cetak sistem); di browser,
+ * Cetak tetap lewat window.print() — HTML struk dipasang sebagai PORTAL
  * langsung di <body> (bukan iframe — aman dari SecurityError lintas-origin
  * di lingkungan preview yang berjalan dalam frame); aturan @media print di
  * globals.css menyembunyikan seluruh aplikasi sehingga hanya struk yang
@@ -49,13 +47,13 @@ function fullDateTime(iso: string): string {
 }
 
 /** Nama file simpanan struk dari KODE STRUK — karakter tidak aman dibersihkan.
- *  Contoh: "AGSI-261106-A1B2" → "Struk-AGSI-261106-A1B2.html" */
-function strukFileName(code: string): string {
+ *  Contoh: "AGSI-261106-A1B2" → "Struk-AGSI-261106-A1B2.pdf" */
+function strukFileName(code: string, ext: "html" | "pdf"): string {
   const safe = code
     .trim()
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  return `Struk-${safe || "Tanpa-Kode"}.html`;
+  return `Struk-${safe || "Tanpa-Kode"}.${ext}`;
 }
 
 type ReceiptData = ReturnType<typeof receiptData>;
@@ -256,62 +254,43 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  /** Cetak TANPA iframe — akses contentDocument iframe memicu SecurityError
-      lintas-origin bila aplikasi dijalankan di dalam frame (lingkungan
-      preview). Portal struk sudah menempel di <body>; aturan @media print
-      di globals.css menyembunyikan seluruh aplikasi dan menampilkan struk
-      saja di kertas.
-      Judul dokumen diganti sementara menjadi kode struk agar opsi
-      "Simpan sebagai PDF" di dialog print otomatis bernama kode struk. */
+  /** Cetak struk. v1.3.23 — di APLIKASI ANDROID: SIMPAN PDF (permintaan
+      pemilik) — file PDF struk ditulis langsung ke Unduhan/AGSI lewat
+      jembatan native, TANPA dialog cetak sistem yang tidak reliabel di
+      sebagian perangkat (spooler nonaktif → "Dialog Cetak Gagal").
+      Di browser: window.print() — portal struk menempel di <body>; aturan
+      @media print menyembunyikan seluruh aplikasi dan menampilkan struk
+      saja; judul dokumen diganti sementara menjadi kode struk agar opsi
+      "Simpan sebagai PDF" otomatis bernama kode struk. */
   const printReceipt = () => {
     if (!order) return;
-    // Di aplikasi Android: window.print() diabaikan WebView — pakai dialog
-    // cetak sistem (PrintManager) lewat jembatan native. Aturan @media print
-    // tetap berlaku sehingga hanya struk yang tercetak.
-    if (nativePrintSupported()) {
-      // v1.3.9: BERURUTAN — file HTML struk otomatis tersimpan dulu ke
-      // Unduhan/AGSI (hasil ditunggu), baru dialog cetak dibuka. v1.3.8
-      // memanggil keduanya fire-and-forget: slot callback jembatan yang
-      // satu-slot saling menimpa sehingga balasan cetak tak pernah sampai
-      // dan klik terasa mati. Kini SETIAP langkah diberi keterangan layar.
-      showNotice({
-        type: "info",
-        autoCloseMs: 6000,
-        title: "Menyimpan Struk…",
-        message: "Struk otomatis disimpan ke Unduhan/AGSI, lalu dialog cetak dibuka.",
-      });
+    // v1.3.23 — CETAK = SIMPAN PDF di aplikasi Android (permintaan pemilik):
+    // dialog cetak sistem tidak reliabel di sebagian perangkat (spooler
+    // nonaktif), jadi tombol Cetak kini menulis file PDF struk langsung ke
+    // Unduhan/AGSI — siap dibagikan atau dicetak manual.
+    if (nativeSaveSupported()) {
       void (async () => {
-        if (d) {
-          const name = strukFileName(d.code);
-          const saved = await nativeSaveFile(buildStrukFileHtml(d), name, "text/html");
-          if (saved.ok) {
-            showNotice({
-              type: "success",
-              autoCloseMs: 4200,
-              title: "Struk Tersimpan ✓",
-              message: `File ${name} otomatis tersimpan di folder Unduhan/AGSI.`,
-            });
-          } else if (saved.message !== "dibatalkan" && saved.message !== "timeout") {
-            showNotice({
-              type: "error",
-              title: "Simpan Struk Gagal",
-              message: saved.message || "File struk tidak dapat ditulis ke penyimpanan.",
-            });
-          }
-        }
-        const printed = await nativePrintPage(`Struk ${order.code}`);
-        if (!printed.ok) {
+        if (!d) return;
+        const name = strukFileName(d.code, "pdf");
+        const saved = await nativeSaveFile(buildStrukPdf(d), name, "application/pdf");
+        if (saved.ok) {
+          showNotice({
+            type: "success",
+            autoCloseMs: 4200,
+            title: "Struk PDF Tersimpan ✓",
+            message: `File ${name} otomatis tersimpan di folder Unduhan/AGSI — siap dibagikan atau dicetak.`,
+          });
+        } else if (saved.message !== "dibatalkan" && saved.message !== "timeout") {
           showNotice({
             type: "error",
-            title: "Dialog Cetak Gagal",
-            message: printed.message || "Cetak tidak dapat dibuka — gunakan tombol Simpan.",
+            title: "Simpan Struk Gagal",
+            message: saved.message || "File struk tidak dapat ditulis ke penyimpanan.",
           });
         }
       })();
       return;
     }
-    // Di aplikasi Android TANPA jembatan cetak (APK < 1.2.5): jangan diam —
-    // WebView mengabaikan window.print() sehingga terasa "tombol mati".
+    // Di aplikasi Android TANPA jembatan simpan (APK < 1.2.5): jangan diam.
     if (isAgsiApp()) {
       showNotice({
         type: "info",
@@ -337,17 +316,17 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
     }
   };
 
-  /** Simpan struk sebagai file HTML mandiri bernama KODE STRUK, contoh:
-   *  "Struk-AGSI-261106-A1B2.html" (cek folder Unduhan). File berdiri
-   *  sendiri: bisa dibuka & dicetak ulang kapan saja tanpa aplikasi. */
+  /** Simpan struk sebagai file PDF bernama KODE STRUK, contoh:
+   *  "Struk-AGSI-261106-A1B2.pdf" (cek folder Unduhan/AGSI). PDF bisa
+   *  dibagikan (WhatsApp/email) atau dicetak ulang kapan saja. */
   const downloadReceipt = () => {
     if (!order || !d) return;
-    const name = strukFileName(d.code);
-    // Di aplikasi Android: WebView tidak bisa mengunduh blob: (dulu berujung
+    // v1.3.23 — SIMPAN PDF: WebView tidak bisa mengunduh blob: (dulu berujung
     // toast "Tidak ada aplikasi yang bisa membuka tautan ini") — tulis file
-    // langsung ke folder Unduhan lewat jembatan native.
+    // PDF langsung ke folder Unduhan lewat jembatan native.
     if (nativeSaveSupported()) {
-      void nativeSaveFile(buildStrukFileHtml(d), name, "text/html").then((res) => {
+      const name = strukFileName(d.code, "pdf");
+      void nativeSaveFile(buildStrukPdf(d), name, "application/pdf").then((res) => {
         if (!res.ok) return; // dibatalkan/gagal → tanpa umpan balik palsu
         if (savedTimer.current) clearTimeout(savedTimer.current);
         setSavedAs(name);
@@ -365,6 +344,7 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
       });
       return;
     }
+    const name = strukFileName(d.code, "html");
     try {
       const blob = new Blob([buildStrukFileHtml(d)], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
@@ -528,7 +508,7 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
                 </button>
                 <button
                   onClick={downloadReceipt}
-                  title={`Simpan struk sebagai file bernama kode struk (${strukFileName(d.code)})`}
+                  title={`Simpan struk sebagai PDF bernama kode struk (${strukFileName(d.code, "pdf")})`}
                   className="press-effect flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-orange-300 bg-orange-50 text-xs font-bold text-orange-700 hover:bg-orange-100"
                 >
                   <Download className="h-4 w-4" /> Simpan
