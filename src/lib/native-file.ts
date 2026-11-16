@@ -106,6 +106,13 @@ function callBridgeWithCallback(
   });
 }
 
+/** v1.3.25 — pesan jembatan mati (pemanggilan bridge melempar sinkron).
+ *  Aplikasi kini otomatis memeriksa & menyembuhkan jembatan begitu kembali
+ *  ke depan (probe getAppVersion → muat ulang halaman bila mati), jadi
+ *  panduannya: pindah aplikasi lalu kembali — tanpa restart penuh. */
+const BRIDGE_DEAD_MESSAGE =
+  "Koneksi aplikasi terputus. Pindah ke aplikasi lain lalu kembali ke AGSI — halaman pulih otomatis. Bila masih gagal: tutup penuh aplikasi AGSI (swipe keluar), buka lagi, coba sekali lagi.";
+
 /**
  * Simpan file (teks HTML/CSV, atau string PDF mentah dari buildStrukPdf —
  * murni ASCII) via aplikasi Android — masuk folder Unduhan (subfolder "AGSI"
@@ -132,7 +139,7 @@ export function nativeSaveFile(
     (id) => saveFile(id, utf8ToBase64(text), fileName, mimeType),
     180_000,
     "Waktu tunggu penyimpanan habis. Coba lagi.",
-    "Aplikasi perlu dimulai ulang: tutup penuh aplikasi AGSI (swipe keluar), buka lagi, lalu coba simpan sekali lagi.",
+    BRIDGE_DEAD_MESSAGE,
   );
 }
 
@@ -155,5 +162,6 @@ export function nativePrintPage(title: string): Promise<NativeResult> {
     // v1.3.22 — pengawas native (12 dtk) kini menjelaskan sebabnya sebelum
     // batas waktu ini tercapai; teks ini hanya muncul bila jembatan mati.
     "Jembatan cetak tidak merespons. Tutup dan buka ulang aplikasi AGSI, lalu coba lagi.",
+    BRIDGE_DEAD_MESSAGE,
   );
 }

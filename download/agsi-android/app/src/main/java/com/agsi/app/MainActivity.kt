@@ -260,6 +260,12 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
+        // v1.3.25 — layar TIDAK terkunci sendiri selama aplikasi di depan:
+        // kasir melayani pesanan tidak disela kunci layar otomatis di tengah
+        // pencatatan (permintaan pemilik: "aplikasi tetap terbuka"). Tombol
+        // power tetap boleh mengunci — flag ini hanya meniadkan idle timeout.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
         root = findViewById(R.id.root)
         contentSlot = findViewById(R.id.content_slot)
         popupSlot = findViewById(R.id.popup_slot)
@@ -326,6 +332,30 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         webView?.onResume()
         PushRegistrar.syncRegistration(this)
+        verifyBridgeAlive()
+    }
+
+    /** v1.3.25 — penyembuhan jembatan pasca layar terkunci/terbuka: halaman
+     *  yang hidup tapi proxy AgsiNative-nya mati membuat SIMPAN STRUK gagal
+     *  ("aplikasi perlu dimulai ulang"). Begitu kembali ke depan, panggil satu
+     *  metode bridge sinkron (getAppVersion); bila konteks halaman ada tapi
+     *  jembatan tidak menjawab → halaman dimuat ulang sekali agar jembatan
+     *  terpasang segar — pulih tanpa campur tangan pengguna. Hasil "null"
+     *  (konteks belum ada, mis. muat awal) diabaikan — bukan kasus jembatan
+     *  mati. */
+    private fun verifyBridgeAlive() {
+        mainHandler.postDelayed({
+            if (isFinishing || isDestroyed) return@postDelayed
+            val wv = webView ?: return@postDelayed
+            wv.evaluateJavascript(
+                "(function(){try{return (typeof window.AgsiNative!=='undefined'&&!(!AgsiNative.getAppVersion)&&String(AgsiNative.getAppVersion()).length>0)?'ok':'bad'}catch(e){return 'bad'}})()"
+            ) { r ->
+                if (r == "\"bad\"") {
+                    Log.w(TAG, "Jembatan mati pasca resume — muat ulang halaman (penyembuhan otomatis)")
+                    webView?.reload()
+                }
+            }
+        }, 1200L)
     }
 
     override fun onPause() {
