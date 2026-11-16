@@ -270,7 +270,16 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
     // Unduhan/AGSI — siap dibagikan atau dicetak manual.
     if (nativeSaveSupported()) {
       void (async () => {
-        if (!d) return;
+        if (!d) {
+          // v1.3.24 — jangan diam bila data struk tak terkumpul (dulu return
+          // senyap → tombol terasa mati tanpa penjelasan).
+          showNotice({
+            type: "error",
+            title: "Simpan Struk Gagal",
+            message: "Data struk tidak dapat disiapkan — tutup sheet lalu buka lagi.",
+          });
+          return;
+        }
         const name = strukFileName(d.code, "pdf");
         const saved = await nativeSaveFile(buildStrukPdf(d), name, "application/pdf");
         if (saved.ok) {

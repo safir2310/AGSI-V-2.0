@@ -943,7 +943,11 @@ class MainActivity : AppCompatActivity() {
      *  slot callback jembatan tunggal di web akan saling menimpa. */
     private val resolvedBridgeIds = HashSet<String>()
 
-    /** Kirim hasil operasi bridge ke web: window.__agsiNativeResult({id, ok, message}) */
+    /** Kirim hasil operasi bridge ke web: window.__agsiNativeResult({id, ok, message})
+     *  v1.3.24 — bila WebView belum terpasang (dibuat ulang), balasan DAHULU
+     *  dibuang diam-diam (wv?.post) sehingga web menunggu pengawas 3 menit dan
+     *  memunculkan "Waktu tunggu penyimpanan habis". Kini dikirim ulang hingga
+     *  ±6 detik — pengiriman balasan tidak pernah hilang diam-diam. */
     fun resolveBridge(cbId: String, ok: Boolean, message: String) {
         synchronized(resolvedBridgeIds) {
             if (!resolvedBridgeIds.add(cbId)) return
@@ -954,8 +958,26 @@ class MainActivity : AppCompatActivity() {
             put("message", message)
         }
         val script = "window.__agsiNativeResult && window.__agsiNativeResult(${payload})"
+        deliverBridge(script, 0)
+    }
+
+    /** Kirim script balasan ke web; WebView belum siap → ulangi tiap 400 ms
+     *  (maks 15×). Tetap aman: resolveBridge idempoten (v1.3.22) menahan
+     *  balasan ganda bila percobaan kelewat batas. */
+    private fun deliverBridge(script: String, attempt: Int) {
         val wv = peekWebView()
-        wv?.post { wv.evaluateJavascript(script, null) }
+        if (wv == null) {
+            if (attempt < 15) {
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                    { deliverBridge(script, attempt + 1) },
+                    400L,
+                )
+            } else {
+                Log.w(TAG, "Balasan bridge dibatalkan — WebView tidak tersedia (15 percobaan)")
+            }
+            return
+        }
+        wv.post { wv.evaluateJavascript(script, null) }
     }
 
     /**

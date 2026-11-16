@@ -63,12 +63,16 @@ export function utf8ToBase64(text: string): string {
 
 /** Panggil satu metode bridge dan tunggu balasan window.__agsiNativeResult.
  *  Pola sama dengan enableAppBiometric di biometric-client.ts: handler
- *  satu-slot dengan rantai prev untuk callback milik pemanggil lain. */
+ *  satu-slot dengan rantai prev untuk callback milik pemanggil lain.
+ *  failFastMessage = pesan bila PEMANGGILAN bridge langsung melempar
+ *  (jembatan mati — WebView dibuat ulang); dibedakan dari pesan timeout
+ *  agar pengguna tahu harus memulai ulang aplikasi, bukan sekadar mencoba. */
 function callBridgeWithCallback(
   cbId: string,
   invoke: (cbId: string) => void,
   timeoutMs: number,
   timeoutMessage: string,
+  failFastMessage: string = timeoutMessage,
 ): Promise<NativeResult> {
   return new Promise((resolve) => {
     const w = window as unknown as {
@@ -94,17 +98,19 @@ function callBridgeWithCallback(
       // v1.3.21 — bridge mati (interface tak terpasang ulang pasca WebView
       // dibuat ulang) → selesaikan sebagai gagal; exception jembatan tidak
       // boleh lolos keluar konstruktor Promise dan meruntuhkan React.
+      // v1.3.24 — pesan berbeda dari timeout: panduan mulai ulang aplikasi.
       clearTimeout(timeout);
       w.__agsiNativeResult = prev;
-      resolve({ ok: false, message: timeoutMessage });
+      resolve({ ok: false, message: failFastMessage });
     }
   });
 }
 
 /**
- * Simpan teks (HTML/CSV) sebagai file via aplikasi Android — masuk folder
- * Unduhan (subfolder "AGSI" di Android 10+). Toast konfirmasi ditampilkan
- * aplikasi. message "dibatalkan" = pengguna menutup dialog simpan (SAF).
+ * Simpan file (teks HTML/CSV, atau string PDF mentah dari buildStrukPdf —
+ * murni ASCII) via aplikasi Android — masuk folder Unduhan (subfolder "AGSI"
+ * di Android 10+). Toast konfirmasi ditampilkan aplikasi. message
+ * "dibatalkan" = pengguna menutup dialog simpan (SAF).
  */
 export function nativeSaveFile(
   text: string,
@@ -126,6 +132,7 @@ export function nativeSaveFile(
     (id) => saveFile(id, utf8ToBase64(text), fileName, mimeType),
     180_000,
     "Waktu tunggu penyimpanan habis. Coba lagi.",
+    "Aplikasi perlu dimulai ulang: tutup penuh aplikasi AGSI (swipe keluar), buka lagi, lalu coba simpan sekali lagi.",
   );
 }
 

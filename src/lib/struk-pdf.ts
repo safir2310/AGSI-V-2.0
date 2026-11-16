@@ -142,8 +142,11 @@ function kv(label: string, value: string, boldValue = false): Line[] {
 const SEP = "-".repeat(Math.floor(USABLE / charW(9)));
 
 /**
- * Bangun PDF struk — kembalikan string base64 (siap dikirim ke jembatan
- * nativeSaveFile sebagai "application/pdf").
+ * Bangun PDF struk — kembalikan STRING PDF MENTAH (murni ASCII, panjang
+ * string = panjang byte). Pemanggil menyerahkannya ke nativeSaveFile, yang
+ * meng-encode base64 SEKALI untuk transport; sisi native mendecode langsung
+ * menjadi byte PDF yang sah. (v1.3.23 sempat mengembalikan base64 sehingga
+ * ter-encode ganda — file tersimpan bukan PDF yang sah; diperbaiki v1.3.24.)
  */
 export function buildStrukPdf(d: StrukPdfInput): string {
   const lines: Line[] = [];
@@ -241,5 +244,6 @@ export function buildStrukPdf(d: StrukPdfInput): string {
   for (const o of offsets) out += `${String(o).padStart(10, "0")} 00000 n \n`;
   out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
 
-  return btoa(out);
+  // String PDF mentah — murni ASCII, BUKAN base64 (hindari encode ganda).
+  return out;
 }
