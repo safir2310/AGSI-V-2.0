@@ -7,7 +7,12 @@ import { Download, Printer, X } from "lucide-react";
 import type { OrderData } from "@/lib/types";
 import { STORE_ADDRESS, STORE_PHONE } from "@/lib/store-info";
 import { isAgsiApp, pesanPerluPembaruan } from "@/lib/app-release";
-import { nativeSaveFile, nativeSaveSupported } from "@/lib/native-file";
+import {
+  nativeSaveFile,
+  nativeSaveSupported,
+  nativeShareFile,
+  nativeShareSupported,
+} from "@/lib/native-file";
 import { buildStrukPdf } from "@/lib/struk-pdf";
 import { useNoticeStore } from "@/lib/store";
 
@@ -54,6 +59,34 @@ function strukFileName(code: string, ext: "html" | "pdf"): string {
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return `Struk-${safe || "Tanpa-Kode"}.${ext}`;
+}
+
+/** v1.3.27 — tangga ANTI-GAGAL untuk PDF struk (perbaikan "gagal cetak
+ *  struk"): 1) simpan ke Unduhan/AGSI; 2) galat singkat → coba 1× lagi
+ *  (galat jembatan bisa sementara); 3) tetap gagal → lembar BAGIKAN lewat
+ *  cache aplikasi (bebas galat izin/MediaStore/SAF) — pemilik meneruskan ke
+ *  WhatsApp / aplikasi printer / PDF. Timeout 3 menit tidak diulang —
+ *  langsung ke lembar bagikan. "dibatalkan" diteruskan apa adanya (diam). */
+async function saveStrukPdfWithFallback(
+  pdf: string,
+  name: string,
+): Promise<{ ok: boolean; viaShare: boolean; message: string }> {
+  let lastMsg = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 2500));
+    const saved = await nativeSaveFile(pdf, name, "application/pdf");
+    if (saved.ok) return { ok: true, viaShare: false, message: saved.message };
+    lastMsg = saved.message;
+    if (saved.message === "dibatalkan") return { ok: false, viaShare: false, message: "dibatalkan" };
+    if (saved.message.includes("Waktu tunggu")) break;
+  }
+  if (nativeShareSupported()) {
+    const shared = await nativeShareFile(pdf, name, "application/pdf");
+    if (shared.ok) return { ok: true, viaShare: true, message: shared.message };
+    if (shared.message === "dibatalkan") return { ok: false, viaShare: false, message: "dibatalkan" };
+    lastMsg = shared.message;
+  }
+  return { ok: false, viaShare: false, message: lastMsg };
 }
 
 type ReceiptData = ReturnType<typeof receiptData>;
@@ -280,20 +313,29 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
           });
           return;
         }
+        // v1.3.27 — tangga anti-gagal: simpan → coba lagi → lembar bagikan.
         const name = strukFileName(d.code, "pdf");
-        const saved = await nativeSaveFile(buildStrukPdf(d), name, "application/pdf");
-        if (saved.ok) {
+        const res = await saveStrukPdfWithFallback(buildStrukPdf(d), name);
+        if (res.ok && !res.viaShare) {
           showNotice({
             type: "success",
             autoCloseMs: 4200,
             title: "Struk PDF Tersimpan ✓",
             message: `File ${name} otomatis tersimpan di folder Unduhan/AGSI — siap dibagikan atau dicetak.`,
           });
-        } else if (saved.message !== "dibatalkan" && saved.message !== "timeout") {
+        } else if (res.ok && res.viaShare) {
+          showNotice({
+            type: "success",
+            autoCloseMs: 6000,
+            title: "Struk Siap Dicetak / Dikirim ✓",
+            message:
+              "Lembar bagikan terbuka — pilih WhatsApp, PDF, atau aplikasi printer untuk mencetak struk.",
+          });
+        } else if (res.message !== "dibatalkan" && res.message !== "timeout") {
           showNotice({
             type: "error",
             title: "Simpan Struk Gagal",
-            message: saved.message || "File struk tidak dapat ditulis ke penyimpanan.",
+            message: res.message || "File struk tidak dapat ditulis ke penyimpanan.",
           });
         }
       })();
@@ -335,12 +377,24 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
     // PDF langsung ke folder Unduhan lewat jembatan native.
     if (nativeSaveSupported()) {
       const name = strukFileName(d.code, "pdf");
-      void nativeSaveFile(buildStrukPdf(d), name, "application/pdf").then((res) => {
+      void (async () => {
+        // v1.3.27 — tangga anti-gagal yang sama dengan tombol Cetak:
+        // simpan → coba lagi → lembar bagikan.
+        const res = await saveStrukPdfWithFallback(buildStrukPdf(d), name);
         if (!res.ok) return; // dibatalkan/gagal → tanpa umpan balik palsu
+        if (res.viaShare) {
+          showNotice({
+            type: "success",
+            autoCloseMs: 6000,
+            title: "Struk Siap Dikirim ✓",
+            message:
+              "Lembar bagikan terbuka — pilih WhatsApp, PDF, atau aplikasi printer untuk mencetak struk.",
+          });
+        }
         if (savedTimer.current) clearTimeout(savedTimer.current);
         setSavedAs(name);
         savedTimer.current = setTimeout(() => setSavedAs(null), 4000);
-      });
+      })();
       return;
     }
     // Di aplikasi Android TANPA jembatan simpan (APK < 1.2.5): unduhan blob:

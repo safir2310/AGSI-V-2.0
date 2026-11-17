@@ -124,6 +124,25 @@ class AgsiNativeBridge(
     }
 
     /**
+     * BAGIKAN file dari web (v1.3.27) lewat lembar bagikan Android — fallback
+     * ANTI-GAGAL untuk saveFile: file ditulis ke cache aplikasi lalu
+     * ACTION_SEND (FileProvider), tanpa menyentuh penyimpanan Unduhan. Hasil
+     * via `window.__agsiNativeResult(cbId, ok, message)`.
+     */
+    @JavascriptInterface
+    fun shareFile(cbId: String, base64: String, fileName: String, mimeType: String) {
+        val activity = hostProvider() ?: return resolve(cbId, false, "aplikasi tidak aktif")
+        activity.main.post {
+            activity.shareFileFromCache(
+                cbId,
+                base64,
+                fileName.ifBlank { "agsi-file" },
+                mimeType.ifBlank { "application/octet-stream" },
+            )
+        }
+    }
+
+    /**
      * Buka dialog cetak sistem (PrintManager) untuk halaman web yang sedang
      * tampil — pengganti window.print() yang diabaikan WebView. Aturan
      * @media print halaman tetap berlaku, jadi hanya struk yang tercetak.

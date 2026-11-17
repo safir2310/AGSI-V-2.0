@@ -4,4 +4,9 @@
     <cache-path
         name="camera"
         path="images/" />
+
+    <!-- File sementara untuk lembar BAGIKAN (v1.3.27): PDF struk dll. -->
+    <cache-path
+        name="share"
+        path="agsi-share/" />
 </paths>

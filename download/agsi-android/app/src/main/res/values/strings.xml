@@ -47,6 +47,7 @@
     <string name="battery_btn_deny">Tolak</string>
     <string name="battery_btn_allow">Izinkan</string>
     <string name="battery_toast_hint">Pilih Baterai → Tidak dibatasi</string>
+    <string name="share_receipt_title">Bagikan Struk AGSI</string>
 
     <!-- Layar buka kunci biometrik (Face ID / sidik jari) -->
     <string name="lock_subtitle">Masuk cepat dengan sidik jari / wajah</string>

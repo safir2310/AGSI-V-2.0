@@ -24,6 +24,7 @@
 
 type NativeFileBridge = {
   saveFile?: (cbId: string, base64: string, fileName: string, mimeType: string) => boolean;
+  shareFile?: (cbId: string, base64: string, fileName: string, mimeType: string) => boolean;
   printPage?: (cbId: string, title: string) => boolean;
 };
 
@@ -48,6 +49,11 @@ export function nativeSaveSupported(): boolean {
 /** Apakah dialog cetak native tersedia (di dalam aplikasi Android v1.2.5+)? */
 export function nativePrintSupported(): boolean {
   return appFileBridge()?.printPage != null;
+}
+
+/** Apakah lembar bagikan native tersedia (APK 1.3.27+)? */
+export function nativeShareSupported(): boolean {
+  return appFileBridge()?.shareFile != null;
 }
 
 /** Encode string UTF-8 → base64 (aman untuk teks berisi emoji/aksara non-ASCII) */
@@ -139,6 +145,35 @@ export function nativeSaveFile(
     (id) => saveFile(id, utf8ToBase64(text), fileName, mimeType),
     180_000,
     "Waktu tunggu penyimpanan habis. Coba lagi.",
+    BRIDGE_DEAD_MESSAGE,
+  );
+}
+
+/**
+ * BAGIKAN file (teks, atau string PDF mentah dari buildStrukPdf) lewat lembar
+ * bagikan Android (ACTION_SEND via FileProvider, cache aplikasi) — jalur
+ * fallback ANTI-GAGAL untuk nativeSaveFile (v1.3.27): bebas galat izin/
+ * MediaStore/SAF karena tak menyentuh penyimpanan Unduhan.
+ */
+export function nativeShareFile(
+  text: string,
+  fileName: string,
+  mimeType: string,
+): Promise<NativeResult> {
+  const bridge = appFileBridge();
+  const shareFile = bridge?.shareFile;
+  if (!shareFile) {
+    return Promise.resolve({
+      ok: false,
+      message: "Perbarui aplikasi AGSI ke versi terbaru (1.3.27+) untuk berbagi file.",
+    });
+  }
+  const cbId = `share_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return callBridgeWithCallback(
+    cbId,
+    (id) => shareFile(id, utf8ToBase64(text), fileName, mimeType),
+    60_000,
+    "Lembar bagikan tidak merespons. Coba lagi.",
     BRIDGE_DEAD_MESSAGE,
   );
 }

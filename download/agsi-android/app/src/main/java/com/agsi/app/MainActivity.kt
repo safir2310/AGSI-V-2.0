@@ -7,6 +7,7 @@ import android.app.DownloadManager
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
+import android.content.ClipData
 import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Context
@@ -67,6 +68,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -1474,6 +1476,46 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ==================== Util ====================
+
+    /**
+     * BAGIKAN FILE dari web (v1.3.27): PDF struk ditulis ke cache aplikasi
+     * (agsi-share) lalu dibagikan lewat ACTION_SEND + FileProvider — jalur
+     * FALLBACK ANTI-GAGAL untuk saveFileToDownloads: tak menyentuh penyimpanan
+     * Unduhan, jadi kebal galat izin/MediaStore/SAF. Pemilik meneruskan ke
+     * WhatsApp, aplikasi printer, atau PDF viewer. Gagal → resolveBridge
+     * (false) agar web bisa menampilkan pesan.
+     */
+    fun shareFileFromCache(cbId: String, base64: String, fileName: String, mimeType: String) {
+        val bytes = try {
+            Base64.decode(base64, Base64.DEFAULT)
+        } catch (e: Exception) {
+            Log.w(TAG, "Base64 bagikan tidak valid", e)
+            resolveBridge(cbId, false, "data file tidak valid")
+            return
+        }
+        try {
+            val dir = File(cacheDir, "agsi-share").apply { mkdirs() }
+            // Cache kecil — bersihkan sisa share sebelumnya agar tak menumpuk.
+            dir.listFiles()?.forEach { it.delete() }
+            val file = File(dir, fileName.ifBlank { "agsi-file" })
+            FileOutputStream(file).use { it.write(bytes) }
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType.ifBlank { "application/octet-stream" }
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_TITLE, getString(R.string.share_receipt_title))
+                // ClipData + flag: izin baca URI diberikan ke semua aplikasi
+                // penerima dalam chooser (pola resmi Android).
+                clipData = ClipData.newRawUri(file.name, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(send, getString(R.string.share_receipt_title)))
+            resolveBridge(cbId, true, fileName)
+        } catch (e: Exception) {
+            Log.w(TAG, "Bagikan file gagal", e)
+            resolveBridge(cbId, false, "perangkat tidak menyediakan lembar bagikan")
+        }
+    }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
