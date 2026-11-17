@@ -147,10 +147,10 @@ async function fileToResizedDataUrl(file: File): Promise<string> {
   return out;
 }
 
-/** fetch dengan pengaman waktu (60 dtk): bila jaringan mati di tengah
+/** fetch dengan pengaman waktu (120 dtk): bila jaringan mati di tengah
  *  unggahan, spinner "Menyimpan" tidak menggantung selamanya — request
  *  dibatalkan dan pesan yang jelas tampil. */
-async function apiFetchTimeout(input: string, init: RequestInit, timeoutMs = 60_000): Promise<Response> {
+async function apiFetchTimeout(input: string, init: RequestInit, timeoutMs = 120_000): Promise<Response> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
@@ -159,6 +159,104 @@ async function apiFetchTimeout(input: string, init: RequestInit, timeoutMs = 60_
     clearTimeout(timer);
   }
 }
+
+/* ================= DIFF SIMPAN (v1.3.33) =================
+ * Kirim HANYA bagian yang benar-benar berubah vs keadaan server. Dulu SEMUA
+ * 5 request selalu terkirim walau user cuma mengubah satu judul — semuanya
+ * berebut uplink tipis di koneksi lambat sampai mencapai pengaman waktu
+ * ("Waktu simpan habis"). Kini edit kecil = 1 request kecil = selesai cepat. */
+
+/** Bandingkan dua payload (urutan kunci konsisten) — true = sama. */
+const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Isi request PUT bagian banner popup (tanpa gambar). */
+const bannerPayloadOf = (s: { enabled: boolean; title: string; text: string }) => ({
+  bannerEnabled: s.enabled,
+  bannerTitle: s.title.trim() || null,
+  bannerText: s.text.trim() || null,
+});
+
+/** Isi request PUT bagian strip promo. */
+const stripPayloadOf = (s: { enabled: boolean; badge: string; title: string; text: string }) => ({
+  promoStripEnabled: s.enabled,
+  promoStripBadge: s.badge.trim(),
+  promoStripTitle: s.title.trim(),
+  promoStripText: s.text.trim(),
+});
+
+/** Isi request PUT bagian hero Menu (tanpa gambar). */
+const heroPayloadOf = (s: { enabled: boolean; badge: string; title: string; text: string }) => ({
+  menuHeroEnabled: s.enabled,
+  menuHeroBadge: s.badge.trim(),
+  menuHeroTitle: s.title.trim(),
+  menuHeroText: s.text.trim(),
+});
+
+/** Isi request PUT bagian carousel Menu: voucher + 2 banner promo (tanpa gambar). */
+const menuPromoPayloadOf = (s: {
+  vpEnabled: boolean;
+  vpMax: number;
+  banners: Array<{ enabled: boolean; badge: string; title: string; text: string; emoji: string; theme: string }>;
+}) => ({
+  menuPromoVouchersEnabled: s.vpEnabled,
+  menuPromoVouchersMax: s.vpMax,
+  menuPromoBanners: s.banners.map((d, i) => ({
+    slot: i + 1,
+    enabled: d.enabled,
+    badge: d.badge.trim(),
+    title: d.title.trim(),
+    text: d.text.trim(),
+    emoji: d.emoji.trim(),
+    theme: d.theme,
+  })),
+});
+
+/** Isi request PUT bagian video promo (metadata slide — sama untuk draft & server). */
+const videoPayloadOf = (s: {
+  enabled: boolean;
+  slides: Array<{ slot?: number; enabled: boolean; title?: string; linkType?: string; productId?: string | null }>;
+}) => ({
+  videoPromoEnabled: s.enabled,
+  videoPromoSlides: s.slides.slice(0, 3).map((d, i) => ({
+    slot: d.slot ?? i + 1,
+    enabled: d.enabled !== false,
+    title: (d.title ?? "").trim(),
+    linkType: d.linkType === "product" || d.linkType === "promo" ? d.linkType : "none",
+    productId: d.linkType === "product" ? d.productId ?? null : null,
+  })),
+});
+
+type SaveSnapshot = {
+  banner: unknown;
+  strip: unknown;
+  hero: unknown;
+  menuPromo: unknown;
+  video: unknown;
+};
+
+/** Keadaan tersimpan terakhir dari store global — baseline diff simpan. */
+const saveSnapshotFromStore = (): SaveSnapshot => {
+  const st = useSettingsStore.getState();
+  const storeBanners = st.menuPromo.banners ?? EMPTY_PROMO_BANNERS;
+  return {
+    banner: bannerPayloadOf({ enabled: st.banner.bannerEnabled, title: st.banner.bannerTitle ?? "", text: st.banner.bannerText ?? "" }),
+    strip: stripPayloadOf({ enabled: st.promo.promoStripEnabled, badge: st.promo.promoStripBadge, title: st.promo.promoStripTitle, text: st.promo.promoStripText }),
+    hero: heroPayloadOf({ enabled: st.menuHero.menuHeroEnabled, badge: st.menuHero.menuHeroBadge, title: st.menuHero.menuHeroTitle, text: st.menuHero.menuHeroText }),
+    menuPromo: menuPromoPayloadOf({
+      vpEnabled: st.menuPromo.menuPromoVouchersEnabled,
+      vpMax: st.menuPromo.menuPromoVouchersMax,
+      banners: storeBanners.slice(0, 2).map((b) => ({
+        enabled: !!b.enabled,
+        badge: b.badge ?? "",
+        title: b.title ?? "",
+        text: b.text ?? "",
+        emoji: b.emoji ?? "",
+        theme: b.theme,
+      })),
+    }),
+    video: videoPayloadOf({ enabled: st.videoPromo.enabled, slides: st.videoPromo.slides ?? [] }),
+  };
+};
 
 /** Validasi + kompres gambar di luar komponen; null = gagal (notice sudah ditampilkan). */
 async function processImageFile(file: File | undefined): Promise<string | null> {
@@ -261,6 +359,8 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
   /** versi konten video promo di server — hanya utk info */
   const [vidVersion, setVidVersion] = useState<string | null>(null);
   const vidFileRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
+  /** Baseline keadaan server utk diff simpan — kirim hanya bagian yang berubah */
+  const initialRef = useRef<SaveSnapshot | null>(null);
 
   // Buka sheet → tarik nilai terbaru dari server → isi form
   const fetchCurrent = useCallback(async () => {
@@ -314,6 +414,8 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
           uploadProgress: -1,
         }))
       );
+      // Baseline untuk diff simpan (kirim hanya bagian yang berubah)
+      initialRef.current = saveSnapshotFromStore();
       // Daftar produk utk pilihan tautan "Buka produk" (gagal = pilihan tetap ada)
       try {
         const pRes = await apiFetch("/api/products", { cache: "no-store" });
@@ -564,83 +666,80 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       type SaveStep = { label: string; body: Record<string, unknown> };
       const steps: SaveStep[] = [];
 
+      // v1.3.33 — KIRIM HANYA BAGIAN YANG BENAR-BENAR BERUBAH (diff vs
+      // keadaan server saat sheet dibuka / terakhir tersimpan). Dulu SEMUA
+      // 5 request selalu terkirim walau user cuma mengubah satu judul —
+      // semuanya berebut uplink tipis di koneksi lambat sampai mencapai
+      // pengaman waktu ("Waktu simpan habis"). Kini edit kecil = 1 request
+      // kecil = selesai cepat.
+      const base = initialRef.current ?? saveSnapshotFromStore();
+
       // Bagian 1 — popup banner Beranda (teks + gambar)
-      const bannerStep: Record<string, unknown> = {
-        bannerEnabled: enabled,
-        bannerTitle: title.trim() || null,
-        bannerText: text.trim() || null,
-        bannerTouch: true, // konten berubah → naikkan versi agar popup tampil lagi
-      };
-      if (imageData !== undefined) {
-        if (imageData === null) bannerStep.bannerImageRemove = true;
-        else bannerStep.bannerImageData = imageData;
+      const bannerTeks = bannerPayloadOf({ enabled, title, text });
+      if (imageData !== undefined || !sameJson(bannerTeks, base.banner)) {
+        const bannerStep: Record<string, unknown> = { ...bannerTeks, bannerTouch: true };
+        if (imageData !== undefined) {
+          if (imageData === null) bannerStep.bannerImageRemove = true;
+          else bannerStep.bannerImageData = imageData;
+        }
+        steps.push({ label: "banner popup", body: bannerStep });
       }
-      steps.push({ label: "banner popup", body: bannerStep });
 
       // Bagian 2 — strip promo hari ini (teks saja, sangat kecil)
-      steps.push({
-        label: "strip promo",
-        body: {
-          promoStripEnabled: promoEnabled,
-          promoStripBadge: promoBadge.trim(),
-          promoStripTitle: promoTitle.trim(),
-          promoStripText: promoText.trim(),
-        },
-      });
+      const stripTeks = stripPayloadOf({ enabled: promoEnabled, badge: promoBadge, title: promoTitle, text: promoText });
+      if (!sameJson(stripTeks, base.strip)) {
+        steps.push({ label: "strip promo", body: stripTeks });
+      }
 
       // Bagian 3 — hero banner Menu (teks + gambar)
-      const heroStep: Record<string, unknown> = {
-        menuHeroEnabled: heroEnabled,
-        menuHeroBadge: heroBadge.trim(),
-        menuHeroTitle: heroTitle.trim(),
-        menuHeroText: heroText.trim(),
-        menuHeroTouch: true,
-      };
-      if (heroImageData !== undefined) {
-        if (heroImageData === null) heroStep.menuHeroImageRemove = true;
-        else heroStep.menuHeroImageData = heroImageData;
+      const heroTeks = heroPayloadOf({ enabled: heroEnabled, badge: heroBadge, title: heroTitle, text: heroText });
+      if (heroImageData !== undefined || !sameJson(heroTeks, base.hero)) {
+        const heroStep: Record<string, unknown> = { ...heroTeks, menuHeroTouch: true };
+        if (heroImageData !== undefined) {
+          if (heroImageData === null) heroStep.menuHeroImageRemove = true;
+          else heroStep.menuHeroImageData = heroImageData;
+        }
+        steps.push({ label: "hero Menu", body: heroStep });
       }
-      steps.push({ label: "hero Menu", body: heroStep });
 
       // Bagian 4 — carousel Menu: voucher + 2 banner promo (teks + gambar dua
       // slot SEKALIGUS — bagian menuPromo hanya boleh ditulis satu request)
-      steps.push({
-        label: "banner promo Menu",
-        body: {
-          menuPromoVouchersEnabled: vpEnabled,
-          menuPromoVouchersMax: vpMax,
-          menuPromoBanners: bannerDrafts.map((d, i) => ({
-            slot: i + 1,
-            enabled: d.enabled,
-            badge: d.badge.trim(),
-            title: d.title.trim(),
-            text: d.text.trim(),
-            emoji: d.emoji.trim(),
-            theme: d.theme,
-            ...(d.imageData === null
-              ? { imageRemove: true }
-              : d.imageData !== undefined
-                ? { imageData: d.imageData }
-                : {}),
-          })),
-        },
-      });
+      const mpTeks = menuPromoPayloadOf({ vpEnabled, vpMax, banners: bannerDrafts });
+      const mpGambarBerubah = bannerDrafts.some((d) => d.imageData !== undefined);
+      if (mpGambarBerubah || !sameJson(mpTeks, base.menuPromo)) {
+        steps.push({
+          label: "banner promo Menu",
+          body: {
+            ...mpTeks,
+            menuPromoBanners: bannerDrafts.map((d, i) => ({
+              ...mpTeks.menuPromoBanners[i],
+              ...(d.imageData === null
+                ? { imageRemove: true }
+                : d.imageData !== undefined
+                  ? { imageData: d.imageData }
+                  : {}),
+            })),
+          },
+        });
+      }
 
       // Bagian 5 — AGSI Smart Video Promo Banner: metadata slide saja (bytes
       // video sudah terunggah bertahap saat dipilih, via /api/settings/video-promo)
-      steps.push({
-        label: "slide video promo",
-        body: {
-          videoPromoEnabled: vidEnabled,
-          videoPromoSlides: vidSlides.map((d) => ({
-            slot: d.slot,
-            enabled: d.enabled,
-            title: d.title.trim(),
-            linkType: d.linkType,
-            productId: d.linkType === "product" ? d.productId : null,
-          })),
-        },
-      });
+      const videoTeks = videoPayloadOf({ enabled: vidEnabled, slides: vidSlides });
+      if (!sameJson(videoTeks, base.video)) {
+        steps.push({ label: "slide video promo", body: videoTeks });
+      }
+
+      // Tidak ada yang berubah → tanpa request sama sekali, selesai seketika
+      if (steps.length === 0) {
+        showNotice({
+          type: "info",
+          autoCloseMs: 3600,
+          title: "Tidak Ada Perubahan",
+          message: "Semua pengaturan Banner & Promo sudah tersimpan.",
+        });
+        return;
+      }
 
       const settled = await Promise.allSettled(
         steps.map(async (step) => {
@@ -668,7 +767,7 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       if (gagal) {
         const alasan =
           (gagal.reason as { name?: string } | null | undefined)?.name === "AbortError"
-            ? "Waktu simpan habis (±1 menit) — koneksi terlalu lambat saat itu. Coba lagi sebentar ya."
+            ? "Waktu simpan habis (±2 menit) — koneksi sangat lambat saat itu. Coba lagi sebentar ya."
             : gagal.reason instanceof TypeError
               ? "Tidak dapat menghubungi server. Bila berulang, periksa koneksi internet."
               : gagal.reason instanceof Error
@@ -689,6 +788,8 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       setBannerServerHasImage([!!mpState.banners[0]?.hasImage, !!mpState.banners[1]?.hasImage]);
       setBannerServerVersion(mpState.version);
       setBannerDrafts((prev) => prev.map((d) => ({ ...d, imageData: undefined })));
+      // Baseline baru = keadaan yang baru saja tersimpan
+      initialRef.current = saveSnapshotFromStore();
       showNotice({
         type: "success",
         autoCloseMs: 3600,
