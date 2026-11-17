@@ -168,8 +168,8 @@ async function processImageFile(file: File | undefined): Promise<string | null> 
     notice({ type: "error", title: "File Bukan Gambar", message: "Pilih file gambar (JPG, PNG, WEBP, atau GIF)." });
     return null;
   }
-  if (file.size > 8 * 1024 * 1024) {
-    notice({ type: "error", title: "Gambar Terlalu Besar", message: "Maksimal 8 MB — akan otomatis diperkecil kok." });
+  if (file.size > 5 * 1024 * 1024) {
+    notice({ type: "error", title: "Gambar Terlalu Besar", message: "Maksimal 5 MB — akan otomatis diperkecil kok." });
     return null;
   }
   try {
