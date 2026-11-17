@@ -12,10 +12,20 @@ import { decodeStoredMedia } from "@/lib/serve-image";
  * ditebak dari magic bytes.
  */
 export async function GET(_req: NextRequest) {
-  const s = await db.storeSetting.findUnique({
-    where: { id: "main" },
-    select: { menuHeroImageData: true, menuHeroImageMime: true },
-  });
+  let s: { menuHeroImageData: string | null; menuHeroImageMime: string | null } | null;
+  try {
+    s = await db.storeSetting.findUnique({
+      where: { id: "main" },
+      select: { menuHeroImageData: true, menuHeroImageMime: true },
+    });
+  } catch {
+    // Kegagalan koneksi DB sesaat (serverless) → 503 tanpa cache agar
+    // peramban mencoba lagi, bukan 500 yang membuat gambar tampak rusak.
+    return new NextResponse("Sedang sibuk — coba lagi sebentar", {
+      status: 503,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
   if (!s?.menuHeroImageData) {
     return new NextResponse("Gambar hero menu tidak ditemukan", { status: 404 });
   }

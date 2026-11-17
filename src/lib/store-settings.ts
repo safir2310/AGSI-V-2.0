@@ -10,6 +10,45 @@
  * server-side saat checkout (lihat POST /api/orders).
  */
 import { db } from "@/lib/db";
+import type { StoreSetting } from "@prisma/client";
+
+/**
+ * Baca baris pengaturan toko TANPA efek tulisan (findUnique murni).
+ *
+ * PENTING (akar bug "banner & promo tersimpan tidak muncul"): dulu semua
+ * pembacaan memakai `upsert` — endpoint publik GET /api/settings menjalankan
+ * 6 upsert PARALEL ke baris yang sama; di Prisma Postgres upsert adalah
+ * operasi tulis yang saling berebut kunci baris/koneksi sampai melewati batas
+ * ±10 detik connection pool → GET selalu jatuh ke blok catch (fallback:
+ * bannerEnabled=false & semua hasImage=false) → banner/promo yang tersimpan
+ * TIDAK PERNAH ditampilkan, padahal datanya sehat di database.
+ * Kini pembacaan read-only murni (1 query cepat, tanpa kunci tulis);
+ * pembuatan baris hanya terjadi di jalur tulis atau bila benar-benar belum ada.
+ */
+export async function readStoreSettingsRow(): Promise<StoreSetting> {
+  const row = await db.storeSetting.findUnique({ where: { id: "main" } });
+  if (row) return row;
+  // Baris belum ada (instalasi baru) → buat sekali. Balapan antar request
+  // aman: pelanggaran unik ditangkap lalu baris dibaca ulang.
+  try {
+    return await db.storeSetting.create({ data: { id: "main" } });
+  } catch {
+    const again = await db.storeSetting.findUnique({ where: { id: "main" } });
+    if (!again) throw new Error("Baris pengaturan toko (StoreSetting id=main) gagal disiapkan.");
+    return again;
+  }
+}
+
+/** Pastikan baris pengaturan ada SEBELUM `update` (pengganti pola `upsert`). */
+async function ensureStoreRowForWrite(): Promise<void> {
+  const row = await db.storeSetting.findUnique({ where: { id: "main" }, select: { id: true } });
+  if (row) return;
+  try {
+    await db.storeSetting.create({ data: { id: "main" } });
+  } catch {
+    // Baris dibuat request lain di saat bersamaan — aman lanjut ke update.
+  }
+}
 
 export type StoreSettings = {
   deliveryEnabled: boolean;
@@ -27,13 +66,9 @@ export type BannerSettings = {
   bannerVersion: string | null;
 };
 
-/** Ambil pengaturan toko — baris dibuat otomatis (default aktif semua) bila belum ada. */
+/** Ambil pengaturan toko — read-only (baris dibuat di jalur tulis bila belum ada). */
 export async function getStoreSettings(): Promise<StoreSettings> {
-  const row = await db.storeSetting.upsert({
-    where: { id: "main" },
-    update: {},
-    create: { id: "main" },
-  });
+  const row = await readStoreSettingsRow();
   return {
     deliveryEnabled: row.deliveryEnabled,
     qrisEnabled: row.qrisEnabled,
@@ -54,11 +89,7 @@ export type PromoStripSettings = {
 
 /** Ambil konten popup banner beranda (publik — tanpa bytes gambar). */
 export async function getBannerSettings(): Promise<BannerSettings> {
-  const row = await db.storeSetting.upsert({
-    where: { id: "main" },
-    update: {},
-    create: { id: "main" },
-  });
+  const row = await readStoreSettingsRow();
   return {
     bannerEnabled: row.bannerEnabled,
     bannerTitle: row.bannerTitle,
@@ -73,11 +104,7 @@ export async function getBannerSettings(): Promise<BannerSettings> {
 
 /** Ambil konten strip promo hari ini (publik). */
 export async function getPromoStripSettings(): Promise<PromoStripSettings> {
-  const row = await db.storeSetting.upsert({
-    where: { id: "main" },
-    update: {},
-    create: { id: "main" },
-  });
+  const row = await readStoreSettingsRow();
   return {
     promoStripEnabled: row.promoStripEnabled,
     promoStripBadge: row.promoStripBadge,
@@ -108,11 +135,8 @@ export async function updateStoreSettings(
     ...(typeof patch.qrisEnabled === "boolean" ? { qrisEnabled: patch.qrisEnabled } : {}),
     ...(typeof patch.ewalletEnabled === "boolean" ? { ewalletEnabled: patch.ewalletEnabled } : {}),
   };
-  const row = await db.storeSetting.upsert({
-    where: { id: "main" },
-    update: data,
-    create: { id: "main", ...data },
-  });
+  await ensureStoreRowForWrite();
+  const row = await db.storeSetting.update({ where: { id: "main" }, data });
   return {
     deliveryEnabled: row.deliveryEnabled,
     qrisEnabled: row.qrisEnabled,
@@ -135,11 +159,8 @@ export async function updateBannerSettings(patch: BannerPatch): Promise<BannerSe
   // Konten banner berubah → naikkan versi agar popup muncul lagi di sesi pelanggan
   if (patch.bannerTouch) data.bannerUpdatedAt = new Date();
 
-  await db.storeSetting.upsert({
-    where: { id: "main" },
-    update: data,
-    create: { id: "main", ...data },
-  });
+  await ensureStoreRowForWrite();
+  await db.storeSetting.update({ where: { id: "main" }, data });
   return getBannerSettings();
 }
 
@@ -158,11 +179,8 @@ export async function updatePromoStripSettings(patch: PromoStripPatch): Promise<
   if (patch.promoStripTitle !== undefined) data.promoStripTitle = patch.promoStripTitle.trim();
   if (patch.promoStripText !== undefined) data.promoStripText = patch.promoStripText.trim();
 
-  await db.storeSetting.upsert({
-    where: { id: "main" },
-    update: data,
-    create: { id: "main", ...data },
-  });
+  await ensureStoreRowForWrite();
+  await db.storeSetting.update({ where: { id: "main" }, data });
   return getPromoStripSettings();
 }
 
@@ -184,11 +202,7 @@ export type MenuHeroSettings = {
 
 /** Ambil konten hero banner menu (publik — tanpa bytes gambar). */
 export async function getMenuHeroSettings(): Promise<MenuHeroSettings> {
-  const row = await db.storeSetting.upsert({
-    where: { id: "main" },
-    update: {},
-    create: { id: "main" },
-  });
+  const row = await readStoreSettingsRow();
   return {
     menuHeroEnabled: row.menuHeroEnabled,
     menuHeroBadge: row.menuHeroBadge,
@@ -302,11 +316,7 @@ function readMenuPromoBanners(raw: unknown): MenuPromoBannerConfig[] {
 
 /** Ambil setelan carousel promo menu (publik — tanpa bytes gambar). */
 export async function getMenuPromoSettings(): Promise<MenuPromoSettings> {
-  const row = await db.storeSetting.upsert({
-    where: { id: "main" },
-    update: {},
-    create: { id: "main" },
-  });
+  const row = await readStoreSettingsRow();
   const banners = readMenuPromoBanners(row.menuPromoBanners);
   return {
     menuPromoVouchersEnabled: row.menuPromoVouchersEnabled,
@@ -355,11 +365,7 @@ export async function updateMenuPromoSettings(patch: MenuPromoPatch): Promise<Me
     data.menuPromoVouchersMax = Math.min(5, Math.max(1, Math.round(patch.menuPromoVouchersMax)));
   }
   if (Array.isArray(patch.banners) && patch.banners.length > 0) {
-    const existing = await db.storeSetting.upsert({
-      where: { id: "main" },
-      update: {},
-      create: { id: "main" },
-    });
+    const existing = await readStoreSettingsRow();
     const configs = readMenuPromoBanners(existing.menuPromoBanners);
     const imageCols: Record<string, unknown> = {};
     for (const b of patch.banners) {
@@ -392,11 +398,8 @@ export async function updateMenuPromoSettings(patch: MenuPromoPatch): Promise<Me
     Object.assign(data, imageCols);
   }
 
-  await db.storeSetting.upsert({
-    where: { id: "main" },
-    update: data,
-    create: { id: "main", ...data },
-  });
+  await ensureStoreRowForWrite();
+  await db.storeSetting.update({ where: { id: "main" }, data });
   return getMenuPromoSettings();
 }
 
@@ -416,11 +419,8 @@ export async function updateMenuHeroSettings(patch: MenuHeroPatch): Promise<Menu
   // Konten berubah → naikkan versi agar URL gambar (?v=…) tidak ter-cache lama
   if (patch.menuHeroTouch) data.menuHeroUpdatedAt = new Date();
 
-  await db.storeSetting.upsert({
-    where: { id: "main" },
-    update: data,
-    create: { id: "main", ...data },
-  });
+  await ensureStoreRowForWrite();
+  await db.storeSetting.update({ where: { id: "main" }, data });
   return getMenuHeroSettings();
 }
 
@@ -483,11 +483,7 @@ function readVideoPromoSlides(raw: unknown): VideoPromoSlideConfig[] {
 
 /** Ambil setelan video promo (publik — tanpa bytes video). */
 export async function getVideoPromoSettings(): Promise<VideoPromoSettings> {
-  const row = await db.storeSetting.upsert({
-    where: { id: "main" },
-    update: {},
-    create: { id: "main" },
-  });
+  const row = await readStoreSettingsRow();
   const slides = readVideoPromoSlides(row.videoPromoSlides);
   return {
     enabled: row.videoPromoEnabled,
@@ -535,11 +531,8 @@ export async function updateVideoPromoSettings(patch: VideoPromoPatch): Promise<
   }
   if (patch.touch) data.videoPromoUpdatedAt = new Date();
 
-  await db.storeSetting.upsert({
-    where: { id: "main" },
-    update: data,
-    create: { id: "main", ...data },
-  });
+  await ensureStoreRowForWrite();
+  await db.storeSetting.update({ where: { id: "main" }, data });
   return getVideoPromoSettings();
 }
 
@@ -582,23 +575,108 @@ export async function writeVideoPromoSlotBytes(
   data: string | null,
   mime: string | null
 ): Promise<void> {
+  await ensureStoreRowForWrite();
   if (slot === 1) {
-    await db.storeSetting.upsert({
+    await db.storeSetting.update({
       where: { id: "main" },
-      update: { videoPromoSlot1Data: data, videoPromoSlot1Mime: mime, videoPromoUpdatedAt: new Date() },
-      create: { id: "main", videoPromoSlot1Data: data, videoPromoSlot1Mime: mime },
+      data: { videoPromoSlot1Data: data, videoPromoSlot1Mime: mime, videoPromoUpdatedAt: new Date() },
     });
   } else if (slot === 2) {
-    await db.storeSetting.upsert({
+    await db.storeSetting.update({
       where: { id: "main" },
-      update: { videoPromoSlot2Data: data, videoPromoSlot2Mime: mime, videoPromoUpdatedAt: new Date() },
-      create: { id: "main", videoPromoSlot2Data: data, videoPromoSlot2Mime: mime },
+      data: { videoPromoSlot2Data: data, videoPromoSlot2Mime: mime, videoPromoUpdatedAt: new Date() },
     });
   } else {
-    await db.storeSetting.upsert({
+    await db.storeSetting.update({
       where: { id: "main" },
-      update: { videoPromoSlot3Data: data, videoPromoSlot3Mime: mime, videoPromoUpdatedAt: new Date() },
-      create: { id: "main", videoPromoSlot3Data: data, videoPromoSlot3Mime: mime },
+      data: { videoPromoSlot3Data: data, videoPromoSlot3Mime: mime, videoPromoUpdatedAt: new Date() },
     });
   }
+}
+
+/* ================= SNAPSHOT SEMUA SETELAN — 1 QUERY ================= */
+
+/** Gabungan semua setelan publik (dipakai GET /api/settings — 1 query DB). */
+export type StoreSettingsSnapshot = {
+  settings: StoreSettings;
+  banner: BannerSettings;
+  promo: PromoStripSettings;
+  menuHero: MenuHeroSettings;
+  menuPromo: MenuPromoSettings;
+  videoPromo: VideoPromoSettings;
+};
+
+/**
+ * Ambil SEMUA setelan sekaligus dari SATU pembacaan baris (read-only).
+ *
+ * Dulu GET /api/settings menjalankan 6 upsert paralel (satu per bagian) ke
+ * baris yang sama — di Prisma Postgres operasi tulis itu saling menunggu
+ * hingga timeout pool ±10 detik dan respons selalu jatuh ke fallback
+ * (bannerEnabled=false, semua hasImage=false) sehingga banner & promo yang
+ * tersimpan tidak pernah muncul. Kini: 1 query findUnique murni, cepat dan
+ * tanpa kunci tulis.
+ */
+export async function getStoreSettingsSnapshot(): Promise<StoreSettingsSnapshot> {
+  const row = await readStoreSettingsRow();
+  const banners = readMenuPromoBanners(row.menuPromoBanners);
+  const slides = readVideoPromoSlides(row.videoPromoSlides);
+  return {
+    settings: {
+      deliveryEnabled: row.deliveryEnabled,
+      qrisEnabled: row.qrisEnabled,
+      ewalletEnabled: row.ewalletEnabled,
+    },
+    banner: {
+      bannerEnabled: row.bannerEnabled,
+      bannerTitle: row.bannerTitle,
+      bannerText: row.bannerText,
+      // Ada gambar = cukup DATA saja — mime tak wajib (lihat serve-image.ts)
+      bannerHasImage: !!row.bannerImageData,
+      bannerVersion: row.bannerUpdatedAt ? row.bannerUpdatedAt.toISOString() : null,
+    },
+    promo: {
+      promoStripEnabled: row.promoStripEnabled,
+      promoStripBadge: row.promoStripBadge,
+      promoStripTitle: row.promoStripTitle,
+      promoStripText: row.promoStripText,
+    },
+    menuHero: {
+      menuHeroEnabled: row.menuHeroEnabled,
+      menuHeroBadge: row.menuHeroBadge,
+      menuHeroTitle: row.menuHeroTitle,
+      menuHeroText: row.menuHeroText,
+      menuHeroHasImage: !!row.menuHeroImageData,
+      menuHeroVersion: row.menuHeroUpdatedAt ? row.menuHeroUpdatedAt.toISOString() : null,
+    },
+    menuPromo: {
+      menuPromoVouchersEnabled: row.menuPromoVouchersEnabled,
+      menuPromoVouchersMax: row.menuPromoVouchersMax,
+      banners: banners.map((c, i) => ({
+        ...c,
+        slot: (i + 1) as 1 | 2,
+        hasImage: !!(i === 0 ? row.menuPromoBanner1ImageData : row.menuPromoBanner2ImageData),
+      })),
+      version: row.menuPromoBannersUpdatedAt ? row.menuPromoBannersUpdatedAt.toISOString() : null,
+    },
+    videoPromo: {
+      enabled: row.videoPromoEnabled,
+      version: row.videoPromoUpdatedAt ? row.videoPromoUpdatedAt.toISOString() : null,
+      slides: slides.map((c) => ({
+        ...c,
+        hasVideo: !!(
+          c.slot === 1
+            ? row.videoPromoSlot1Data
+            : c.slot === 2
+              ? row.videoPromoSlot2Data
+              : row.videoPromoSlot3Data
+        ),
+        mime:
+          c.slot === 1
+            ? row.videoPromoSlot1Mime
+            : c.slot === 2
+              ? row.videoPromoSlot2Mime
+              : row.videoPromoSlot3Mime,
+      })),
+    },
+  };
 }

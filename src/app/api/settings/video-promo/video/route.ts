@@ -17,7 +17,18 @@ export async function GET(req: NextRequest) {
   if (slot !== 1 && slot !== 2 && slot !== 3) {
     return new NextResponse("Slide video tidak ditemukan", { status: 404 });
   }
-  const { data, mime } = await getVideoPromoSlotBytes(slot);
+  let data: string | null;
+  let mime: string | null;
+  try {
+    ({ data, mime } = await getVideoPromoSlotBytes(slot));
+  } catch {
+    // Kegagalan koneksi DB sesaat (serverless) → 503 tanpa cache agar
+    // peramban mencoba lagi, bukan 500 yang membuat video tampak rusak.
+    return new NextResponse("Sedang sibuk — coba lagi sebentar", {
+      status: 503,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
   if (!data) {
     return new NextResponse("Video tidak ditemukan", { status: 404 });
   }

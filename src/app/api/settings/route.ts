@@ -7,6 +7,7 @@ import {
   getMenuPromoSettings,
   getPromoStripSettings,
   getStoreSettings,
+  getStoreSettingsSnapshot,
   getVideoPromoSettings,
   updateBannerSettings,
   updateMenuHeroSettings,
@@ -42,53 +43,54 @@ function menuHeroImageUrl(hasImage: boolean, enabled: boolean, version: string |
  * jumlah maksimalnya, dan konfigurasi 2 banner promo custom
  * (gambar latar terpisah via /api/settings/menu-promo/image?slot=1|2).
  */
+// WAJIB dinamis: respons harus membaca DB live — data banner/promo berubah
+// kapan saja dari halaman admin. Tanpa ini Next dapat membekukan respons.
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
-    const [settings, banner, promo, menuHero, menuPromo, videoPromo] = await Promise.all([
-      getStoreSettings(),
-      getBannerSettings(),
-      getPromoStripSettings(),
-      getMenuHeroSettings(),
-      getMenuPromoSettings(),
-      getVideoPromoSettings(),
-    ]);
+    // SATU query read-only untuk semua bagian (dulu 6 upsert paralel ke baris
+    // yang sama → saling menunggu kunci tulis hingga timeout pool ±10 dtk →
+    // respons selalu fallback: bannerEnabled=false & semua hasImage=false →
+    // banner/promo tersimpan tidak pernah muncul).
+    const snap = await getStoreSettingsSnapshot();
     return NextResponse.json({
-      ...settings,
+      ...snap.settings,
       banner: {
-        ...banner,
+        ...snap.banner,
         bannerImageUrl:
-          banner.bannerEnabled && banner.bannerHasImage
-            ? `/api/settings/banner/image?v=${encodeURIComponent(banner.bannerVersion ?? "1")}`
+          snap.banner.bannerEnabled && snap.banner.bannerHasImage
+            ? `/api/settings/banner/image?v=${encodeURIComponent(snap.banner.bannerVersion ?? "1")}`
             : null,
       },
-      promo,
+      promo: snap.promo,
       menuHero: {
-        ...menuHero,
+        ...snap.menuHero,
         menuHeroImageUrl: menuHeroImageUrl(
-          menuHero.menuHeroHasImage,
-          menuHero.menuHeroEnabled,
-          menuHero.menuHeroVersion
+          snap.menuHero.menuHeroHasImage,
+          snap.menuHero.menuHeroEnabled,
+          snap.menuHero.menuHeroVersion
         ),
       },
       menuPromo: {
-        ...menuPromo,
-        banners: menuPromo.banners.map((b) => ({
+        ...snap.menuPromo,
+        banners: snap.menuPromo.banners.map((b) => ({
           ...b,
           imageUrl:
             b.enabled && b.hasImage
-              ? `/api/settings/menu-promo/image?slot=${b.slot}&v=${encodeURIComponent(menuPromo.version ?? "1")}`
+              ? `/api/settings/menu-promo/image?slot=${b.slot}&v=${encodeURIComponent(snap.menuPromo.version ?? "1")}`
               : null,
         })),
       },
       // AGSI Smart Video Promo Banner — carousel video di dasar halaman Menu
       // (bytes video terpisah via /api/settings/video-promo/video?slot=1..3)
       videoPromo: {
-        ...videoPromo,
-        slides: videoPromo.slides.map((s) => ({
+        ...snap.videoPromo,
+        slides: snap.videoPromo.slides.map((s) => ({
           ...s,
           videoUrl:
-            videoPromo.enabled && s.enabled && s.hasVideo
-              ? `/api/settings/video-promo/video?slot=${s.slot}&v=${encodeURIComponent(videoPromo.version ?? "1")}`
+            snap.videoPromo.enabled && s.enabled && s.hasVideo
+              ? `/api/settings/video-promo/video?slot=${s.slot}&v=${encodeURIComponent(snap.videoPromo.version ?? "1")}`
               : null,
         })),
       },

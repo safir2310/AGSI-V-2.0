@@ -15,15 +15,30 @@ import { decodeStoredMedia } from "@/lib/serve-image";
 export async function GET(req: NextRequest) {
   const slotParam = new URL(req.url).searchParams.get("slot");
   const slot = slotParam === "2" ? 2 : 1;
-  const s = await db.storeSetting.findUnique({
-    where: { id: "main" },
-    select: {
-      menuPromoBanner1ImageData: true,
-      menuPromoBanner1ImageMime: true,
-      menuPromoBanner2ImageData: true,
-      menuPromoBanner2ImageMime: true,
-    },
-  });
+  let s: {
+    menuPromoBanner1ImageData: string | null;
+    menuPromoBanner1ImageMime: string | null;
+    menuPromoBanner2ImageData: string | null;
+    menuPromoBanner2ImageMime: string | null;
+  } | null;
+  try {
+    s = await db.storeSetting.findUnique({
+      where: { id: "main" },
+      select: {
+        menuPromoBanner1ImageData: true,
+        menuPromoBanner1ImageMime: true,
+        menuPromoBanner2ImageData: true,
+        menuPromoBanner2ImageMime: true,
+      },
+    });
+  } catch {
+    // Kegagalan koneksi DB sesaat (serverless) → 503 tanpa cache agar
+    // peramban mencoba lagi, bukan 500 yang membuat gambar tampak rusak.
+    return new NextResponse("Sedang sibuk — coba lagi sebentar", {
+      status: 503,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
   const data = slot === 1 ? s?.menuPromoBanner1ImageData : s?.menuPromoBanner2ImageData;
   const mime = slot === 1 ? s?.menuPromoBanner1ImageMime : s?.menuPromoBanner2ImageMime;
   if (!data) {

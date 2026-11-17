@@ -12,10 +12,20 @@ import { decodeStoredMedia } from "@/lib/serve-image";
  * bersamaan) tetap tersaji — Content-Type ditebak dari magic bytes.
  */
 export async function GET(_req: NextRequest) {
-  const s = await db.storeSetting.findUnique({
-    where: { id: "main" },
-    select: { bannerImageData: true, bannerImageMime: true },
-  });
+  let s: { bannerImageData: string | null; bannerImageMime: string | null } | null;
+  try {
+    s = await db.storeSetting.findUnique({
+      where: { id: "main" },
+      select: { bannerImageData: true, bannerImageMime: true },
+    });
+  } catch {
+    // Kegagalan koneksi DB sesaat (serverless) → 503 tanpa cache agar
+    // peramban mencoba lagi, bukan 500 yang membuat gambar tampak rusak.
+    return new NextResponse("Sedang sibuk — coba lagi sebentar", {
+      status: 503,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
   if (!s?.bannerImageData) {
     return new NextResponse("Gambar banner tidak ditemukan", { status: 404 });
   }
