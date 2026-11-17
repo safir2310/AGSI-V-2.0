@@ -9,4 +9,15 @@
     <cache-path
         name="share"
         path="agsi-share/" />
+
+    <!-- File sementara untuk dialog cetak PDF via printer sistem (v1.3.28) -->
+    <cache-path
+        name="print"
+        path="print/" />
+
+    <!-- File hasil simpan langsung Unduhan/AGSI di Android 8–9 — tap kartu
+         notifikasi unduhan membuka file lewat FileProvider -->
+    <external-path
+        name="downloads"
+        path="Download/AGSI/" />
 </paths>

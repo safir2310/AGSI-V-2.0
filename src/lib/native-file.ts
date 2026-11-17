@@ -26,6 +26,8 @@ type NativeFileBridge = {
   saveFile?: (cbId: string, base64: string, fileName: string, mimeType: string) => boolean;
   shareFile?: (cbId: string, base64: string, fileName: string, mimeType: string) => boolean;
   printPage?: (cbId: string, title: string) => boolean;
+  /** v1.3.28 — cetak FILE PDF via printer sistem (PdfPrintAdapter) */
+  printPdf?: (cbId: string, base64: string, fileName: string) => boolean;
 };
 
 type NativeResult = { ok: boolean; message: string };
@@ -49,6 +51,11 @@ export function nativeSaveSupported(): boolean {
 /** Apakah dialog cetak native tersedia (di dalam aplikasi Android v1.2.5+)? */
 export function nativePrintSupported(): boolean {
   return appFileBridge()?.printPage != null;
+}
+
+/** Apakah cetak FILE PDF via printer sistem tersedia (APK 1.3.28+)? */
+export function nativePrintPdfSupported(): boolean {
+  return appFileBridge()?.printPdf != null;
 }
 
 /** Apakah lembar bagikan native tersedia (APK 1.3.27+)? */
@@ -118,6 +125,33 @@ function callBridgeWithCallback(
  *  panduannya: pindah aplikasi lalu kembali — tanpa restart penuh. */
 const BRIDGE_DEAD_MESSAGE =
   "Koneksi aplikasi terputus. Pindah ke aplikasi lain lalu kembali ke AGSI — halaman pulih otomatis. Bila masih gagal: tutup penuh aplikasi AGSI (swipe keluar), buka lagi, coba sekali lagi.";
+
+/**
+ * CETAK FILE PDF via printer sistem Android (v1.3.28 — permintaan pemilik:
+ * "gunakan printer sistem android untuk cetak struk dan laporan"). Dialog
+ * cetak sistem terbuka atas FILE PDF sungguhan — semua printer terpasang
+ * (thermal 58/80 mm, Bluetooth, jaringan) plus "Simpan sebagai PDF".
+ */
+export function nativePrintPdf(pdf: string, fileName: string): Promise<NativeResult> {
+  const bridge = appFileBridge();
+  const printPdf = bridge?.printPdf;
+  if (!printPdf) {
+    return Promise.resolve({
+      ok: false,
+      message: "Perbarui aplikasi AGSI ke versi terbaru (1.3.28+) untuk cetak printer sistem.",
+    });
+  }
+  const cbId = `printpdf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return callBridgeWithCallback(
+    cbId,
+    (id) => printPdf(id, utf8ToBase64(pdf), fileName),
+    15_000,
+    // Pengawas native (12 dtk) menjelaskan sebabnya lebih dulu; pesan ini
+    // hanya muncul bila jembatan mati sebelum pengawas sempat menjawab.
+    "Jembatan cetak tidak merespons. Tutup dan buka ulang aplikasi AGSI, lalu coba lagi.",
+    BRIDGE_DEAD_MESSAGE,
+  );
+}
 
 /**
  * Simpan file (teks HTML/CSV, atau string PDF mentah dari buildStrukPdf —

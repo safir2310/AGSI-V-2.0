@@ -154,6 +154,21 @@ class AgsiNativeBridge(
     }
 
     /**
+     * CETAK FILE PDF via printer sistem Android (v1.3.28 — permintaan pemilik):
+     * dialog cetak sistem atas FILE PDF sungguhan (PdfPrintAdapter) — semua
+     * printer terpasang tersedia (thermal 58/80 mm, Bluetooth, jaringan) plus
+     * opsi "Simpan sebagai PDF". Dipakai tombol Cetak struk & laporan.
+     * Hasil via `window.__agsiNativeResult(cbId, ok, message)`.
+     */
+    @JavascriptInterface
+    fun printPdf(cbId: String, base64: String, fileName: String) {
+        val activity = hostProvider() ?: return resolve(cbId, false, "aplikasi tidak aktif")
+        activity.main.post {
+            activity.printPdfFile(cbId, base64, fileName.ifBlank { "agsi-dokumen.pdf" })
+        }
+    }
+
+    /**
      * Saklar NOTIFIKASI LATAR BELAKANG dari halaman web (Profil → Notifikasi
      * Push). true = layanan pemantau (NotifPollerService) berjalan sehingga
      * notifikasi pesanan/chat tetap muncul walau aplikasi ditutup.

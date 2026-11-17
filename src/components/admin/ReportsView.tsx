@@ -22,6 +22,7 @@ import { apiFetch } from "@/lib/api";
 import { formatIDR } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { nativePrintPage, nativePrintSupported, nativeSaveFile, nativeSaveSupported } from "@/lib/native-file";
+import { FileNameConfirm } from "@/components/shared/FileNameConfirm";
 import { isAgsiApp, pesanPerluPembaruan } from "@/lib/app-release";
 
 type ReportData = {
@@ -334,32 +335,32 @@ export function ReportsView() {
     load(days);
   }, [days]);
 
-  const exportCsv = () => {
-    if (!data) return;
+  // v1.3.28 — popup konfirmasi nama file sebelum Simpan/Cetak laporan
+  // (permintaan pemilik: "saat klik simpan atau cetak tampilkan popup nama
+  // file yg akan di simpan").
+  const [filePopup, setFilePopup] = useState<null | { kind: "csv" | "print" }>(null);
+  const [popupName, setPopupName] = useState("");
+  const [popupBusy, setPopupBusy] = useState(false);
+
+  /** Susun isi CSV laporan (dipakai ekspor native & browser). */
+  const buildReportCsv = () => {
+    if (!data) return "";
     const rows = [
       ["Tanggal", "Pendapatan", "Jumlah Pesanan"],
       ...data.daily.map((d) => [d.label, String(d.revenue), String(d.orders)]),
     ];
-    const csv = rows.map((r) => r.join(";")).join("\n");
+    return rows.map((r) => r.join(";")).join("\n");
+  };
+
+  const exportCsv = () => {
+    if (!data) return;
     const name = `laporan-agsi-${days}-hari.csv`;
-    // Di aplikasi Android: unduhan blob: tidak didukung WebView — simpan file
-    // langsung ke folder Unduhan lewat jembatan native.
+    // Di aplikasi Android: unduhan blob: tidak didukung WebView — popup nama
+    // file dulu (v1.3.28), lalu simpan ke Unduhan lewat jembatan native
+    // (ditandai notifikasi unduhan di status bar oleh aplikasi).
     if (nativeSaveSupported()) {
-      void nativeSaveFile("\uFEFF" + csv, name, "text/csv").then((res) => {
-        if (res.ok) {
-          showNotice({
-            type: "success",
-            title: "Laporan Diekspor ✓",
-            message: `File ${name} tersimpan di folder Unduhan. Bisa dibuka di Excel / Google Sheets.`,
-          });
-        } else if (res.message !== "dibatalkan" && res.message !== "timeout") {
-          showNotice({
-            type: "error",
-            title: "Ekspor Gagal",
-            message: res.message || "Gagal menyimpan file laporan.",
-          });
-        }
-      });
+      setPopupName(name);
+      setFilePopup({ kind: "csv" });
       return;
     }
     // Di aplikasi Android TANPA jembatan simpan (APK < 1.2.5): unduhan blob:
@@ -372,7 +373,7 @@ export function ReportsView() {
       });
       return;
     }
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(["\uFEFF" + buildReportCsv()], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -398,39 +399,13 @@ export function ReportsView() {
    *  tersedia. */
   const printReport = () => {
     if (!data) return;
+    // v1.3.28 — popup nama file dulu (permintaan pemilik), lalu alur cetak:
+    // simpan HTML laporan ke Unduhan/AGSI + notifikasi unduhan di status bar
+    // (sisi native), lalu dialog cetak SISTEM Android (PrintManager) —
+    // pilih printer terpasang atau "Simpan sebagai PDF".
     if (nativePrintSupported()) {
-      showNotice({
-        type: "info",
-        autoCloseMs: 6000,
-        title: "Menyimpan Laporan…",
-        message: "Laporan otomatis disimpan ke Unduhan/AGSI, lalu dialog cetak dibuka.",
-      });
-      void (async () => {
-        const name = `laporan-agsi-${days}-hari.html`;
-        const saved = await nativeSaveFile(buildLaporanFileHtml(data, days), name, "text/html");
-        if (saved.ok) {
-          showNotice({
-            type: "success",
-            autoCloseMs: 4200,
-            title: "Laporan Tersimpan ✓",
-            message: `File ${name} otomatis tersimpan di folder Unduhan/AGSI.`,
-          });
-        } else if (saved.message !== "dibatalkan" && saved.message !== "timeout") {
-          showNotice({
-            type: "error",
-            title: "Simpan Laporan Gagal",
-            message: saved.message || "File laporan tidak dapat ditulis ke penyimpanan.",
-          });
-        }
-        const printed = await nativePrintPage(`Laporan AGSI ${days} Hari`);
-        if (!printed.ok) {
-          showNotice({
-            type: "error",
-            title: "Dialog Cetak Gagal",
-            message: printed.message || "Cetak tidak dapat dibuka — gunakan tombol Ekspor.",
-          });
-        }
-      })();
+      setPopupName(`laporan-agsi-${days}-hari.html`);
+      setFilePopup({ kind: "print" });
       return;
     }
     // Di aplikasi Android TANPA jembatan cetak (APK < 1.2.5): window.print()
@@ -444,6 +419,78 @@ export function ReportsView() {
       return;
     }
     window.print();
+  };
+
+  /** Jalur simpan CSV native — dipanggil setelah popup nama file dikonfirmasi.
+   *  Aplikasi Android menandai penyimpanan dengan notifikasi unduhan di
+   *  status bar (kartu "Unduhan selesai" bisa diketuk untuk membuka file). */
+  const runCsvExport = async (name: string) => {
+    const res = await nativeSaveFile("\uFEFF" + buildReportCsv(), name, "text/csv");
+    if (res.ok) {
+      showNotice({
+        type: "success",
+        title: "Laporan Diekspor ✓",
+        message: `File ${name} tersimpan di folder Unduhan/AGSI — cek notifikasi unduhan di status bar. Bisa dibuka di Excel / Google Sheets.`,
+      });
+    } else if (res.message !== "dibatalkan" && res.message !== "timeout") {
+      showNotice({
+        type: "error",
+        title: "Ekspor Gagal",
+        message: res.message || "Gagal menyimpan file laporan.",
+      });
+    }
+  };
+
+  /** Jalur cetak laporan native — simpan HTML ke Unduhan/AGSI (dengan
+   *  notifikasi unduhan status bar), lalu buka dialog cetak sistem Android. */
+  const runPrintFlow = async (name: string) => {
+    if (!data) return;
+    showNotice({
+      type: "info",
+      autoCloseMs: 6000,
+      title: "Menyimpan Laporan…",
+      message: "Laporan otomatis disimpan ke Unduhan/AGSI, lalu dialog cetak dibuka.",
+    });
+    const saved = await nativeSaveFile(buildLaporanFileHtml(data, days), name, "text/html");
+    if (saved.ok) {
+      showNotice({
+        type: "success",
+        autoCloseMs: 4200,
+        title: "Laporan Tersimpan ✓",
+        message: `File ${name} tersimpan di folder Unduhan/AGSI — notifikasi unduhan tampil di status bar.`,
+      });
+    } else if (saved.message !== "dibatalkan" && saved.message !== "timeout") {
+      showNotice({
+        type: "error",
+        title: "Simpan Laporan Gagal",
+        message: saved.message || "File laporan tidak dapat ditulis ke penyimpanan.",
+      });
+    }
+    const printed = await nativePrintPage(`Laporan AGSI ${days} Hari`);
+    if (!printed.ok) {
+      showNotice({
+        type: "error",
+        title: "Dialog Cetak Gagal",
+        message: printed.message || "Cetak tidak dapat dibuka — gunakan tombol Ekspor.",
+      });
+    }
+  };
+
+  /** Konfirmasi popup nama file laporan → jalankan simpan/cetak terpilih. */
+  const confirmFilePopup = () => {
+    if (!data || !filePopup) return;
+    const name = popupName.trim();
+    if (!name) return;
+    setPopupBusy(true);
+    void (async () => {
+      try {
+        if (filePopup.kind === "csv") await runCsvExport(name);
+        else await runPrintFlow(name);
+        setFilePopup(null);
+      } finally {
+        setPopupBusy(false);
+      }
+    })();
   };
 
   return (
@@ -649,6 +696,28 @@ export function ReportsView() {
 
       {/* Layout kertas — tersembunyi di layar, tampil saat mencetak */}
       {data && <LaporanPrintPortal data={data} days={days} />}
+
+      {/* v1.3.28 — POPUP KONFIRMASI NAMA FILE (permintaan pemilik): muncul
+          saat tombol Simpan (CSV) / Cetak diklik, menampilkan nama file yang
+          akan disimpan sebelum aksi lanjut. */}
+      <FileNameConfirm
+        open={!!filePopup}
+        title={filePopup?.kind === "csv" ? "Simpan Laporan (CSV)" : "Cetak Laporan"}
+        emoji={filePopup?.kind === "csv" ? "📊" : "🖨️"}
+        fileName={popupName}
+        onFileNameChange={setPopupName}
+        hint={
+          filePopup?.kind === "csv"
+            ? "File CSV disimpan ke folder Unduhan/AGSI — muncul notifikasi unduhan di status bar; ketuk untuk membuka."
+            : "File HTML laporan otomatis disimpan ke Unduhan/AGSI (dengan notifikasi unduhan), lalu dialog printer sistem Android terbuka — pilih printer atau \"Simpan sebagai PDF\"."
+        }
+        primaryLabel={filePopup?.kind === "csv" ? "Simpan ke Unduhan" : "Simpan + Cetak"}
+        busy={popupBusy}
+        onCancel={() => {
+          if (!popupBusy) setFilePopup(null);
+        }}
+        onConfirm={confirmFilePopup}
+      />
     </div>
   );
 }

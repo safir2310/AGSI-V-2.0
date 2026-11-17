@@ -220,9 +220,12 @@ class MainActivity : AppCompatActivity() {
                 contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
                     ?: throw IOException("Tidak bisa membuka output stream")
                 Toast.makeText(this, getString(R.string.file_saved, name), Toast.LENGTH_LONG).show()
+                // v1.3.28 — kartu unduhan selesai (tap → buka file hasil SAF)
+                DownloadNotifier.completed(this, name, mime, uri)
                 resolveBridge(cbId, true, name)
             } catch (e: Exception) {
                 Log.w(TAG, "Gagal menulis file hasil dialog simpan", e)
+                DownloadNotifier.failed(this, name)
                 resolveBridge(cbId, false, "gagal menulis file")
             }
         }
@@ -1029,6 +1032,10 @@ class MainActivity : AppCompatActivity() {
             resolveBridge(cbId, false, "data file tidak valid")
             return
         }
+        // v1.3.28 — notifikasi unduhan di status bar: kartu "Mengunduh…"
+        // langsung tampil (permintaan pemilik), diperbarui jadi "selesai"
+        // saat file tertulis.
+        DownloadNotifier.progress(this, fileName)
         if (Build.VERSION.SDK_INT >= 29) {
             try {
                 val resolver = contentResolver
@@ -1046,6 +1053,8 @@ class MainActivity : AppCompatActivity() {
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0)
                 resolver.update(uri, values, null, null)
                 Toast.makeText(this, getString(R.string.file_saved, fileName), Toast.LENGTH_LONG).show()
+                // v1.3.28 — kartu "Unduhan selesai ✓" (ketuk → buka file)
+                DownloadNotifier.completed(this, fileName, mimeType, uri)
                 resolveBridge(cbId, true, fileName)
             } catch (e: Exception) {
                 Log.w(TAG, "MediaStore gagal — pakai dialog Simpan-ke (SAF)", e)
@@ -1130,6 +1139,8 @@ class MainActivity : AppCompatActivity() {
             }
             target.outputStream().use { it.write(bytes) }
             Toast.makeText(this, getString(R.string.file_saved, target.name), Toast.LENGTH_LONG).show()
+            // v1.3.28 — kartu unduhan selesai (tap → buka via FileProvider)
+            DownloadNotifier.completed(this, target.name, mimeType, DownloadNotifier.fileProviderUri(this, target))
             resolveBridge(cbId, true, target.name)
         } catch (e: Exception) {
             Log.w(TAG, "Simpan langsung Unduhan gagal — pakai dialog Simpan-ke (SAF)", e)
@@ -1170,6 +1181,53 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.w(TAG, "Gagal membuka dialog cetak", e)
             resolveBridge(cbId, false, "Perangkat tidak dapat membuka dialog cetak: ${e.message ?: "tidak diketahui"}")
+        }
+    }
+
+    /**
+     * CETAK FILE PDF via printer sistem Android (v1.3.28 — permintaan pemilik:
+     * "gunakan printer sistem android untuk cetak struk dan laporan").
+     *
+     * Berbeda dari printPage() yang mencetak HALAMAN WEB dengan aturan @media
+     * print, metode ini mencetak FILE PDF sungguhan (hasil buildStrukPdf /
+     * dokumen laporan) lewat PdfPrintAdapter — dialog cetak sistem menawarkan
+     * semua printer terpasang (thermal 58/80 mm, Bluetooth, jaringan) plus
+     * "Simpan sebagai PDF". PDF sementara ditulis di cache app lalu diserahkan
+     * ke spooler. Hasil via resolveBridge (pengawas 12 dtk seperti printPage).
+     */
+    fun printPdfFile(cbId: String, base64: String, fileName: String) {
+        val bytes = try {
+            Base64.decode(base64, Base64.DEFAULT)
+        } catch (e: Exception) {
+            Log.w(TAG, "Base64 PDF dari web tidak valid", e)
+            resolveBridge(cbId, false, "data PDF tidak valid")
+            return
+        }
+        mainHandler.postDelayed({
+            resolveBridge(
+                cbId,
+                false,
+                "Dialog cetak tidak terbuka. Aktifkan 'Cetak' di Pengaturan ▸ Aplikasi ▸ Tampilkan aplikasi sistem, atau pasang plugin printer Anda.",
+            )
+        }, 12_000)
+        try {
+            val dir = File(cacheDir, "print").apply { mkdirs() }
+            val pdf = File(dir, fileName.ifBlank { "agsi-dokumen.pdf" })
+            pdf.outputStream().use { it.write(bytes) }
+            val printManager = getSystemService(Context.PRINT_SERVICE) as PrintManager
+            val job = printManager.print(
+                fileName.substringBeforeLast('.').ifBlank { "AGSI Dokumen" },
+                PdfPrintAdapter(pdf, fileName),
+                PrintAttributes.Builder().build(),
+            )
+            if (job == null) {
+                resolveBridge(cbId, false, "Layanan cetak sistem tidak merespons. Periksa layanan cetak di Pengaturan.")
+                return
+            }
+            resolveBridge(cbId, true, "dialog cetak dibuka")
+        } catch (e: Exception) {
+            Log.w(TAG, "Gagal menyiapkan cetak PDF", e)
+            resolveBridge(cbId, false, "Gagal menyiapkan cetak: ${e.message ?: "tidak diketahui"}")
         }
     }
 

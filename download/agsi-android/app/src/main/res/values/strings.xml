@@ -31,6 +31,17 @@
     <!-- Simpan file dari web (struk & laporan) via jembatan AgsiNative -->
     <string name="file_saved">Tersimpan di folder Unduhan: %1$s</string>
 
+    <!-- Notifikasi unduhan di status bar (v1.3.28) — progres & hasil simpan
+         struk/laporan, ketuk kartu selesai untuk membuka file -->
+    <string name="channel_downloads_name">Unduhan File AGSI</string>
+    <string name="channel_downloads_desc">Progres dan hasil unduhan struk &amp; laporan dari aplikasi web AGSI</string>
+    <string name="notif_download_progress_title">Mengunduh %1$s…</string>
+    <string name="notif_download_progress_text">Menyiapkan file di folder Unduhan/AGSI</string>
+    <string name="notif_download_done_title">Unduhan selesai ✓</string>
+    <string name="notif_download_done_text">%1$s tersimpan di folder Unduhan/AGSI — ketuk untuk membuka</string>
+    <string name="notif_download_failed_title">Unduhan gagal</string>
+    <string name="notif_download_failed_text">%1$s tidak dapat ditulis — coba lagi dari aplikasi AGSI</string>
+
     <!-- Notifikasi -->
     <string name="notification_channel_name">Pesanan &amp; Notifikasi AGSI</string>
     <string name="notification_channel_desc">Notifikasi pesanan baru, status masakan, pembayaran, dan chat CS</string>
