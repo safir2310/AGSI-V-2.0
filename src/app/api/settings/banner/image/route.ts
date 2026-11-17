@@ -1,26 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { decodeStoredMedia } from "@/lib/serve-image";
 
 /**
  * GET /api/settings/banner/image
  * Menyajikan gambar popup banner beranda yang diupload admin. Publik
  * (Beranda memang halaman publik pelanggan). URL memakai query
  * ?v=<bannerUpdatedAt> sebagai cache-buster — aman untuk cache lama.
+ *
+ * Mime TIDAK wajib di kolom: baris lama (build sebelum mime ditulis
+ * bersamaan) tetap tersaji — Content-Type ditebak dari magic bytes.
  */
 export async function GET(_req: NextRequest) {
   const s = await db.storeSetting.findUnique({
     where: { id: "main" },
     select: { bannerImageData: true, bannerImageMime: true },
   });
-  if (!s?.bannerImageData || !s.bannerImageMime) {
+  if (!s?.bannerImageData) {
     return new NextResponse("Gambar banner tidak ditemukan", { status: 404 });
   }
-  const buf = Buffer.from(s.bannerImageData, "base64");
-  return new NextResponse(new Uint8Array(buf), {
+  const dec = decodeStoredMedia(s.bannerImageData, s.bannerImageMime, "image");
+  if (!dec) {
+    return new NextResponse("Gambar banner tidak ditemukan", { status: 404 });
+  }
+  return new NextResponse(new Uint8Array(dec.buf), {
     status: 200,
     headers: {
-      "Content-Type": s.bannerImageMime,
-      "Content-Length": String(buf.byteLength),
+      "Content-Type": dec.contentType,
+      "Content-Length": String(dec.buf.byteLength),
       "Cache-Control": "public, max-age=31536000, immutable",
     },
   });

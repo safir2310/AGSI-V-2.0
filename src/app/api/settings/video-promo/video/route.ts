@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getVideoPromoSlotBytes } from "@/lib/store-settings";
+import { decodeStoredMedia } from "@/lib/serve-image";
 
 /**
  * GET /api/settings/video-promo/video?slot=1..3&v=<versi>
@@ -17,13 +18,17 @@ export async function GET(req: NextRequest) {
     return new NextResponse("Slide video tidak ditemukan", { status: 404 });
   }
   const { data, mime } = await getVideoPromoSlotBytes(slot);
-  if (!data || !mime) {
+  if (!data) {
+    return new NextResponse("Video tidak ditemukan", { status: 404 });
+  }
+  const dec = decodeStoredMedia(data, mime, "video");
+  if (!dec) {
     return new NextResponse("Video tidak ditemukan", { status: 404 });
   }
 
-  const buf = Buffer.from(data, "base64");
+  const buf = dec.buf;
   const total = buf.byteLength;
-  const contentType = mime.startsWith("video/") ? mime : "video/mp4";
+  const contentType = dec.contentType;
   const headers: Record<string, string> = {
     "Content-Type": contentType,
     "Accept-Ranges": "bytes",

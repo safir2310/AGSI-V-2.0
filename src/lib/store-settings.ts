@@ -63,7 +63,10 @@ export async function getBannerSettings(): Promise<BannerSettings> {
     bannerEnabled: row.bannerEnabled,
     bannerTitle: row.bannerTitle,
     bannerText: row.bannerText,
-    bannerHasImage: !!(row.bannerImageData && row.bannerImageMime),
+    // Ada gambar = cukup DATA saja — mime tak wajib (baris lama tersimpan
+    // build yang belum menulis mime; endpoint menetapkan Content-Type dari
+    // magic bytes, lihat src/lib/serve-image.ts).
+    bannerHasImage: !!row.bannerImageData,
     bannerVersion: row.bannerUpdatedAt ? row.bannerUpdatedAt.toISOString() : null,
   };
 }
@@ -191,7 +194,7 @@ export async function getMenuHeroSettings(): Promise<MenuHeroSettings> {
     menuHeroBadge: row.menuHeroBadge,
     menuHeroTitle: row.menuHeroTitle,
     menuHeroText: row.menuHeroText,
-    menuHeroHasImage: !!(row.menuHeroImageData && row.menuHeroImageMime),
+    menuHeroHasImage: !!row.menuHeroImageData,
     menuHeroVersion: row.menuHeroUpdatedAt ? row.menuHeroUpdatedAt.toISOString() : null,
   };
 }
@@ -311,9 +314,8 @@ export async function getMenuPromoSettings(): Promise<MenuPromoSettings> {
     banners: banners.map((c, i) => ({
       ...c,
       slot: (i + 1) as 1 | 2,
-      hasImage: i === 0
-        ? !!(row.menuPromoBanner1ImageData && row.menuPromoBanner1ImageMime)
-        : !!(row.menuPromoBanner2ImageData && row.menuPromoBanner2ImageMime),
+      // Data saja sudah cukup — mime tak wajib (baris lama, lihat serve-image.ts)
+      hasImage: !!(i === 0 ? row.menuPromoBanner1ImageData : row.menuPromoBanner2ImageData),
     })),
     version: row.menuPromoBannersUpdatedAt ? row.menuPromoBannersUpdatedAt.toISOString() : null,
   };
@@ -492,12 +494,14 @@ export async function getVideoPromoSettings(): Promise<VideoPromoSettings> {
     version: row.videoPromoUpdatedAt ? row.videoPromoUpdatedAt.toISOString() : null,
     slides: slides.map((c) => ({
       ...c,
-      hasVideo:
+      // Data saja sudah cukup — mime tak wajib (baris lama, lihat serve-image.ts)
+      hasVideo: !!(
         c.slot === 1
-          ? !!(row.videoPromoSlot1Data && row.videoPromoSlot1Mime)
+          ? row.videoPromoSlot1Data
           : c.slot === 2
-            ? !!(row.videoPromoSlot2Data && row.videoPromoSlot2Mime)
-            : !!(row.videoPromoSlot3Data && row.videoPromoSlot3Mime),
+            ? row.videoPromoSlot2Data
+            : row.videoPromoSlot3Data
+      ),
       mime:
         c.slot === 1
           ? row.videoPromoSlot1Mime
