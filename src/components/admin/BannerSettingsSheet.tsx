@@ -108,9 +108,12 @@ const draftFromBanner = (b: MenuPromoBannerInfo): BannerDraft => ({
 });
 
 /** Kompres & perkecil gambar banner di sisi klien (maks 1200px, JPEG).
- *  v1.3.30 — kualitas awal 0,82 & diturunkan bertahap bila hasil masih
- *  > 1,4 MB (batas server per gambar ±2 MB base64): unggahan lebih ringan
- *  dan cepat, foto sangat detail tetap lolos tanpa membuat "Simpan" gagal. */
+ *  v1.3.31 — gambar ≥ ±100 KB DIKOMPRES (di bawah itu dibiarkan apa adanya,
+ *  logo PNG kecil tetap utuh); hasil diarahkan ≤ ±140 KB data URL (±100 KB
+ *  biner): kualitas JPEG diturunkan bertahap (0,82 → 0,5), bila masih besar
+ *  dimensi diperkecil bertahap (×0,85). Unggahan jadi ringan → tombol Simpan
+ *  selesai cepat walau koneksi lambat, dan 3 gambar sekaligus masih ±0,4 MB
+ *  (jauh di bawah batas platform yang dulu memicu "Koneksi Bermasalah"). */
 async function fileToResizedDataUrl(file: File): Promise<string> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const r = new FileReader();
@@ -124,22 +127,37 @@ async function fileToResizedDataUrl(file: File): Promise<string> {
     i.onerror = () => reject(new Error("File bukan gambar yang valid."));
     i.src = dataUrl;
   });
-  const maxDim = 1200;
-  const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-  if (scale >= 1 && dataUrl.length < 250_000) return dataUrl;
+  const TARGET = 140_000; // ±100 KB biner per gambar — unggah cepat
+  let scale = Math.min(1, 1200 / Math.max(img.width, img.height));
+  if (scale >= 1 && dataUrl.length < 100_000) return dataUrl;
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(img.width * scale));
-  canvas.height = Math.max(1, Math.round(img.height * scale));
   const ctx = canvas.getContext("2d");
   if (!ctx) return dataUrl;
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   let quality = 0.82;
-  let out = canvas.toDataURL("image/jpeg", quality);
-  while (out.length > 1_400_000 && quality > 0.5) {
-    quality -= 0.1;
+  let out = dataUrl;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    canvas.width = Math.max(1, Math.round(img.width * scale));
+    canvas.height = Math.max(1, Math.round(img.height * scale));
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     out = canvas.toDataURL("image/jpeg", quality);
+    if (out.length <= TARGET) break;
+    if (quality > 0.5) quality = Math.max(0.5, quality - 0.1);
+    else scale *= 0.85; // kualitas sudah di batas bawah → perkecil dimensi
   }
   return out;
+}
+
+/** fetch dengan pengaman waktu (60 dtk): bila jaringan mati di tengah
+ *  unggahan, spinner "Menyimpan" tidak menggantung selamanya — request
+ *  dibatalkan dan pesan yang jelas tampil. */
+async function apiFetchTimeout(input: string, init: RequestInit, timeoutMs = 60_000): Promise<Response> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    return await apiFetch(input, { ...init, signal: ctl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Validasi + kompres gambar di luar komponen; null = gagal (notice sudah ditampilkan). */
@@ -626,7 +644,7 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
 
       const settled = await Promise.allSettled(
         steps.map(async (step) => {
-          const res = await apiFetch("/api/settings", {
+          const res = await apiFetchTimeout("/api/settings", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(step.body),
@@ -645,11 +663,13 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       const gagal = settled.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
       if (gagal) {
         const alasan =
-          gagal.reason instanceof TypeError
-            ? "Tidak dapat menghubungi server. Bila berulang, periksa koneksi internet."
-            : gagal.reason instanceof Error
-              ? gagal.reason.message
-              : "Coba lagi sebentar ya.";
+          (gagal.reason as { name?: string } | null | undefined)?.name === "AbortError"
+            ? "Waktu simpan habis (±1 menit) — koneksi terlalu lambat saat itu. Coba lagi sebentar ya."
+            : gagal.reason instanceof TypeError
+              ? "Tidak dapat menghubungi server. Bila berulang, periksa koneksi internet."
+              : gagal.reason instanceof Error
+                ? gagal.reason.message
+                : "Coba lagi sebentar ya.";
         showNotice({ type: "error", autoCloseMs: 8000, title: "Gagal Menyimpan", message: alasan });
         return;
       }
