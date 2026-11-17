@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
+  Film,
   ImagePlus,
   Image as ImageIcon,
   Loader2,
@@ -46,6 +47,27 @@ const MAX_PROMO_BADGE = 24;
 const MAX_PROMO_TITLE = 80;
 const MAX_PROMO_TEXT = 120;
 const MAX_PROMO_EMOJI = 8;
+// ===== AGSI Smart Video Promo Banner =====
+const MAX_VIDEO_TITLE = 60;
+/** Batas ukuran video per slide — sinkron dengan VIDEO_PROMO_MAX_BYTES server (30 MB). */
+const VIDEO_MAX_BYTES = 30 * 1024 * 1024;
+/** Ukuran potongan unggah ±2.5 MB (batas body serverless Vercel ±4.5 MB). */
+const VIDEO_CHUNK_BYTES = 2.5 * 1024 * 1024;
+
+/** Draf lokal 1 slide video (bagian AGSI Smart Video Promo Banner). */
+type VideoSlideDraft = {
+  slot: number; // 1..3
+  enabled: boolean;
+  title: string;
+  linkType: "none" | "product" | "promo";
+  productId: string | null;
+  /** apakah server saat ini punya video untuk slot ini */
+  hasVideo: boolean;
+  /** true = sedang mengunggah video */
+  uploading: boolean;
+  /** 0–100 progress unggah; -1 = tidak sedang unggah */
+  uploadProgress: number;
+};
 
 /** Pilihan tema warna gradien banner promo (cerah menyala) — pratinjau & swatch. */
 const PROMO_THEMES: Array<{ value: MenuPromoBannerTheme; label: string; swatch: string; slide: string }> = [
@@ -142,6 +164,9 @@ async function processImageFile(file: File | undefined): Promise<string | null> 
  *  4. 2 Banner Promo Menu (slot 1 & 2) — dua slide carousel yang berganti
  *     otomatis: saklar, gambar latar, emoji, tema warna & 3 baris teks per banner.
  *  5. Slide voucher di carousel Menu — saklar + jumlah maksimal (1–5).
+ *  6. AGSI Smart Video Promo Banner (dasar halaman Menu) — carousel video MP4:
+ *     upload/ganti/hapus video per slide (bertahap/chunked), caption, tautan
+ *     produk/promo, saklar aktif.
  *
  * Tersimpan via PUT /api/settings (divalidasi ulang server-side).
  * Popup tampil 1x per sesi pelanggan untuk tiap versi banner; menyimpan
@@ -190,6 +215,25 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
   const [serverHasImage, setServerHasImage] = useState(false);
   /** versi banner saat sheet dibuka — dipakai sbg cache-buster URL pratinjau (stabil) */
   const [serverVersion, setServerVersion] = useState<string | null>(null);
+  // ===== AGSI Smart Video Promo Banner (carousel video dasar halaman Menu) =====
+  const [vidEnabled, setVidEnabled] = useState(false);
+  const [vidSlides, setVidSlides] = useState<VideoSlideDraft[]>(() =>
+    [1, 2, 3].map((slot) => ({
+      slot,
+      enabled: true,
+      title: "",
+      linkType: "none" as "none" | "product" | "promo",
+      productId: null,
+      hasVideo: false,
+      uploading: false,
+      uploadProgress: -1,
+    }))
+  );
+  /** daftar produk utk pilihan tautan "Buka produk" */
+  const [vidProducts, setVidProducts] = useState<Array<{ id: string; name: string; available: boolean }>>([]);
+  /** versi konten video promo di server — hanya utk info */
+  const [vidVersion, setVidVersion] = useState<string | null>(null);
+  const vidFileRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)];
 
   // Buka sheet → tarik nilai terbaru dari server → isi form
   const fetchCurrent = useCallback(async () => {
@@ -227,6 +271,32 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       setBannerDrafts(mpBanners.slice(0, 2).map(draftFromBanner));
       setBannerServerHasImage([!!mpBanners[0]?.hasImage, !!mpBanners[1]?.hasImage]);
       setBannerServerVersion(mp.version);
+      // AGSI Smart Video Promo Banner — nilai tersimpan atau default bawaan
+      const vp = useSettingsStore.getState().videoPromo;
+      setVidEnabled(vp.enabled);
+      setVidVersion(vp.version);
+      setVidSlides(
+        (vp.slides ?? []).slice(0, 3).map((s, i) => ({
+          slot: s.slot ?? i + 1,
+          enabled: s.enabled,
+          title: s.title ?? "",
+          linkType: s.linkType === "product" || s.linkType === "promo" ? s.linkType : "none",
+          productId: s.productId ?? null,
+          hasVideo: s.hasVideo,
+          uploading: false,
+          uploadProgress: -1,
+        }))
+      );
+      // Daftar produk utk pilihan tautan "Buka produk" (gagal = pilihan tetap ada)
+      try {
+        const pRes = await apiFetch("/api/products", { cache: "no-store" });
+        if (pRes.ok) {
+          const pBody = await pRes.json();
+          setVidProducts((pBody.products ?? []) as Array<{ id: string; name: string; available: boolean }>);
+        }
+      } catch {
+        // daftar produk gagal dimuat — pemilihan tautan produk tetap tampil
+      }
     } finally {
       setLoading(false);
     }
@@ -278,6 +348,97 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
     const dataUrl = await processImageFile(file);
     updateDraft(slot, { imageBusy: false, ...(dataUrl ? { imageData: dataUrl } : {}) });
     if (ref.current) ref.current.value = "";
+  };
+
+  /* ===== AGSI Smart Video Promo Banner ===== */
+
+  /** Ubah draf 1 slide video slot ke-N. */
+  const updateVidDraft = (slot: number, patch: Partial<VideoSlideDraft>) =>
+    setVidSlides((prev) => prev.map((d) => (d.slot === slot ? { ...d, ...patch } : d)));
+
+  /** ArrayBuffer → base64 (dipotong batch kecil agar aman dari stack overflow). */
+  const bufferToBase64 = (buf: ArrayBuffer) => {
+    const bytes = new Uint8Array(buf);
+    let bin = "";
+    const BATCH = 0x8000;
+    for (let i = 0; i < bytes.length; i += BATCH) {
+      bin += String.fromCharCode(...bytes.subarray(i, i + BATCH));
+    }
+    return btoa(bin);
+  };
+
+  /** Unggah video MP4 bertahap (chunked) — potongan ±2.5 MB berurutan ke server. */
+  const pickVideo = async (slot: number, file: File | undefined) => {
+    if (!file) return;
+    if (file.type !== "video/mp4") {
+      showNotice({
+        type: "error",
+        title: "Format Tidak Didukung",
+        message: "Video harus berformat MP4 (H.264) agar bisa diputar semua perangkat.",
+      });
+      return;
+    }
+    if (file.size > VIDEO_MAX_BYTES) {
+      showNotice({
+        type: "error",
+        title: "Video Terlalu Besar",
+        message: "Maksimal 30 MB per slide — kompres dulu videonya (disarankan 5–15 detik).",
+      });
+      return;
+    }
+    updateVidDraft(slot, { uploading: true, uploadProgress: 0 });
+    try {
+      const total = Math.ceil(file.size / VIDEO_CHUNK_BYTES);
+      for (let i = 0; i < total; i++) {
+        const slice = file.slice(i * VIDEO_CHUNK_BYTES, Math.min((i + 1) * VIDEO_CHUNK_BYTES, file.size));
+        const chunk = bufferToBase64(await slice.arrayBuffer());
+        const res = await apiFetch("/api/settings/video-promo", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "upload", slot, chunk, final: i === total - 1, mime: "video/mp4" }),
+        });
+        if (!res.ok) {
+          const err = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(err.error ?? "Gagal mengunggah video.");
+        }
+        updateVidDraft(slot, { uploadProgress: Math.round(((i + 1) / total) * 100) });
+      }
+      updateVidDraft(slot, { hasVideo: true, uploading: false, uploadProgress: -1 });
+      showNotice({
+        type: "success",
+        title: "Video Terpasang ✓",
+        message: "Slide video siap — tekan Simpan Banner & Promo untuk menerapkannya di aplikasi.",
+      });
+    } catch (e) {
+      updateVidDraft(slot, { uploading: false, uploadProgress: -1 });
+      showNotice({
+        type: "error",
+        title: "Unggah Gagal",
+        message: e instanceof Error ? e.message : "Coba lagi sebentar ya.",
+      });
+    } finally {
+      const ref = vidFileRefs[slot - 1];
+      if (ref.current) ref.current.value = "";
+    }
+  };
+
+  /** Hapus video 1 slide di server (langsung — tidak menunggu tombol Simpan). */
+  const removeVideo = async (slot: number) => {
+    try {
+      const res = await apiFetch("/api/settings/video-promo", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "remove", slot }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { version?: string | null };
+        setVidVersion(data.version ?? null);
+        updateVidDraft(slot, { hasVideo: false });
+        showNotice({ type: "success", title: "Video Dihapus", message: `Slide ${slot} kini tanpa video.` });
+      }
+    } catch {
+      // diam — pengguna bisa mencoba lagi
+    }
   };
 
   /** URL pratinjau gambar banner promo slot ke-N: gambar baru > gambar server > kosong */
@@ -394,6 +555,16 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
               : {}),
         })),
       };
+      // AGSI Smart Video Promo Banner — metadata slide (bytes video terunggah
+      // terpisah & bertahap via /api/settings/video-promo)
+      body.videoPromoEnabled = vidEnabled;
+      body.videoPromoSlides = vidSlides.map((d) => ({
+        slot: d.slot,
+        enabled: d.enabled,
+        title: d.title.trim(),
+        linkType: d.linkType,
+        productId: d.linkType === "product" ? d.productId : null,
+      }));
       if (imageData !== undefined) {
         if (imageData === null) body.bannerImageRemove = true;
         else body.bannerImageData = imageData;
@@ -1237,6 +1408,140 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                         kosong → strip tersembunyi. Hero/banner promo dinonaktifkan? Voucher tetap tampil
                         selama saklar ini aktif.
                       </p>
+                    )}
+                  </div>
+
+                  {/* ===== AGSI SMART VIDEO PROMO BANNER (dasar halaman Menu) ===== */}
+                  <div className="rounded-2xl border border-orange-100 bg-gradient-to-b from-orange-50/60 to-white p-3.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-1.5 text-sm font-black text-neutral-800">
+                          <Film className="h-4 w-4 shrink-0 text-orange-600" /> AGSI Smart Video Promo Banner
+                        </p>
+                        <p className="mt-0.5 text-[10px] font-semibold leading-snug text-neutral-400">
+                          Interactive Video Carousel di dasar halaman Menu — autoplay, loop, bisa
+                          digeser, diklik untuk buka produk/promo. Responsif Android &amp; desktop.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={vidEnabled}
+                        onCheckedChange={setVidEnabled}
+                        aria-label="Aktifkan AGSI Smart Video Promo Banner"
+                      />
+                    </div>
+
+                    {vidEnabled && (
+                      <div className="mt-3 space-y-2.5">
+                        {vidSlides.map((d) => (
+                          <div key={d.slot} className="rounded-xl border border-orange-100 bg-white p-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-[11px] font-black text-neutral-600">Video {d.slot}</p>
+                              <label className="flex items-center gap-1 text-[10px] font-bold text-neutral-500">
+                                <input
+                                  type="checkbox"
+                                  checked={d.enabled}
+                                  onChange={(e) => updateVidDraft(d.slot, { enabled: e.target.checked })}
+                                  className="h-3 w-3 accent-orange-600"
+                                />
+                                Tampilkan
+                              </label>
+                            </div>
+                            <input
+                              value={d.title}
+                              onChange={(e) => updateVidDraft(d.slot, { title: e.target.value.slice(0, MAX_VIDEO_TITLE) })}
+                              placeholder="Caption video (opsional) — mis. Diskon Geprek Akhir Pekan"
+                              className="mt-2 w-full rounded-lg border border-orange-100 bg-orange-50/40 px-2.5 py-1.5 text-[12px] font-semibold text-neutral-700 outline-none placeholder:text-neutral-300 focus:border-orange-400"
+                            />
+                            {/* Tautan slide: tanpa / produk / promo */}
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              <select
+                                value={d.linkType}
+                                onChange={(e) =>
+                                  updateVidDraft(d.slot, {
+                                    linkType: e.target.value as VideoSlideDraft["linkType"],
+                                    productId: e.target.value === "product" ? d.productId : null,
+                                  })
+                                }
+                                aria-label="Tautan slide video"
+                                className="w-full rounded-lg border border-orange-100 bg-white px-2 py-1.5 text-[11px] font-bold text-neutral-600 outline-none focus:border-orange-400"
+                              >
+                                <option value="none">Tanpa tautan</option>
+                                <option value="product">Buka produk</option>
+                                <option value="promo">Buka promo</option>
+                              </select>
+                              {d.linkType === "product" ? (
+                                <select
+                                  value={d.productId ?? ""}
+                                  onChange={(e) => updateVidDraft(d.slot, { productId: e.target.value || null })}
+                                  aria-label="Pilih produk tujuan"
+                                  className="w-full rounded-lg border border-orange-100 bg-white px-2 py-1.5 text-[11px] font-bold text-neutral-600 outline-none focus:border-orange-400"
+                                >
+                                  <option value="">Pilih produk…</option>
+                                  {vidProducts.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.name}
+                                      {p.available ? "" : " (habis)"}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <div className="flex items-center rounded-lg bg-orange-50/50 px-2 text-[10px] font-semibold text-neutral-400">
+                                  {d.linkType === "promo" ? "Ketuk → gulir ke banner promo" : "Ketuk → tanpa aksi"}
+                                </div>
+                              )}
+                            </div>
+                            {/* Unggah / ganti / hapus video */}
+                            <div className="mt-2 flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => vidFileRefs[d.slot - 1].current?.click()}
+                                disabled={d.uploading}
+                                className="press-effect flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-dashed border-orange-300 bg-white text-[11px] font-black text-orange-600 disabled:opacity-60"
+                              >
+                                {d.uploading ? (
+                                  <>
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    Mengunggah {d.uploadProgress >= 0 ? `${d.uploadProgress}%` : "…"}
+                                  </>
+                                ) : (
+                                  <>
+                                    <Film className="h-3.5 w-3.5" />
+                                    {d.hasVideo ? "Ganti Video" : "Unggah Video MP4"}
+                                  </>
+                                )}
+                              </button>
+                              {d.hasVideo && (
+                                <button
+                                  type="button"
+                                  onClick={() => void removeVideo(d.slot)}
+                                  aria-label={`Hapus video slide ${d.slot}`}
+                                  className="press-effect flex h-9 w-9 items-center justify-center rounded-xl border border-red-100 bg-red-50 text-red-500"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                            {d.hasVideo && !d.uploading && (
+                              <p className="mt-1.5 text-[10px] font-semibold text-green-600">
+                                ✓ Video MP4 terpasang{vidVersion ? ` (versi ${vidVersion.slice(0, 5)})` : ""} —
+                                tampil otomatis (autoplay + loop) di dasar halaman Menu.
+                              </p>
+                            )}
+                            <input
+                              ref={vidFileRefs[d.slot - 1]}
+                              type="file"
+                              accept="video/mp4"
+                              className="hidden"
+                              onChange={(e) => void pickVideo(d.slot, e.target.files?.[0])}
+                            />
+                          </div>
+                        ))}
+                        <p className="text-[10px] font-semibold leading-snug text-neutral-400">
+                          Format MP4 (H.264), maks 30 MB per slide — durasi 5–15 detik ideal. Unggah
+                          berjalan bertahap (chunked) agar tetap aman di jaringan lambat. Tekan
+                          &quot;Simpan Banner &amp; Promo&quot; untuk menerapkan perubahan.
+                        </p>
+                      </div>
                     )}
                   </div>
 

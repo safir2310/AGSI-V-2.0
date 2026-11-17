@@ -316,14 +316,14 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
         </div>
       </motion.section>
 
-      {/* ===== POSTER 3D PROMO HARI INI (full-width, konten diatur admin) ===== */}
+      {/* ===== POSTER 3D PROMO HARI INI (konten diatur admin dari Profil) ===== */}
       {promo.promoStripEnabled && (promo.promoStripBadge.trim() || promo.promoStripTitle.trim() || promo.promoStripText.trim()) && (
-        <motion.section {...reveal(0.2)}>
+        <motion.section {...reveal(0.2)} className="px-4">
           <button
             onClick={() => go("menu")}
             className="scene-3d press-effect relative block w-full text-left"
           >
-            <div className="tilt-3d relative w-full overflow-hidden bg-gradient-to-br from-orange-700 via-orange-500 to-amber-400 px-5 pb-8 pt-6 shadow-[0_26px_48px_-14px_rgba(194,65,12,0.65)]">
+            <div className="tilt-3d relative w-full overflow-hidden rounded-3xl bg-gradient-to-br from-orange-700 via-orange-500 to-amber-400 px-5 pb-8 pt-6 shadow-[0_26px_48px_-14px_rgba(194,65,12,0.65)]">
               {/* Glow kedalaman — bola cahaya di kedua sisi */}
               <div className="pointer-events-none absolute -left-10 -top-14 h-40 w-40 rounded-full bg-white/30 blur-2xl" />
               <div className="pointer-events-none absolute -bottom-16 right-1/4 h-36 w-36 rounded-full bg-yellow-200/50 blur-2xl" />

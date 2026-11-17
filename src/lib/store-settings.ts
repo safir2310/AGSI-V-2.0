@@ -421,3 +421,180 @@ export async function updateMenuHeroSettings(patch: MenuHeroPatch): Promise<Menu
   });
   return getMenuHeroSettings();
 }
+
+/* ================= AGSI SMART VIDEO PROMO BANNER ================= */
+
+export const VIDEO_PROMO_MAX_SLIDES = 3;
+
+/** Batas ukuran video per slide (bytes) — file MP4 di atas ini ditolak. */
+export const VIDEO_PROMO_MAX_BYTES = 30 * 1024 * 1024; // 30 MB
+
+/** Jenis tautan slide video: tanpa tautan / buka produk / buka promo. */
+export type VideoPromoLinkType = "none" | "product" | "promo";
+
+/** Konfigurasi 1 slide video (tanpa bytes — bytes video disimpan per slot). */
+export type VideoPromoSlideConfig = {
+  slot: number; // 1..VIDEO_PROMO_MAX_SLIDES
+  enabled: boolean;
+  /** caption singkat di atas video (opsional) */
+  title: string;
+  linkType: VideoPromoLinkType;
+  /** id produk tujuan bila linkType "product" (null/"" = tanpa produk) */
+  productId: string | null;
+};
+
+/** Setelan AGSI Smart Video Promo Banner (publik — tanpa bytes video). */
+export type VideoPromoSettings = {
+  enabled: boolean;
+  /** ISO timestamp konten terakhir diubah — cache-buster URL video */
+  version: string | null;
+  /** SELALU tepat 3 entri (slot 1..3) */
+  slides: Array<VideoPromoSlideConfig & { hasVideo: boolean; mime: string | null }>;
+};
+
+const DEFAULT_VIDEO_PROMO_SLIDES: VideoPromoSlideConfig[] = [1, 2, 3].map((slot) => ({
+  slot,
+  enabled: true,
+  title: "",
+  linkType: "none" as VideoPromoLinkType,
+  productId: null,
+}));
+
+/** Normalisasi 1 entri konfigurasi slide dari JSON DB → bentuk aman. */
+function normalizeVideoSlide(raw: unknown, slot: number): VideoPromoSlideConfig {
+  const r = (raw ?? {}) as Partial<VideoPromoSlideConfig>;
+  return {
+    slot,
+    enabled: r.enabled !== false,
+    title: typeof r.title === "string" ? r.title.trim().slice(0, 60) : "",
+    linkType:
+      r.linkType === "product" || r.linkType === "promo" ? r.linkType : "none",
+    productId: typeof r.productId === "string" && r.productId.trim() ? r.productId.trim() : null,
+  };
+}
+
+/** Baca kolom JSON videoPromoSlides → selalu tepat 3 konfigurasi valid. */
+function readVideoPromoSlides(raw: unknown): VideoPromoSlideConfig[] {
+  const arr = Array.isArray(raw) ? raw : [];
+  return [1, 2, 3].map((slot) => normalizeVideoSlide(arr[slot - 1], slot));
+}
+
+/** Ambil setelan video promo (publik — tanpa bytes video). */
+export async function getVideoPromoSettings(): Promise<VideoPromoSettings> {
+  const row = await db.storeSetting.upsert({
+    where: { id: "main" },
+    update: {},
+    create: { id: "main" },
+  });
+  const slides = readVideoPromoSlides(row.videoPromoSlides);
+  return {
+    enabled: row.videoPromoEnabled,
+    version: row.videoPromoUpdatedAt ? row.videoPromoUpdatedAt.toISOString() : null,
+    slides: slides.map((c) => ({
+      ...c,
+      hasVideo:
+        c.slot === 1
+          ? !!(row.videoPromoSlot1Data && row.videoPromoSlot1Mime)
+          : c.slot === 2
+            ? !!(row.videoPromoSlot2Data && row.videoPromoSlot2Mime)
+            : !!(row.videoPromoSlot3Data && row.videoPromoSlot3Mime),
+      mime:
+        c.slot === 1
+          ? row.videoPromoSlot1Mime
+          : c.slot === 2
+            ? row.videoPromoSlot2Mime
+            : row.videoPromoSlot3Mime,
+    })),
+  };
+}
+
+export type VideoPromoPatch = {
+  enabled?: boolean;
+  slides?: VideoPromoSlideConfig[];
+  /** konten berubah → naikkan versi (cache-buster URL video) */
+  touch?: boolean;
+};
+
+/** Simpan sebagian setelan video promo (metadata saja — bytes via route upload). */
+export async function updateVideoPromoSettings(patch: VideoPromoPatch): Promise<VideoPromoSettings> {
+  const data: {
+    videoPromoEnabled?: boolean;
+    videoPromoSlides?: VideoPromoSlideConfig[];
+    videoPromoUpdatedAt?: Date;
+  } = {};
+  if (typeof patch.enabled === "boolean") data.videoPromoEnabled = patch.enabled;
+  if (patch.slides) {
+    // simpan tepat 3 slide; productId null → "" agar JSON murni string (portabel)
+    data.videoPromoSlides = readVideoPromoSlides(
+      patch.slides.slice(0, VIDEO_PROMO_MAX_SLIDES).map((s) => ({ ...s, productId: s.productId ?? "" }))
+    ).map((s) => ({ ...s, productId: s.productId ?? "" }));
+  }
+  if (patch.touch) data.videoPromoUpdatedAt = new Date();
+
+  await db.storeSetting.upsert({
+    where: { id: "main" },
+    update: data,
+    create: { id: "main", ...data },
+  });
+  return getVideoPromoSettings();
+}
+
+/** Bytes + mime video 1 slot (dipakai route streaming & upload). */
+export type VideoPromoSlotBytes = { data: string | null; mime: string | null };
+
+/** Baca bytes video slot (dipakai route streaming & upload chunked). */
+export async function getVideoPromoSlotBytes(slot: number): Promise<VideoPromoSlotBytes> {
+  const row = await db.storeSetting.findUnique({
+    where: { id: "main" },
+    select: {
+      videoPromoSlot1Data: true,
+      videoPromoSlot1Mime: true,
+      videoPromoSlot2Data: true,
+      videoPromoSlot2Mime: true,
+      videoPromoSlot3Data: true,
+      videoPromoSlot3Mime: true,
+    },
+  });
+  if (!row) return { data: null, mime: null };
+  return {
+    data:
+      slot === 1
+        ? row.videoPromoSlot1Data
+        : slot === 2
+          ? row.videoPromoSlot2Data
+          : row.videoPromoSlot3Data,
+    mime:
+      slot === 1
+        ? row.videoPromoSlot1Mime
+        : slot === 2
+          ? row.videoPromoSlot2Mime
+          : row.videoPromoSlot3Mime,
+  };
+}
+
+/** Tulis bytes+mime video slot sekaligus (null = hapus) + naikkan versi. */
+export async function writeVideoPromoSlotBytes(
+  slot: number,
+  data: string | null,
+  mime: string | null
+): Promise<void> {
+  if (slot === 1) {
+    await db.storeSetting.upsert({
+      where: { id: "main" },
+      update: { videoPromoSlot1Data: data, videoPromoSlot1Mime: mime, videoPromoUpdatedAt: new Date() },
+      create: { id: "main", videoPromoSlot1Data: data, videoPromoSlot1Mime: mime },
+    });
+  } else if (slot === 2) {
+    await db.storeSetting.upsert({
+      where: { id: "main" },
+      update: { videoPromoSlot2Data: data, videoPromoSlot2Mime: mime, videoPromoUpdatedAt: new Date() },
+      create: { id: "main", videoPromoSlot2Data: data, videoPromoSlot2Mime: mime },
+    });
+  } else {
+    await db.storeSetting.upsert({
+      where: { id: "main" },
+      update: { videoPromoSlot3Data: data, videoPromoSlot3Mime: mime, videoPromoUpdatedAt: new Date() },
+      create: { id: "main", videoPromoSlot3Data: data, videoPromoSlot3Mime: mime },
+    });
+  }
+}

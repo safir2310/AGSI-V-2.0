@@ -207,6 +207,31 @@ export type MenuPromoInfo = {
   version: string | null;
 };
 
+/**
+ * AGSI Smart Video Promo Banner (alias Interactive Video Carousel Banner) —
+ * carousel video MP4 di dasar halaman Menu (Profil Admin → Banner & Promo):
+ * autoplay, loop, bisa digeser seperti carousel, klik untuk membuka produk
+ * atau promo. Bytes video tidak ikut payload — dimuat terpisah via videoUrl.
+ */
+export type VideoPromoSlideInfo = {
+  slot: number; // 1..3
+  enabled: boolean;
+  title: string;
+  linkType: "none" | "product" | "promo";
+  productId: string | null;
+  hasVideo: boolean;
+  /** URL video MP4 (cache-busted) — null bila nonaktif / belum ada video */
+  videoUrl: string | null;
+};
+
+export type VideoPromoInfo = {
+  enabled: boolean;
+  /** ISO timestamp konten terakhir diubah — cache-buster URL video */
+  version: string | null;
+  /** SELALU tepat 3 entri (slot 1..3) */
+  slides: VideoPromoSlideInfo[];
+};
+
 type SettingsState = {
   deliveryEnabled: boolean;
   qrisEnabled: boolean;
@@ -215,6 +240,7 @@ type SettingsState = {
   promo: PromoStripInfo;
   menuHero: MenuHeroInfo;
   menuPromo: MenuPromoInfo;
+  videoPromo: VideoPromoInfo;
   loaded: boolean;
   loading: boolean;
   load: (force?: boolean) => Promise<void>;
@@ -258,6 +284,22 @@ const FALLBACK_MENU_PROMO: MenuPromoInfo = {
   menuPromoVouchersMax: 3,
   banners: FALLBACK_MENU_PROMO_BANNERS,
   version: null,
+};
+
+/** Nilai awal AGSI Smart Video Promo Banner — sama dengan default schema/DB. */
+const FALLBACK_VIDEO_PROMO_SLIDES: VideoPromoSlideInfo[] = [1, 2, 3].map((slot) => ({
+  slot,
+  enabled: true,
+  title: "",
+  linkType: "none" as const,
+  productId: null,
+  hasVideo: false,
+  videoUrl: null,
+}));
+const FALLBACK_VIDEO_PROMO: VideoPromoInfo = {
+  enabled: false,
+  version: null,
+  slides: FALLBACK_VIDEO_PROMO_SLIDES,
 };
 
 function normalizePromo(raw: unknown): PromoStripInfo {
@@ -344,6 +386,33 @@ function normalizeMenuPromo(raw: unknown): MenuPromoInfo {
   };
 }
 
+function normalizeVideoPromo(raw: unknown): VideoPromoInfo {
+  const v = (raw ?? {}) as Partial<VideoPromoInfo>;
+  const version = typeof v.version === "string" ? v.version : null;
+  const rawSlides = Array.isArray(v.slides) ? v.slides : [];
+  const slides: VideoPromoSlideInfo[] = [0, 1, 2].map((i) => {
+    const r = (rawSlides[i] ?? {}) as Partial<VideoPromoSlideInfo>;
+    const enabled = r.enabled !== false;
+    const hasVideo = r.hasVideo === true;
+    const linkType =
+      r.linkType === "product" || r.linkType === "promo" ? r.linkType : "none";
+    return {
+      slot: i + 1,
+      enabled,
+      title: typeof r.title === "string" ? r.title : "",
+      linkType,
+      productId: typeof r.productId === "string" && r.productId ? r.productId : null,
+      hasVideo,
+      videoUrl: enabled && hasVideo && typeof r.videoUrl === "string" ? r.videoUrl : null,
+    };
+  });
+  return {
+    enabled: v.enabled === true,
+    version,
+    slides,
+  };
+}
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   deliveryEnabled: true,
   qrisEnabled: true,
@@ -352,6 +421,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   promo: FALLBACK_PROMO,
   menuHero: FALLBACK_MENU_HERO,
   menuPromo: FALLBACK_MENU_PROMO,
+  videoPromo: FALLBACK_VIDEO_PROMO,
   loaded: false,
   loading: false,
   load: async (force = false) => {
@@ -370,6 +440,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           promo: normalizePromo(data.promo),
           menuHero: normalizeMenuHero(data.menuHero),
           menuPromo: normalizeMenuPromo(data.menuPromo),
+          videoPromo: normalizeVideoPromo(data.videoPromo),
           loaded: true,
         });
       }

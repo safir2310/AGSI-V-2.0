@@ -7,16 +7,20 @@ import {
   getMenuPromoSettings,
   getPromoStripSettings,
   getStoreSettings,
+  getVideoPromoSettings,
   updateBannerSettings,
   updateMenuHeroSettings,
   updateMenuPromoSettings,
   updatePromoStripSettings,
   updateStoreSettings,
+  updateVideoPromoSettings,
+  VIDEO_PROMO_MAX_SLIDES,
   type BannerPatch,
   type MenuHeroPatch,
   type MenuPromoBannerPatch,
   type MenuPromoPatch,
   type PromoStripPatch,
+  type VideoPromoSlideConfig,
 } from "@/lib/store-settings";
 
 /** Susun URL gambar hero menu dengan cache-buster (null bila tak tersedia). */
@@ -40,12 +44,13 @@ function menuHeroImageUrl(hasImage: boolean, enabled: boolean, version: string |
  */
 export async function GET() {
   try {
-    const [settings, banner, promo, menuHero, menuPromo] = await Promise.all([
+    const [settings, banner, promo, menuHero, menuPromo, videoPromo] = await Promise.all([
       getStoreSettings(),
       getBannerSettings(),
       getPromoStripSettings(),
       getMenuHeroSettings(),
       getMenuPromoSettings(),
+      getVideoPromoSettings(),
     ]);
     return NextResponse.json({
       ...settings,
@@ -72,6 +77,18 @@ export async function GET() {
           imageUrl:
             b.enabled && b.hasImage
               ? `/api/settings/menu-promo/image?slot=${b.slot}&v=${encodeURIComponent(menuPromo.version ?? "1")}`
+              : null,
+        })),
+      },
+      // AGSI Smart Video Promo Banner — carousel video di dasar halaman Menu
+      // (bytes video terpisah via /api/settings/video-promo/video?slot=1..3)
+      videoPromo: {
+        ...videoPromo,
+        slides: videoPromo.slides.map((s) => ({
+          ...s,
+          videoUrl:
+            videoPromo.enabled && s.enabled && s.hasVideo
+              ? `/api/settings/video-promo/video?slot=${s.slot}&v=${encodeURIComponent(videoPromo.version ?? "1")}`
               : null,
         })),
       },
@@ -113,6 +130,20 @@ export async function GET() {
             { slot: 2, enabled: true, badge: "Menu Baru", title: "Ayam Geprik Sambal Bawang", text: "Pedas nampol, harga hemat mulai Rp 15.000", emoji: "🌶️", theme: "emerald", hasImage: false, imageUrl: null },
           ],
           version: null,
+        },
+        videoPromo: {
+          enabled: false,
+          version: null,
+          slides: [1, 2, 3].map((slot) => ({
+            slot,
+            enabled: true,
+            title: "",
+            linkType: "none",
+            productId: null,
+            hasVideo: false,
+            mime: null,
+            videoUrl: null,
+          })),
         },
       },
       { status: 200 }
@@ -170,6 +201,36 @@ export async function PUT(req: NextRequest) {
 
     if (Object.keys(patch).length > 0) {
       await updateStoreSettings(patch);
+    }
+
+    // ===== AGSI Smart Video Promo Banner (metadata — bytes video via /api/settings/video-promo) =====
+    if ("videoPromoEnabled" in body || "videoPromoSlides" in body) {
+      const vp: { enabled?: boolean; slides?: VideoPromoSlideConfig[]; touch: boolean } = { touch: true };
+      if ("videoPromoEnabled" in body) {
+        if (typeof body.videoPromoEnabled !== "boolean") {
+          return NextResponse.json({ error: "videoPromoEnabled harus boolean." }, { status: 400 });
+        }
+        vp.enabled = body.videoPromoEnabled;
+      }
+      if ("videoPromoSlides" in body) {
+        if (!Array.isArray(body.videoPromoSlides) || body.videoPromoSlides.length > VIDEO_PROMO_MAX_SLIDES) {
+          return NextResponse.json(
+            { error: `videoPromoSlides harus array maksimal ${VIDEO_PROMO_MAX_SLIDES} slide.` },
+            { status: 400 }
+          );
+        }
+        vp.slides = body.videoPromoSlides.map((r: unknown, i: number) => {
+          const s = (r ?? {}) as Partial<VideoPromoSlideConfig>;
+          return {
+            slot: i + 1,
+            enabled: s.enabled !== false,
+            title: typeof s.title === "string" ? s.title : "",
+            linkType: s.linkType === "product" || s.linkType === "promo" ? s.linkType : "none",
+            productId: typeof s.productId === "string" ? s.productId : null,
+          };
+        });
+      }
+      await updateVideoPromoSettings(vp);
     }
 
     // ===== Popup banner =====

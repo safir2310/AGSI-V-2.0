@@ -408,6 +408,21 @@ model StoreSetting {
   menuPromoBanner1ImageMime String?
   menuPromoBanner2ImageData String? // gambar latar banner slot 2 (base64)
   menuPromoBanner2ImageMime String?
+  // ===== AGSI SMART VIDEO PROMO BANNER (Interactive Video Carousel) =====
+  // Carousel video MP4 di DASAR halaman Menu: autoplay, loop, bisa digeser
+  // seperti carousel, klik untuk membuka produk/promo, responsif Android &
+  // desktop. Diatur admin dari Profil → "Banner & Promo" (bagian AGSI Smart
+  // Video Promo Banner). Bytes video disimpan base64 per slot (portabel di
+  // semua lingkungan) & disajikan publik via /api/settings/video-promo/video.
+  videoPromoEnabled          Boolean   @default(false)
+  videoPromoSlides           Json? // array konfigurasi 3 slide (tanpa bytes video)
+  videoPromoUpdatedAt        DateTime? // versi konten video promo — cache-buster URL
+  videoPromoSlot1Data        String? // video slide 1 (base64)
+  videoPromoSlot1Mime        String?
+  videoPromoSlot2Data        String? // video slide 2 (base64)
+  videoPromoSlot2Mime        String?
+  videoPromoSlot3Data        String? // video slide 3 (base64)
+  videoPromoSlot3Mime        String?
   updatedAt                 DateTime  @updatedAt
 }
 

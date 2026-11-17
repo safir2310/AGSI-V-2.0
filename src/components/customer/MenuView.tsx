@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Minus, Plus, Search, SearchX } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { SpicyDots } from "@/components/shared/StatusBadge";
 import { ProductThumb } from "@/components/shared/ProductThumb";
+import { SmartVideoPromoBanner } from "@/components/customer/SmartVideoPromoBanner";
 import {
   refreshSettings,
   refreshVouchers,
@@ -388,6 +389,48 @@ export function MenuView() {
   const prefersReduced = useReducedMotion();
   const products = useProductsStore((s) => s.products);
   const cart = useCartStore();
+  const showNotice = useNoticeStore((s) => s.show);
+  // Root halaman Menu — dipakai untuk gulir ke banner promo di atas halaman
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  // Produk yang dintonjolkan setelah diketuk dari AGSI Smart Video Promo Banner
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+
+  // Klik slide video ber-tautan produk → tampilkan semua kategori, gulir ke
+  // kartu produk, dan tonjolkan dengan cincin orange beberapa saat.
+  const openProductFromVideo = useCallback(
+    (productId: string) => {
+      const p = products.find((x) => x.id === productId);
+      setCategory("Semua");
+      setQuery("");
+      setHighlightId(productId);
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`produk-${productId}`);
+        if (el) el.scrollIntoView({ behavior: prefersReduced ? "auto" : "smooth", block: "center" });
+      });
+      showNotice(
+        p
+          ? {
+              type: "info",
+              title: `${p.emoji} ${p.name}`,
+              message: `Dari video promo — ${formatIDR(p.price)}. Tekan + untuk masukkan keranjang.`,
+            }
+          : { type: "info", title: "Produk Video Promo", message: "Produk sedang tidak tersedia." }
+      );
+    },
+    [products, prefersReduced, showNotice]
+  );
+
+  // Klik slide video ber-tautan promo → gulir ke carousel banner promo (atas)
+  const openPromoFromVideo = useCallback(() => {
+    rootRef.current?.scrollIntoView({ behavior: prefersReduced ? "auto" : "smooth", block: "start" });
+  }, [prefersReduced]);
+
+  // Bersihkan penonjolan otomatis setelah 3 detik
+  useEffect(() => {
+    if (!highlightId) return;
+    const t = setTimeout(() => setHighlightId(null), 3000);
+    return () => clearTimeout(t);
+  }, [highlightId]);
 
   const categories = useMemo(() => {
     const cats = Array.from(new Set(products.map((p) => p.category)));
@@ -405,7 +448,7 @@ export function MenuView() {
   );
 
   return (
-    <div className="px-4 pt-[calc(0.75rem+env(safe-area-inset-top,0px))]">
+    <div ref={rootRef} className="px-4 pt-[calc(0.75rem+env(safe-area-inset-top,0px))]">
       <header className="mb-3">
         <h1 className="text-xl font-black text-neutral-900">Menu Geprek 🍗</h1>
         <p className="text-xs text-neutral-400">Pilih, geprek, dan nikmati!</p>
@@ -468,6 +511,7 @@ export function MenuView() {
                 <motion.article
                   layout={!prefersReduced}
                   key={p.id}
+                  id={`produk-${p.id}`}
                   initial={prefersReduced ? false : { opacity: 0, scale: 0.94 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={prefersReduced ? undefined : { opacity: 0, scale: 0.94 }}
@@ -475,7 +519,9 @@ export function MenuView() {
                   whileHover={prefersReduced || soldOut ? undefined : { y: -4 }}
                   className={cn(
                     "card-lift relative flex flex-col rounded-2xl border border-orange-100 bg-white p-3 shadow-sm",
-                    soldOut && "opacity-60"
+                    soldOut && "opacity-60",
+                    highlightId === p.id &&
+                      "ring-2 ring-orange-500 ring-offset-2 ring-offset-orange-50"
                   )}
                 >
                   {p.popular && !soldOut && (
@@ -552,6 +598,9 @@ export function MenuView() {
           </AnimatePresence>
         </div>
       )}
+
+      {/* ===== AGSI SMART VIDEO PROMO BANNER (dasar halaman Menu — autoplay, loop, swipe, klik) ===== */}
+      <SmartVideoPromoBanner onOpenProduct={openProductFromVideo} onOpenPromo={openPromoFromVideo} />
     </div>
   );
 }
