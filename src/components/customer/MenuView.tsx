@@ -134,8 +134,10 @@ function MenuHeroBanner() {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ type: "spring", stiffness: 260, damping: 26 }}
       aria-label="Banner promo"
-      className="relative mb-4 h-40 w-full overflow-hidden rounded-3xl shadow-lg shadow-orange-500/30 ring-1 ring-orange-300/40"
+      className="scene-3d relative mb-4 h-40 w-full"
     >
+      {/* Papan 3D: semua slide promo tampil di atas billboard miring + ringan */}
+      <div className="tilt-3d relative h-full w-full overflow-hidden rounded-3xl shadow-xl shadow-orange-600/40 ring-1 ring-orange-300/40">
       {/* ===== SLIDE BERJALAN ===== */}
       <AnimatePresence initial={false}>
         <motion.div
@@ -172,7 +174,7 @@ function MenuHeroBanner() {
                   />
                   <motion.div
                     aria-hidden
-                    className="pointer-events-none absolute -right-3 -top-8 select-none text-[130px] leading-none opacity-30 drop-shadow-md"
+                    className="float-3d pointer-events-none absolute -right-3 -top-8 select-none text-[130px] leading-none opacity-30"
                     animate={prefersReduced ? undefined : { y: [0, -9, 0], rotate: [0, 5, 0] }}
                     transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
                   >
@@ -180,7 +182,7 @@ function MenuHeroBanner() {
                   </motion.div>
                   <motion.div
                     aria-hidden
-                    className="pointer-events-none absolute -bottom-10 right-16 select-none text-[90px] leading-none opacity-25"
+                    className="float-3d pointer-events-none absolute -bottom-10 right-16 select-none text-[90px] leading-none opacity-25"
                     animate={prefersReduced ? undefined : { y: [0, 7, 0], rotate: [0, -6, 0] }}
                     transition={{ duration: 6.5, repeat: Infinity, ease: "easeInOut" }}
                   >
@@ -202,12 +204,12 @@ function MenuHeroBanner() {
               {/* Konten teks (tanpa tombol — strip murni promosi) */}
               <div className="relative flex h-full flex-col justify-center gap-1.5 p-5">
                 {!!heroSlide.menuHeroBadge.trim() && (
-                  <span className="w-fit rounded-full bg-white/30 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white shadow-sm ring-1 ring-white/45 backdrop-blur-sm">
+                  <span className="chip-3d w-fit rounded-full bg-white/30 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white ring-1 ring-white/45 backdrop-blur-sm">
                     {heroSlide.menuHeroBadge}
                   </span>
                 )}
                 {!!heroSlide.menuHeroTitle.trim() && (
-                  <h2 className="max-w-[75%] text-lg font-black leading-tight text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.45)]">
+                  <h2 className="text-3d max-w-[75%] text-lg font-black leading-tight text-white">
                     {heroSlide.menuHeroTitle}
                   </h2>
                 )}
@@ -251,7 +253,7 @@ function MenuHeroBanner() {
                   {!!slide.banner.emoji.trim() && (
                     <motion.div
                       aria-hidden
-                      className="pointer-events-none absolute -right-2 -bottom-6 select-none text-[110px] leading-none opacity-30 drop-shadow-md"
+                      className="float-3d pointer-events-none absolute -right-2 -bottom-6 select-none text-[110px] leading-none opacity-30"
                       animate={prefersReduced ? undefined : { y: [0, -8, 0], rotate: [0, 6, 0] }}
                       transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
                     >
@@ -274,12 +276,12 @@ function MenuHeroBanner() {
               {/* Konten teks banner promo */}
               <div className="relative flex h-full flex-col justify-center gap-1.5 p-5">
                 {!!slide.banner.badge.trim() && (
-                  <span className="w-fit rounded-full bg-white/30 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white shadow-sm ring-1 ring-white/45 backdrop-blur-sm">
+                  <span className="chip-3d w-fit rounded-full bg-white/30 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white ring-1 ring-white/45 backdrop-blur-sm">
                     {slide.banner.badge}
                   </span>
                 )}
                 {!!slide.banner.title.trim() && (
-                  <h2 className="max-w-[75%] text-lg font-black leading-tight text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.45)]">
+                  <h2 className="text-3d max-w-[75%] text-lg font-black leading-tight text-white">
                     {slide.banner.title}
                   </h2>
                 )}
@@ -333,17 +335,17 @@ function MenuHeroBanner() {
                 )}
                 <div className="absolute inset-0 bg-gradient-to-r from-neutral-900/55 via-neutral-900/15 to-transparent" />
                 <div className="relative flex h-full flex-col justify-center gap-1.5 p-5">
-                  <span className="w-fit rounded-full bg-white/30 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white shadow-sm ring-1 ring-white/45 backdrop-blur-sm">
+                  <span className="chip-3d w-fit rounded-full bg-white/30 px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-white ring-1 ring-white/45 backdrop-blur-sm">
                     Voucher Aktif
                   </span>
-                  <h2 className="max-w-[75%] text-lg font-black leading-tight text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.45)]">
+                  <h2 className="text-3d max-w-[75%] text-lg font-black leading-tight text-white">
                     Potongan {formatVoucherValue(slide.voucher)}
                     {slide.voucher.type === "PERCENT" ? " Off" : ""}
                   </h2>
                   <p className="max-w-[70%] text-xs font-semibold leading-snug text-white/90 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
                     {slide.voucher.title}
                   </p>
-                  <span className="mt-0.5 flex w-fit items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 font-mono text-[11px] font-black tracking-wider text-orange-700 shadow-md">
+                  <span className="chip-3d mt-0.5 flex w-fit items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 font-mono text-[11px] font-black tracking-wider text-orange-700">
                     {slide.voucher.code}
                     <span className="font-sans text-[9px] font-bold uppercase text-orange-400">
                       ketuk salin
@@ -375,6 +377,7 @@ function MenuHeroBanner() {
           ))}
         </div>
       )}
+      </div>
     </motion.section>
   );
 }

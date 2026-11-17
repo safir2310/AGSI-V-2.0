@@ -316,29 +316,64 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
         </div>
       </motion.section>
 
-      {/* ===== STRIP PROMO HARI INI (konten diatur admin dari Profil) ===== */}
+      {/* ===== POSTER 3D PROMO HARI INI (full-width, konten diatur admin) ===== */}
       {promo.promoStripEnabled && (promo.promoStripBadge.trim() || promo.promoStripTitle.trim() || promo.promoStripText.trim()) && (
-        <motion.section {...reveal(0.2)} className="px-4">
+        <motion.section {...reveal(0.2)}>
           <button
             onClick={() => go("menu")}
-            className="press-effect relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-orange-600 via-orange-500 to-orange-400 p-4 text-left shadow-lg"
+            className="scene-3d press-effect relative block w-full text-left"
           >
-            <div className="pointer-events-none absolute -right-4 -top-6 text-[80px] opacity-25">🌶️</div>
-            {promo.promoStripBadge.trim() && (
-              <p className="text-[10px] font-bold uppercase tracking-widest text-orange-100">
-                {promo.promoStripBadge.trim()}
-              </p>
-            )}
-            {promo.promoStripTitle.trim() && (
-              <p className="mt-0.5 text-base font-extrabold text-white">
-                {promo.promoStripTitle.trim()}
-              </p>
-            )}
-            {promo.promoStripText.trim() && (
-              <p className="mt-0.5 text-[11px] font-medium text-orange-50">
-                {promo.promoStripText.trim()}
-              </p>
-            )}
+            <div className="tilt-3d relative w-full overflow-hidden bg-gradient-to-br from-orange-700 via-orange-500 to-amber-400 px-5 pb-8 pt-6 shadow-[0_26px_48px_-14px_rgba(194,65,12,0.65)]">
+              {/* Glow kedalaman — bola cahaya di kedua sisi */}
+              <div className="pointer-events-none absolute -left-10 -top-14 h-40 w-40 rounded-full bg-white/30 blur-2xl" />
+              <div className="pointer-events-none absolute -bottom-16 right-1/4 h-36 w-36 rounded-full bg-yellow-200/50 blur-2xl" />
+              {/* Objek mengapung 3D — emoji dengan bayangan jatuh */}
+              <motion.div
+                aria-hidden
+                className="float-3d pointer-events-none absolute -right-3 -top-7 select-none text-[88px] leading-none opacity-90"
+                animate={prefersReduced ? undefined : { y: [0, -10, 0], rotate: [0, 6, 0] }}
+                transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
+              >
+                🌶️
+              </motion.div>
+              <motion.div
+                aria-hidden
+                className="float-3d pointer-events-none absolute bottom-3 right-24 select-none text-[52px] leading-none opacity-85"
+                animate={prefersReduced ? undefined : { y: [0, 8, 0], rotate: [0, -8, 0] }}
+                transition={{ duration: 6.5, repeat: Infinity, ease: "easeInOut" }}
+              >
+                🍗
+              </motion.div>
+              {/* Kilau menyapu berkala */}
+              {!prefersReduced && (
+                <motion.div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 skew-x-[-12deg] bg-gradient-to-r from-transparent via-white/40 to-transparent"
+                  animate={{ x: ["0%", "480%"] }}
+                  transition={{ duration: 2.6, repeat: Infinity, repeatDelay: 3, ease: "easeInOut" }}
+                />
+              )}
+              {/* Konten poster */}
+              <div className="relative max-w-[76%]">
+                {promo.promoStripBadge.trim() && (
+                  <span className="chip-3d inline-flex items-center rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-950">
+                    {promo.promoStripBadge.trim()}
+                  </span>
+                )}
+                {promo.promoStripTitle.trim() && (
+                  <p className="text-3d mt-2 text-[26px] font-black leading-[1.06] text-white">
+                    {promo.promoStripTitle.trim()}
+                  </p>
+                )}
+                {promo.promoStripText.trim() && (
+                  <p className="mt-2.5 inline-flex items-center rounded-xl bg-orange-950/35 px-3 py-1.5 text-xs font-bold text-orange-50 ring-1 ring-white/25 backdrop-blur-sm">
+                    {promo.promoStripText.trim()}
+                  </p>
+                )}
+              </div>
+              {/* Alas bayangan 3D — kesan poster berdiri di atas permukaan */}
+              <div className="pointer-events-none absolute inset-x-8 -bottom-3 h-7 rounded-full bg-orange-950/45 blur-lg" />
+            </div>
           </button>
         </motion.section>
       )}

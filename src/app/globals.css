@@ -216,6 +216,35 @@
   .scrollbar-slim::-webkit-scrollbar-thumb:hover {
     background: #F97316;
   }
+  /* ===== POSTER 3D — bahasa visual banner promo (beranda & menu) ===== */
+  /* Panggung perspektif — pembungkus elemen yang miring ke belakang */
+  .scene-3d {
+    perspective: 1200px;
+  }
+  /* Papan billboard 3D — kartu dimiringkan halus + kedalaman berlapis */
+  .tilt-3d {
+    transform: rotateX(4.5deg);
+    transform-style: preserve-3d;
+  }
+  /* Judul ekstrusi 3D — tumpukan bayangan bergradasi = huruf timbul */
+  .text-3d {
+    text-shadow:
+      0 1px 0 rgba(0, 0, 0, 0.28),
+      0 2px 0 rgba(0, 0, 0, 0.24),
+      0 3px 0 rgba(0, 0, 0, 0.20),
+      0 4px 0 rgba(0, 0, 0, 0.16),
+      0 9px 18px rgba(0, 0, 0, 0.35);
+  }
+  /* Pill/chip timbul — ekstrusi bawah + bayangan jatuh */
+  .chip-3d {
+    box-shadow:
+      0 3px 0 rgba(0, 0, 0, 0.28),
+      0 10px 20px rgba(0, 0, 0, 0.22);
+  }
+  /* Elemen mengapung 3D — bayangan jatuh lembut di bawah objek */
+  .float-3d {
+    filter: drop-shadow(0 14px 14px rgba(0, 0, 0, 0.30));
+  }
 }
 
 /* Hormati preferensi pengguna yang mengurangi gerakan */

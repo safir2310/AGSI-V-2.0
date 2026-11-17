@@ -77,7 +77,7 @@ export function BannerPopup({ go }: BannerPopupProps) {
           initial={prefersReduced ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={prefersReduced ? undefined : { opacity: 0 }}
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-neutral-900/70 p-5 backdrop-blur-sm"
+          className="scene-3d fixed inset-0 z-[90] flex items-center justify-center bg-neutral-900/70 p-5 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-label="Banner promo"
@@ -90,8 +90,10 @@ export function BannerPopup({ go }: BannerPopupProps) {
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={prefersReduced ? undefined : { scale: 0.9, y: 20, opacity: 0 }}
             transition={{ type: "spring", stiffness: 320, damping: 24 }}
-            className="relative w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-orange-100"
+            className="relative w-full max-w-sm"
           >
+            {/* Kartu poster 3D — papan miring dengan kedalaman berlapis */}
+            <div className="tilt-3d overflow-hidden rounded-3xl bg-white shadow-[0_30px_60px_-12px_rgba(0,0,0,0.55)] ring-1 ring-orange-100">
             {/* Tombol tutup */}
             <button
               onClick={dismiss}
@@ -121,11 +123,11 @@ export function BannerPopup({ go }: BannerPopupProps) {
             {/* Judul & pesan (juga dipakai sebagai fallback bila gambar gagal) */}
             {showText && (
               <div className="bg-gradient-to-b from-orange-50/70 to-white px-5 pb-5 pt-4 text-center">
-                <span className="mb-2 inline-flex items-center gap-1 rounded-full bg-orange-600 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-white shadow-sm">
+                <span className="chip-3d mb-2 inline-flex items-center gap-1 rounded-full bg-orange-600 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-white">
                   <Megaphone className="h-3 w-3" /> Info Promo
                 </span>
                 {banner.bannerTitle && (
-                  <h2 className="text-lg font-black leading-snug text-neutral-900">
+                  <h2 className="text-3d text-lg font-black leading-snug text-neutral-900">
                     {banner.bannerTitle}
                   </h2>
                 )}
@@ -136,12 +138,12 @@ export function BannerPopup({ go }: BannerPopupProps) {
                 )}
                 <button
                   onClick={handleCta}
-                  className="press-effect mt-4 inline-flex items-center gap-1.5 rounded-full bg-orange-600 px-5 py-2.5 text-xs font-extrabold text-white shadow-lg shadow-orange-600/30 transition hover:bg-orange-700"
+                  className="chip-3d press-effect mt-4 inline-flex items-center gap-1.5 rounded-full bg-orange-600 px-5 py-2.5 text-xs font-extrabold text-white transition hover:bg-orange-700"
                 >
                   Pesan Sekarang <ArrowRight className="h-3.5 w-3.5" />
                 </button>
               </div>
-            )}
+            </div>
           </motion.div>
         </motion.div>
       )}

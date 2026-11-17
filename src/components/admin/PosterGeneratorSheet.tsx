@@ -39,6 +39,8 @@ import { cn } from "@/lib/utils";
  *      • Logo toko & foto latar produk (diunggah, diproses di perangkat)
  *      • 7 tema warna + warna kustom dua gradasi
  *      • 4 pola latar (bulatan, garis diagonal, bintik, polos)
+ *      • GAYA 3D DIMENSI: teks judul ekstrusi, badge/panel/strip timbul,
+ *        bola cahaya mengapung — poster langsung berkesan 3D
  *      • 3 gaya font (modern, bulat, klasik) + QR "Pesan di App"
  *      • Item promo 1–6 (tambah/hapus), harga asli dicoret otomatis
  *      • Draf tersimpan otomatis (localStorage) + Acak Gaya 🎲 + Reset
@@ -99,12 +101,21 @@ const PATTERNS: Record<PatternChoice, { label: string }> = {
   polos: { label: "Polos" },
 };
 
+/** Gaya poster (v3D): flat = polos klasik, d3 = 3D Dimensi (fitur 3D) */
+type StyleChoice = "flat" | "d3";
+
+const STYLES: Record<StyleChoice, { label: string }> = {
+  flat: { label: "Flat" },
+  d3: { label: "3D Dimensi ✨" },
+};
+
 type PromoItem = { emoji: string; name: string; price: number; strike?: number };
 
 type PosterState = {
   kind: PosterKind;
   theme: Theme;
   pattern: PatternChoice;
+  style: StyleChoice;
   font: FontChoice;
   customColor: boolean;
   colA: string;
@@ -186,6 +197,54 @@ function fitFont(ctx: CanvasRenderingContext2D, text: string, weight: number, si
     ctx.font = `${weight} ${s}px ${stack}`;
   }
   return s;
+}
+
+/* ===== EFEK 3D (gaya "3D Dimensi") ===== */
+
+/** Teks ekstrusi 3D: tumpukan lapisan gelap diagonal + lapisan atas terang.
+ *  Memakai fillStyle/font/textAlign yang sudah diatur pemanggil. */
+function drawText3D(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  u: number,
+  depth = 5
+) {
+  ctx.save();
+  const topFill = ctx.fillStyle;
+  ctx.fillStyle = "rgba(0,0,0,0.30)";
+  for (let i = depth; i >= 1; i--) {
+    ctx.fillText(text, x + i * 2.2 * u, y + i * 2.2 * u);
+  }
+  ctx.fillStyle = topFill;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+/** Angkat plat/kartu 3D: bayangan jatuh lembut di bawah bentuk berikutnya */
+function lift3D(ctx: CanvasRenderingContext2D, u: number, scale = 1) {
+  ctx.shadowColor = "rgba(0,0,0,0.40)";
+  ctx.shadowBlur = 20 * u * scale;
+  ctx.shadowOffsetY = 12 * u * scale;
+}
+
+/** Bola cahaya 3D: gradasi radial highlight → warna → tepi gelap */
+function sphere3D(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  color: string
+) {
+  const g = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.1, cx, cy, r);
+  g.addColorStop(0, "rgba(255,255,255,0.85)");
+  g.addColorStop(0.4, color);
+  g.addColorStop(1, "rgba(0,0,0,0.28)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 /** Satu baris item promo: emoji + nama + harga (harga asli dicoret bila ada) */
@@ -326,14 +385,42 @@ function drawPoster(canvas: HTMLCanvasElement, s: PosterState, assets: PosterAss
   }
   // polos: tanpa pola
 
+  // ===== GAYA 3D: glow cahaya + vignette kedalaman + bola 3D mengapung =====
+  if (s.style === "d3") {
+    const glow = ctx.createRadialGradient(W * 0.18, H * 0.1, 0, W * 0.18, H * 0.1, W * 0.62);
+    glow.addColorStop(0, "rgba(255,255,255,0.20)");
+    glow.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+    const vig = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.95);
+    vig.addColorStop(0, "rgba(0,0,0,0)");
+    vig.addColorStop(1, "rgba(0,0,0,0.40)");
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, W, H);
+    const orbs = [
+      { x: 0.9, y: 0.84, r: 88, c: "rgba(255,255,255,0.50)" },
+      { x: 0.8, y: 0.12, r: 54, c: "rgba(255,255,255,0.38)" },
+      { x: 0.1, y: 0.92, r: 46, c: "rgba(255,255,255,0.28)" },
+    ];
+    for (const b of orbs) sphere3D(ctx, b.x * W, b.y * H, b.r * u, b.c);
+  }
+
   // ===== LOGO TOKO — chip putih sudut kanan-atas =====
   if (assets.logo) {
     const size = 118 * u;
     const lx = W - pad - size;
     const ly = pad - 6 * u;
     ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.28)";
-    ctx.shadowBlur = 16 * u;
+    if (s.style === "d3") {
+      // plat ekstrusi gelap di belakang chip + bayangan angkat
+      ctx.fillStyle = "rgba(0,0,0,0.28)";
+      roundRect(ctx, lx + 6 * u, ly + 8 * u, size, size, 26 * u);
+      ctx.fill();
+      lift3D(ctx, u, 0.9);
+    } else {
+      ctx.shadowColor = "rgba(0,0,0,0.28)";
+      ctx.shadowBlur = 16 * u;
+    }
     ctx.fillStyle = "rgba(255,255,255,0.94)";
     roundRect(ctx, lx, ly, size, size, 26 * u);
     ctx.fill();
@@ -349,9 +436,18 @@ function drawPoster(canvas: HTMLCanvasElement, s: PosterState, assets: PosterAss
   // ===== BADGE =====
   ctx.font = `900 ${34 * u}px ${stack}`;
   const badgeW = Math.min(ctx.measureText(s.badge).width + 48 * u, W - pad * 2 - (assets.logo ? 130 * u : 0));
+  ctx.save();
+  if (s.style === "d3") {
+    // plat ekstrusi di bawah badge → pill 3D timbul
+    ctx.fillStyle = "rgba(0,0,0,0.30)";
+    roundRect(ctx, pad + 5 * u, pad + 7 * u, badgeW, 62 * u, 31 * u);
+    ctx.fill();
+    lift3D(ctx, u, 0.9);
+  }
   ctx.fillStyle = t.accent;
   roundRect(ctx, pad, pad, badgeW, 62 * u, 31 * u);
   ctx.fill();
+  ctx.restore();
   ctx.fillStyle = t.badgeText;
   ctx.textBaseline = "middle";
   ctx.textAlign = "center";
@@ -373,7 +469,8 @@ function drawPoster(canvas: HTMLCanvasElement, s: PosterState, assets: PosterAss
     const titleLines = wrapText(ctx, s.title, leftW, 3);
     let ty = pad + 140 * u;
     for (const line of titleLines) {
-      ctx.fillText(line, pad, ty);
+      if (s.style === "d3") drawText3D(ctx, line, pad, ty, u, 5);
+      else ctx.fillText(line, pad, ty);
       ty += 96 * u;
     }
 
@@ -404,12 +501,15 @@ function drawPoster(canvas: HTMLCanvasElement, s: PosterState, assets: PosterAss
       ctx.font = `900 ${34 * u}px ${stack}`;
       const vText = `${s.voucherText}  •  KODE: ${s.voucherCode}`;
       const vw = ctx.measureText(vText).width + 56 * u;
+      ctx.save();
+      if (s.style === "d3") lift3D(ctx, u, 0.8);
       ctx.fillStyle = t.stripBg;
       roundRect(ctx, pad, vy - 34 * u, vw, 68 * u, 34 * u);
       ctx.fill();
       ctx.strokeStyle = t.accent;
       ctx.lineWidth = 3 * u;
       ctx.stroke();
+      ctx.restore();
       ctx.fillStyle = t.accent;
       ctx.textBaseline = "middle";
       ctx.fillText(vText, pad + 28 * u, vy);
@@ -419,12 +519,21 @@ function drawPoster(canvas: HTMLCanvasElement, s: PosterState, assets: PosterAss
     const panelX = W * 0.55;
     const panelW = W - panelX - pad;
     const panelH = H - pad * 2;
+    ctx.save();
+    if (s.style === "d3") {
+      // plat ekstrusi gelap + bayangan angkat → panel melayang 3D
+      ctx.fillStyle = "rgba(0,0,0,0.30)";
+      roundRect(ctx, panelX + 9 * u, pad + 10 * u, panelW, panelH, 36 * u);
+      ctx.fill();
+      lift3D(ctx, u);
+    }
     ctx.fillStyle = "rgba(255,255,255,0.12)";
     roundRect(ctx, panelX, pad, panelW, panelH, 36 * u);
     ctx.fill();
     ctx.strokeStyle = "rgba(255,255,255,0.25)";
     ctx.lineWidth = 2.5 * u;
     ctx.stroke();
+    ctx.restore();
 
     const qrBarH = assets.qr ? 110 * u : 0;
     const rowsArea = panelH - 70 * u - qrBarH - 16 * u;
@@ -434,7 +543,10 @@ function drawPoster(canvas: HTMLCanvasElement, s: PosterState, assets: PosterAss
 
     const iy = pad + 70 * u;
     for (let i = 0; i < drawRows; i++) {
+      ctx.save();
+      if (s.style === "d3") lift3D(ctx, u, 0.35); // bayangan halus → baris melayang
       drawItemRow(ctx, items[i], panelX + 8 * u, iy + i * rowH + rowH / 2, panelW - 16 * u, t, stack, u, false);
+      ctx.restore();
     }
     if (noteH) {
       ctx.fillStyle = t.sub;
@@ -446,9 +558,12 @@ function drawPoster(canvas: HTMLCanvasElement, s: PosterState, assets: PosterAss
     // QR bar di dalam panel (bawah)
     if (assets.qr) {
       const barY = pad + panelH - 14 * u - 96 * u;
+      ctx.save();
+      if (s.style === "d3") lift3D(ctx, u, 0.8);
       ctx.fillStyle = "#FFFFFF";
       roundRect(ctx, panelX + 16 * u, barY, panelW - 32 * u, 96 * u, 22 * u);
       ctx.fill();
+      ctx.restore();
       ctx.drawImage(assets.qr, panelX + 30 * u, barY + 14 * u, 68 * u, 68 * u);
       ctx.fillStyle = "#1C1917";
       ctx.font = `900 ${26 * u}px ${stack}`;
@@ -468,7 +583,8 @@ function drawPoster(canvas: HTMLCanvasElement, s: PosterState, assets: PosterAss
     const titleLines = wrapText(ctx, s.title, W - pad * 2, 3);
     let ty = pad + 170 * u;
     for (const line of titleLines) {
-      ctx.fillText(line, pad, ty);
+      if (s.style === "d3") drawText3D(ctx, line, pad, ty, u, 5);
+      else ctx.fillText(line, pad, ty);
       ty += (s.kind === "story" ? 104 : 92) * u;
     }
 
@@ -491,19 +607,31 @@ function drawPoster(canvas: HTMLCanvasElement, s: PosterState, assets: PosterAss
       140 * u,
       Math.min(H - reserve - cardY, items.length * 132 * u + 44 * u)
     );
+    ctx.save();
+    if (s.style === "d3") {
+      // plat ekstrusi gelap + bayangan angkat → kartu item melayang 3D
+      ctx.fillStyle = "rgba(0,0,0,0.30)";
+      roundRect(ctx, pad + 9 * u, cardY + 10 * u, W - pad * 2, cardH, 36 * u);
+      ctx.fill();
+      lift3D(ctx, u);
+    }
     ctx.fillStyle = "rgba(255,255,255,0.12)";
     roundRect(ctx, pad, cardY, W - pad * 2, cardH, 36 * u);
     ctx.fill();
     ctx.strokeStyle = "rgba(255,255,255,0.25)";
     ctx.lineWidth = 2.5 * u;
     ctx.stroke();
+    ctx.restore();
 
     drawRows = Math.min(items.length, Math.max(1, Math.floor((cardH - 30 * u) / (92 * u))));
     noteH = drawRows < items.length ? 36 * u : 0;
     rowH = (cardH - 30 * u - noteH) / drawRows;
 
     for (let i = 0; i < drawRows; i++) {
+      ctx.save();
+      if (s.style === "d3") lift3D(ctx, u, 0.35); // bayangan halus → baris melayang
       drawItemRow(ctx, items[i], pad + 8 * u, cardY + 26 * u + i * rowH + rowH / 2, W - pad * 2 - 16 * u, t, stack, u, true);
+      ctx.restore();
     }
     if (noteH) {
       ctx.fillStyle = t.sub;
@@ -521,12 +649,15 @@ function drawPoster(canvas: HTMLCanvasElement, s: PosterState, assets: PosterAss
       const maxVw = assets.qr ? W - pad * 2 - 240 * u : W - pad * 2;
       fitFont(ctx, vText, 900, 36, maxVw - 56 * u, stack, 20);
       const vw = Math.min(ctx.measureText(vText).width + 56 * u, maxVw);
+      ctx.save();
+      if (s.style === "d3") lift3D(ctx, u, 0.8);
       ctx.fillStyle = t.stripBg;
       roundRect(ctx, pad, vy, vw, 72 * u, 36 * u);
       ctx.fill();
       ctx.strokeStyle = t.accent;
       ctx.lineWidth = 3 * u;
       ctx.stroke();
+      ctx.restore();
       ctx.fillStyle = t.accent;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -538,9 +669,12 @@ function drawPoster(canvas: HTMLCanvasElement, s: PosterState, assets: PosterAss
     if (assets.qr) {
       const barY = stripBottom + 26 * u;
       const barH = 96 * u;
+      ctx.save();
+      if (s.style === "d3") lift3D(ctx, u, 0.8);
       ctx.fillStyle = "#FFFFFF";
       roundRect(ctx, pad, barY, W - pad * 2, barH, 24 * u);
       ctx.fill();
+      ctx.restore();
       ctx.drawImage(assets.qr, pad + 14 * u, barY + 13 * u, 70 * u, 70 * u);
       ctx.fillStyle = "#1C1917";
       ctx.font = `900 ${30 * u}px ${stack}`;
@@ -599,6 +733,7 @@ const DEFAULT_STATE: PosterState = {
   kind: "feed",
   theme: "api",
   pattern: "bulat",
+  style: "d3",
   font: "modern",
   customColor: false,
   colA: "#7C2D12",
@@ -1278,6 +1413,33 @@ export function PosterGeneratorSheet({ open, onClose }: { open: boolean; onClose
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* Gaya poster: flat / 3D dimensi (fitur 3D) */}
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-black uppercase tracking-wide text-neutral-500">Gaya Poster</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(Object.keys(STYLES) as StyleChoice[]).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => set("style", st)}
+                      className={cn(
+                        "press-effect rounded-xl border px-2 py-1.5 text-[11px] font-black transition",
+                        state.style === st
+                          ? "border-orange-500 bg-orange-50 text-orange-700 ring-2 ring-orange-200"
+                          : "border-orange-100 bg-white text-neutral-600 hover:border-orange-300"
+                      )}
+                    >
+                      {STYLES[st].label}
+                    </button>
+                  ))}
+                </div>
+                {state.style === "d3" && (
+                  <p className="text-[10px] font-semibold leading-snug text-orange-600/80">
+                    Teks ekstrusi, panel & badge timbul, bola cahaya 3D — hasil PNG langsung berkesan 3D.
+                  </p>
+                )}
               </div>
 
               {/* Logo toko & foto latar */}
