@@ -107,7 +107,10 @@ const draftFromBanner = (b: MenuPromoBannerInfo): BannerDraft => ({
   imageBusy: false,
 });
 
-/** Kompres & perkecil gambar banner di sisi klien (maks 1200px, JPEG) */
+/** Kompres & perkecil gambar banner di sisi klien (maks 1200px, JPEG).
+ *  v1.3.28 — kualitas JPEG diturunkan bertahap bila hasil masih > 1,6 MB
+ *  (batas server per gambar ±2 MB base64): foto sangat detail tidak lagi
+ *  membuat "Simpan" gagal. */
 async function fileToResizedDataUrl(file: File): Promise<string> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const r = new FileReader();
@@ -130,7 +133,13 @@ async function fileToResizedDataUrl(file: File): Promise<string> {
   const ctx = canvas.getContext("2d");
   if (!ctx) return dataUrl;
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.85);
+  let quality = 0.85;
+  let out = canvas.toDataURL("image/jpeg", quality);
+  while (out.length > 1_600_000 && quality > 0.45) {
+    quality -= 0.1;
+    out = canvas.toDataURL("image/jpeg", quality);
+  }
+  return out;
 }
 
 /** Validasi + kompres gambar di luar komponen; null = gagal (notice sudah ditampilkan). */
@@ -524,6 +533,66 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
 
     setSaving(true);
     try {
+      // v1.3.28 — UNGGAH GAMBAR SATU PER SATU dulu. Dulu SEMUA gambar (popup,
+      // hero, 2 banner promo) digabung dalam SATU request PUT /api/settings;
+      // gabungan base64 beberapa foto bisa melewati batas badan request
+      // platform (±4,5 MB) → permintaan ditolak dengan respons kosong →
+      // res.json() melempar → pengguna hanya melihat "Koneksi Bermasalah"
+      // padahal koneksi baik-baik saja. Kini tiap gambar dikirim sendiri
+      // (tiap gambar < ±2 MB, di bawah batas per gambar server) dengan nama
+      // gambar yang jelas bila satu gagal.
+      type ImageStep = { label: string; body: Record<string, unknown> };
+      const imageSteps: ImageStep[] = [];
+      if (imageData !== undefined) {
+        imageSteps.push(
+          imageData === null
+            ? { label: "banner popup", body: { bannerImageRemove: true } }
+            : { label: "banner popup", body: { bannerImageData: imageData } },
+        );
+      }
+      if (heroImageData !== undefined) {
+        imageSteps.push(
+          heroImageData === null
+            ? { label: "hero Menu", body: { menuHeroImageRemove: true } }
+            : { label: "hero Menu", body: { menuHeroImageData: heroImageData } },
+        );
+      }
+      bannerDrafts.forEach((d, i) => {
+        if (d.imageData === null) {
+          imageSteps.push({
+            label: `banner promo ${i + 1}`,
+            body: { menuPromoBanners: [{ slot: i + 1, imageRemove: true }] },
+          });
+        } else if (d.imageData !== undefined) {
+          imageSteps.push({
+            label: `banner promo ${i + 1}`,
+            body: { menuPromoBanners: [{ slot: i + 1, imageData: d.imageData }] },
+          });
+        }
+      });
+      for (const step of imageSteps) {
+        const res = await apiFetch("/api/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(step.body),
+        });
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        if (!res.ok) {
+          showNotice({
+            type: "error",
+            autoCloseMs: 8000,
+            title: `Gagal Menyimpan Gambar ${step.label}`,
+            message:
+              data?.error ??
+              (res.status === 413
+                ? "Ukuran gambar melebihi batas server — unggah ulang gambar yang lebih kecil."
+                : "Coba lagi sebentar ya. Bila berulang, periksa koneksi internet."),
+          });
+          return;
+        }
+      }
+
+      // Konten teks & saklar — TANPA data gambar (badan kecil, selalu lolos).
       const body: Record<string, unknown> = {
         bannerEnabled: enabled,
         bannerTitle: title.trim() || null,
@@ -548,11 +617,6 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
           text: d.text.trim(),
           emoji: d.emoji.trim(),
           theme: d.theme,
-          ...(d.imageData === null
-            ? { imageRemove: true }
-            : d.imageData !== undefined
-              ? { imageData: d.imageData }
-              : {}),
         })),
       };
       // AGSI Smart Video Promo Banner — metadata slide (bytes video terunggah
@@ -565,23 +629,23 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
         linkType: d.linkType,
         productId: d.linkType === "product" ? d.productId : null,
       }));
-      if (imageData !== undefined) {
-        if (imageData === null) body.bannerImageRemove = true;
-        else body.bannerImageData = imageData;
-      }
-      if (heroImageData !== undefined) {
-        if (heroImageData === null) body.menuHeroImageRemove = true;
-        else body.menuHeroImageData = heroImageData;
-      }
 
       const res = await apiFetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) {
-        showNotice({ type: "error", title: "Gagal Menyimpan", message: data.error ?? "Coba lagi sebentar ya." });
+        showNotice({
+          type: "error",
+          title: "Gagal Menyimpan",
+          message:
+            data?.error ??
+            (res.status === 413
+              ? "Ukuran konten melebihi batas server — coba lagi dengan konten lebih ringkas."
+              : "Coba lagi sebentar ya."),
+        });
         return;
       }
 
