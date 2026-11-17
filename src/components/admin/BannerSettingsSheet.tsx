@@ -132,17 +132,29 @@ async function fileToResizedDataUrl(file: File): Promise<string> {
   if (scale >= 1 && dataUrl.length < 100_000) return dataUrl;
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
-  if (!ctx) return dataUrl;
+  if (!ctx) {
+    // Canvas tak tersedia (memori perangkat penuh dsb.) — JANGAN kirim file
+    // asli raksasa: badan request > ±4,5 MB diputus platform → tampak
+    // sebagai "Tidak dapat menghubungi server" saat Simpan.
+    if (dataUrl.length > 1_800_000) {
+      throw new Error("Gambar tidak dapat dipadatkan di perangkat ini — pilih gambar yang lebih kecil.");
+    }
+    return dataUrl;
+  }
   let quality = 0.82;
   let out = dataUrl;
-  for (let attempt = 0; attempt < 8; attempt++) {
-    canvas.width = Math.max(1, Math.round(img.width * scale));
-    canvas.height = Math.max(1, Math.round(img.height * scale));
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    out = canvas.toDataURL("image/jpeg", quality);
-    if (out.length <= TARGET) break;
-    if (quality > 0.5) quality = Math.max(0.5, quality - 0.1);
-    else scale *= 0.85; // kualitas sudah di batas bawah → perkecil dimensi
+  try {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      out = canvas.toDataURL("image/jpeg", quality);
+      if (out.length <= TARGET) break;
+      if (quality > 0.5) quality = Math.max(0.5, quality - 0.1);
+      else scale *= 0.85; // kualitas sudah di batas bawah → perkecil dimensi
+    }
+  } catch {
+    throw new Error("Gambar terlalu besar untuk diproses perangkat ini — pilih gambar yang lebih kecil.");
   }
   return out;
 }
@@ -743,24 +755,44 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
 
       const settled = await Promise.allSettled(
         steps.map(async (step) => {
-          const res = await apiFetchTimeout("/api/settings", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(step.body),
-          });
-          const data = (await res.json().catch(() => null)) as { error?: string } | null;
-          if (!res.ok) {
-            // "Tidak ada pengaturan yang diubah." = server memutus bagian ini
-            // tanpa perubahan — itu sukses, bukan gagal (defensif bila versi
-            // server & klien tidak sinkron).
-            if (data?.error === "Tidak ada pengaturan yang diubah.") return;
-            const alasan =
-              data?.error ??
-              (res.status === 413
-                ? "Ukuran konten melebihi batas server — unggah ulang gambar yang lebih kecil."
-                : "Coba lagi sebentar ya.");
-            throw new Error(`Bagian ${step.label}: ${alasan}`);
+          // v1.3.34 — jaringan buruk sering gagal SESAAT (koneksi direset saat
+          // koneksi dingin/beralih menara) → ulangi otomatis 2× (jeda 1,5 dtk
+          // lalu 3 dtk) sebelum menyerah; kesalahan validasi (4xx) tidak
+          // diulang karena pasti gagal lagi.
+          let terakhir: unknown = null;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              const res = await apiFetchTimeout("/api/settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(step.body),
+              });
+              const data = (await res.json().catch(() => null)) as { error?: string } | null;
+              if (res.ok) return;
+              // "Tidak ada pengaturan yang diubah." = server memutus bagian ini
+              // tanpa perubahan — itu sukses, bukan gagal (defensif bila versi
+              // server & klien tidak sinkron).
+              if (data?.error === "Tidak ada pengaturan yang diubah.") return;
+              if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+                const alasan =
+                  data?.error ??
+                  (res.status === 413
+                    ? "Ukuran konten melebihi batas server — unggah ulang gambar yang lebih kecil."
+                    : "Coba lagi sebentar ya.");
+                throw new Error(`Bagian ${step.label}: ${alasan}`);
+              }
+              terakhir = new Error(`Bagian ${step.label}: ${data?.error ?? `Server sibuk (${res.status}).`}`);
+            } catch (e) {
+              // Kesalahan yang PASTI gagal lagi jangan diulang:
+              // - validasi ("Bagian …" sudah berlabel)
+              // - pengaman waktu habis (mengulang = menunggu bertahun-tahun)
+              if (e instanceof Error && e.message.startsWith("Bagian ")) throw e;
+              if ((e as { name?: string } | null | undefined)?.name === "AbortError") throw e;
+              terakhir = e;
+            }
+            if (attempt < 3) await new Promise((r) => setTimeout(r, attempt === 1 ? 1500 : 3000));
           }
+          throw terakhir ?? new Error(`Bagian ${step.label}: gagal terkirim.`);
         }),
       );
       const gagal = settled.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
@@ -773,7 +805,12 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
               : gagal.reason instanceof Error
                 ? gagal.reason.message
                 : "Coba lagi sebentar ya.";
-        showNotice({ type: "error", autoCloseMs: 8000, title: "Gagal Menyimpan", message: alasan });
+        showNotice({
+          type: "error",
+          autoCloseMs: 8000,
+          title: "Gagal Menyimpan",
+          message: `${alasan} Bagian lain yang sudah terkirim tetap tersimpan — tekan Simpan lagi untuk mengulang.`,
+        });
         return;
       }
 
@@ -797,8 +834,15 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
         message:
           "Perubahan popup banner, strip promo, hero Menu, 2 banner promo, dan slide voucher langsung tampil di aplikasi pelanggan.",
       });
-    } catch {
-      showNotice({ type: "error", title: "Koneksi Bermasalah", message: "Tidak dapat menghubungi server." });
+    } catch (e) {
+      // Pesan JUJUR — jangan salahkan koneksi untuk error non-jaringan;
+      // tampilkan penyebab aslinya supaya mudah ditemukan.
+      showNotice({
+        type: "error",
+        autoCloseMs: 8000,
+        title: e instanceof TypeError ? "Koneksi Bermasalah" : "Gagal Menyimpan",
+        message: e instanceof Error && e.message ? e.message : "Tidak dapat menghubungi server.",
+      });
     } finally {
       setSaving(false);
     }
