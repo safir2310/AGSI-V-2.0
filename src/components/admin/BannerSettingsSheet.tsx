@@ -651,6 +651,10 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
           });
           const data = (await res.json().catch(() => null)) as { error?: string } | null;
           if (!res.ok) {
+            // "Tidak ada pengaturan yang diubah." = server memutus bagian ini
+            // tanpa perubahan — itu sukses, bukan gagal (defensif bila versi
+            // server & klien tidak sinkron).
+            if (data?.error === "Tidak ada pengaturan yang diubah.") return;
             const alasan =
               data?.error ??
               (res.status === 413

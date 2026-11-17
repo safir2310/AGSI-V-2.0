@@ -204,6 +204,11 @@ export async function PUT(req: NextRequest) {
     }
 
     // ===== AGSI Smart Video Promo Banner (metadata — bytes video via /api/settings/video-promo) =====
+    // v1.3.32 — hasil update DIHITUNG di penjaga akhir: sebelumnya request
+    // yang HANYA berisi videoPromo (Simpan Banner & Promo kini paralel per
+    // bagian) tersimpan ke DB tetap dijawab 400 "Tidak ada pengaturan yang
+    // diubah." karena hasilnya tidak ikut diperiksa → sheet melaporkan gagal.
+    let videoPromoResult: Awaited<ReturnType<typeof updateVideoPromoSettings>> | null = null;
     if ("videoPromoEnabled" in body || "videoPromoSlides" in body) {
       const vp: { enabled?: boolean; slides?: VideoPromoSlideConfig[]; touch: boolean } = { touch: true };
       if ("videoPromoEnabled" in body) {
@@ -230,7 +235,7 @@ export async function PUT(req: NextRequest) {
           };
         });
       }
-      await updateVideoPromoSettings(vp);
+      videoPromoResult = await updateVideoPromoSettings(vp);
     }
 
     // ===== Popup banner =====
@@ -515,7 +520,8 @@ export async function PUT(req: NextRequest) {
       !bannerResult &&
       !promoResult &&
       !menuHeroResult &&
-      !menuPromoResult
+      !menuPromoResult &&
+      !videoPromoResult
     ) {
       return NextResponse.json(
         { error: "Tidak ada pengaturan yang diubah." },
@@ -544,6 +550,7 @@ export async function PUT(req: NextRequest) {
         ),
       },
       menuPromo: menuPromoResult ?? (await getMenuPromoSettings()),
+      videoPromo: videoPromoResult ?? (await getVideoPromoSettings()),
     });
   } catch {
     return NextResponse.json({ error: "Terjadi kesalahan server." }, { status: 500 });
