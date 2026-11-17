@@ -143,6 +143,7 @@ export function BannerPopup({ go }: BannerPopupProps) {
                   Pesan Sekarang <ArrowRight className="h-3.5 w-3.5" />
                 </button>
               </div>
+            )}
             </div>
           </motion.div>
         </motion.div>
