@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
-import { cancelExpiredQrisOrders, HIDDEN_UNPAID_APP_QRIS_WHERE } from "@/lib/order-expiry";
+import { cancelExpiredQrisOrders, HIDDEN_UNPAID_DIGITAL_WHERE } from "@/lib/order-expiry";
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
@@ -26,14 +26,14 @@ export async function GET(req: NextRequest) {
   // Pesanan QRIS aplikasi yang belum dibayar tidak dihitung — belum "terjadi"
   const [orders, products, users, recent] = await Promise.all([
     db.order.findMany({
-      where: { createdAt: { gte: rangeStart }, NOT: HIDDEN_UNPAID_APP_QRIS_WHERE },
+      where: { createdAt: { gte: rangeStart }, NOT: HIDDEN_UNPAID_DIGITAL_WHERE },
       include: { items: true },
       orderBy: { createdAt: "desc" },
     }),
     db.product.findMany(),
     db.user.count({ where: { role: "CUSTOMER" } }),
     db.order.findMany({
-      where: { status: { in: ["PENDING", "PREPARING", "READY"] }, NOT: HIDDEN_UNPAID_APP_QRIS_WHERE },
+      where: { status: { in: ["PENDING", "PREPARING", "READY"] }, NOT: HIDDEN_UNPAID_DIGITAL_WHERE },
       include: { items: true },
       orderBy: { createdAt: "asc" },
       take: 8,

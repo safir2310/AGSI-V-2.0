@@ -2,7 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
 import { checkVoucherForUser, normalizeVoucherCode } from "@/lib/voucher";
-import { cancelExpiredQrisOrders, HIDDEN_UNPAID_APP_QRIS_WHERE } from "@/lib/order-expiry";
+import { cancelExpiredQrisOrders, HIDDEN_UNPAID_DIGITAL_WHERE } from "@/lib/order-expiry";
 import { DELIVERY_AREA_LABEL, calcDeliveryFee, findDeliveryArea } from "@/lib/delivery";
 import { getStoreSettings } from "@/lib/store-settings";
 import { notifyNewOrder } from "@/lib/push";
@@ -30,13 +30,13 @@ export async function GET(req: NextRequest) {
     // sweep gagal (mis. DB sibuk) -> jangan gagalkan daftar pesanan
   }
 
-  // Admin/owner/kasir melihat semua pesanan — KECUALI pesanan QRIS aplikasi
-  // yang belum dibayar: pesanan belum "masuk" sampai dananya terverifikasi.
-  // (Pesanan QRIS buatan POS tetap tampil — kasir memantau langsung di kasir.)
+  // Admin/owner/kasir melihat semua pesanan — KECUALI pesanan DIGITAL
+  // (QRIS / E-Wallet) yang belum dibayar, dari aplikasi maupun POS: pesanan
+  // belum "masuk" sampai dananya terverifikasi (permintaan pemilik).
   // Customer hanya melihat miliknya sendiri (termasuk yang belum dibayar).
   const where =
     scope === "all" && (isAdminRole(user.role) || user.role === "CASHIER")
-      ? { NOT: HIDDEN_UNPAID_APP_QRIS_WHERE }
+      ? { NOT: HIDDEN_UNPAID_DIGITAL_WHERE }
       : { userId: user.id };
 
   const orders = await db.order.findMany({

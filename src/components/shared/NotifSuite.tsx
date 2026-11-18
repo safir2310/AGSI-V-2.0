@@ -187,6 +187,10 @@ function FloatingBubble({
 
 export function NotifSuite({ user }: { user?: AppUser | null }) {
   const role = user?.role;
+  // v1.3.37 — halaman admin TANPA lonceng (permintaan pemilik): gelembung
+  // melayang disembunyikan untuk ADMIN/OWNER; kartu heads-up, banner &
+  // toast tetap jadi kabar berjalan.
+  const hideBubble = role === "ADMIN" || role === "OWNER";
   const headsUp = useNotifSuiteStore((s) => s.headsUp);
   const bannerCount = useNotifSuiteStore((s) => s.bannerCount);
   const bannerLatest = useNotifSuiteStore((s) => s.bannerLatest);
@@ -344,7 +348,7 @@ export function NotifSuite({ user }: { user?: AppUser | null }) {
 
       {/* ===== 3) FLOATING — gelembung melayang bisa diseret ===== */}
       <AnimatePresence>
-        {bubbleCount > 0 && (
+        {bubbleCount > 0 && !hideBubble && (
           <FloatingBubble
             key="suite-bubble"
             count={bubbleCount}

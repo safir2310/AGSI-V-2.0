@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
-import { HIDDEN_UNPAID_APP_QRIS_WHERE } from "@/lib/order-expiry";
+import { HIDDEN_UNPAID_DIGITAL_WHERE } from "@/lib/order-expiry";
 
 export const dynamic = "force-dynamic";
 // SSE berjalan ±48 detik per koneksi (di bawah batas paket Vercel apa pun)
@@ -41,7 +41,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function ordersRevision(user: RtUser): Promise<string> {
   const where =
     isAdminRole(user.role) || user.role === "CASHIER"
-      ? { NOT: HIDDEN_UNPAID_APP_QRIS_WHERE }
+      ? { NOT: HIDDEN_UNPAID_DIGITAL_WHERE }
       : { userId: user.id };
   const rows = await db.order.findMany({
     where,

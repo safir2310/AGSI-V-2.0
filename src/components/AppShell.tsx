@@ -324,23 +324,27 @@ export function AppShell() {
                 {/* 🔔 LONCENG NOTIFIKASI — badge angka belum dibaca (kabar
                     terkumpul di PUSAT NOTIFIKASI: notifikasi sistem saat
                     aplikasi ditutup + popup real-time saat terbuka). Klik
-                    membuka pusat notifikasi. */}
-                <button
-                  onClick={() => setNotifOpen(true)}
-                  aria-label={
-                    bellCount > 0
-                      ? `${bellCount} notifikasi belum dibaca — buka pusat notifikasi`
-                      : "Buka pusat notifikasi"
-                  }
-                  className="press-effect relative flex h-9 w-9 items-center justify-center rounded-full bg-orange-50 ring-1 ring-orange-200 transition hover:bg-orange-100 hover:ring-orange-300"
-                >
-                  <Bell className="h-4.5 w-4.5 text-orange-700" />
-                  {bellCount > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-white shadow-md">
-                      {bellCount > 99 ? "99+" : bellCount}
-                    </span>
-                  )}
-                </button>
+                    membuka pusat notifikasi.
+                    v1.3.37 (permintaan pemilik): halaman admin TANPA lonceng
+                    — ADMIN/OWNER tidak lagi melihat tombol ini. */}
+                {!isAdminRole(user.role) && (
+                  <button
+                    onClick={() => setNotifOpen(true)}
+                    aria-label={
+                      bellCount > 0
+                        ? `${bellCount} notifikasi belum dibaca — buka pusat notifikasi`
+                        : "Buka pusat notifikasi"
+                    }
+                    className="press-effect relative flex h-9 w-9 items-center justify-center rounded-full bg-orange-50 ring-1 ring-orange-200 transition hover:bg-orange-100 hover:ring-orange-300"
+                  >
+                    <Bell className="h-4.5 w-4.5 text-orange-700" />
+                    {bellCount > 0 && (
+                      <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-white shadow-md">
+                        {bellCount > 99 ? "99+" : bellCount}
+                      </span>
+                    )}
+                  </button>
+                )}
                 {user.role === "CUSTOMER" ? (
                   /* Klik teks "Member" di kanan atas → buka kartu member lengkap
                      (saldo poin sengaja TIDAK ditampilkan di header — lihat di kartu) */

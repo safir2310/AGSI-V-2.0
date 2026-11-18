@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { cancelExpiredQrisOrders, HIDDEN_UNPAID_APP_QRIS_WHERE } from "@/lib/order-expiry";
+import { cancelExpiredQrisOrders, HIDDEN_UNPAID_DIGITAL_WHERE } from "@/lib/order-expiry";
 
 /**
  * GET /api/courier/deliveries — BERANDA KURIR (khusus role COURIER).
@@ -32,7 +32,7 @@ export async function GET() {
       courierUserId: user.id,
       type: "DELIVERY",
       status: { in: ["READY", "COMPLETED"] },
-      NOT: HIDDEN_UNPAID_APP_QRIS_WHERE,
+      NOT: HIDDEN_UNPAID_DIGITAL_WHERE,
     },
     include: { items: true },
     orderBy: [{ onTheWayAt: "desc" }, { createdAt: "desc" }],
