@@ -79,33 +79,6 @@ object DownloadNotifier {
     }
 
     /**
-     * Kartu progres dengan PERSABAGAN NYATA (v1.3.30 — permintaan pemilik:
-     * unduhan struk lebih "tajam"): baris progres berisi + teks "67% · 1,2 MB".
-     * Dipakai penulisan per bagian di MainActivity; kartu yang sama (id
-     * stabil per nama file) diperbarui — tidak menumpuk.
-     */
-    fun progress(ctx: Context, fileName: String, percent: Int, bytesSoFar: Long = 0) {
-        val p = percent.coerceIn(0, 100)
-        val mb = bytesSoFar / (1024.0 * 1024.0)
-        val detail = if (mb >= 0.1) {
-            String.format(" · %.1f MB", mb)
-        } else if (bytesSoFar > 0) {
-            " · " + (bytesSoFar / 1024) + " KB"
-        } else {
-            ""
-        }
-        val n = baseBuilder(ctx)
-            .setContentTitle(ctx.getString(R.string.notif_download_progress_title, fileName))
-            .setContentText("$p%$detail")
-            .setProgress(100, p, false)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .build()
-        postSafely(ctx, n, cardId(fileName))
-    }
-
-    /**
      * Kartu selesai — ketuk membuka file (PDF viewer, Excel, dsb.).
      * `uri` = URI konten file (MediaStore / SAF); Android 8–9 jalur langsung
      * memakai FileProvider (Lihat file_paths.xml "downloads").

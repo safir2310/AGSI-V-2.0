@@ -35,8 +35,8 @@ android {
         applicationId = "com.agsi.pos"
         minSdk = 26
         targetSdk = 36
-        versionCode = 47
-        versionName = "1.3.33"
+        versionCode = 48
+        versionName = "1.3.34"
 
         // URL website yang dibungkus — dari gradle.properties (WEB_APP_URL)
         val webAppUrl = (project.findProperty("WEB_APP_URL") as String?)

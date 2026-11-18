@@ -18,14 +18,11 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- Masuk biometrik: Face ID / sidik jari (layar buka kunci AppLock) -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-    <!-- Berjalan di latar belakang: dialog sistem "abaikan
-         optimasi baterai" diminta LANGSUNG saat aplikasi dibuka. -->
+    <!-- Berjalan di latar belakang (v1.3.9): dialog sistem "abaikan
+         optimasi baterai" diminta LANGSUNG saat aplikasi dibuka. Layanan
+         pemantau kini service BIASA tanpa notifikasi — izin
+         FOREGROUND_SERVICE(_SPECIAL_USE) dihapus (v1.3.9). -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- Hidupkan layanan pemantau sejak HP dinyalakan (BootReceiver).
-         v1.3.33: izin FOREGROUND_SERVICE(_SPECIAL_USE) DIHAPUS lagi —
-         layanan kembali service BIASA TANPA kartu notifikasi (permintaan
-         pemilik: APK tanpa kredensial Firebase terlihat bersih). -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Penyimpanan (v1.3.7): struk & laporan disimpan LANGSUNG ke folder
          Unduhan/AGSI di Android 8–9 (Android 10+ memakai MediaStore — tanpa
          izin). maxSdkVersion 32: Android 13+ memakai izin granular &
@@ -85,27 +82,14 @@
             </intent-filter>
         </service>
 
-        <!-- Pemantau notifikasi latar belakang: polling ringan API AGSI
-             tiap ±45 detik selama aplikasi ditutup — pesanan baru, update
-             status & chat muncul sebagai notifikasi layar. v1.3.33: service
-             BIASA TANPA notifikasi (kartu "AGSI aktif" dihapus — permintaan
-             pemilik); start dari aplikasi yang di depan + BootReceiver. -->
+        <!-- Pemantau notifikasi latar belakang (tanpa FCM): polling ringan
+             API AGSI tiap ±45 detik selama aplikasi ditutup — pesanan baru,
+             update status & chat muncul sebagai notifikasi layar. v1.3.9:
+             service BIASA TANPA notifikasi latar belakang; start hanya dari
+             aplikasi yang sedang di depan (FCM di atas = mekanisme utama). -->
         <service
             android:name=".NotifPollerService"
             android:exported="false" />
-
-        <!-- BOOT: HP dinyalakan ulang → layanan pemantau hidup lagi tanpa
-             menunggu aplikasi dibuka (dalam jendela allowlist sementara
-             BOOT_COMPLETED). BOOT_COMPLETED adalah protected broadcast —
-             hanya sistem yang bisa mengirim. -->
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
 
         <!-- QUICK REPLY (v1.3.10): balas chat langsung dari notifikasi
              (RemoteInput → POST /api/chat dengan cookie sesi web). -->
