@@ -70,6 +70,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -217,7 +218,7 @@ class MainActivity : AppCompatActivity() {
                 return@registerForActivityResult
             }
             try {
-                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                contentResolver.openOutputStream(uri)?.use { writeWithProgress(it, bytes, name) }
                     ?: throw IOException("Tidak bisa membuka output stream")
                 Toast.makeText(this, getString(R.string.file_saved, name), Toast.LENGTH_LONG).show()
                 // v1.3.28 — kartu unduhan selesai (tap → buka file hasil SAF)
@@ -1016,6 +1017,27 @@ class MainActivity : AppCompatActivity() {
         wv.post { wv.evaluateJavascript(script, null) }
     }
 
+    /** Tulis bytes PER BAGIAN sambil memperbarui kartu unduhan di status bar
+     *  dengan persabagan NYATA (v1.3.30 — permintaan pemilik: unduhan struk
+     *  lebih "tajam"): baris progres terisi + "67% · 1,2 MB". Bagian 256 KB,
+     *  laporan tiap ≥10% (file kecil: sekali tulis + langsung 100%). */
+    private fun writeWithProgress(out: OutputStream, bytes: ByteArray, fileName: String) {
+        val chunk = 256 * 1024
+        var written = 0
+        var lastPct = -100
+        do {
+            val len = minOf(chunk, bytes.size - written)
+            out.write(bytes, written, len)
+            written += len
+            val pct = if (bytes.isEmpty()) 100 else written * 100 / bytes.size
+            if (pct - lastPct >= 10 || written == bytes.size) {
+                lastPct = pct
+                DownloadNotifier.progress(this, fileName, pct, written.toLong())
+            }
+        } while (written < bytes.size)
+        out.flush()
+    }
+
     /**
      * Simpan file (base64 dari web) ke folder Unduhan.
      *  - Android 10+ : MediaStore Downloads → Unduhan/AGSI, tanpa dialog,
@@ -1047,7 +1069,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                     ?: throw IOException("MediaStore menolak penyimpanan")
-                resolver.openOutputStream(uri)?.use { it.write(bytes) }
+                resolver.openOutputStream(uri)?.use { writeWithProgress(it, bytes, fileName) }
                     ?: throw IOException("Tidak bisa membuka output stream")
                 values.clear()
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0)
@@ -1137,7 +1159,7 @@ class MainActivity : AppCompatActivity() {
                 target = File(dir, "$base (${i})$ext")
                 i++
             }
-            target.outputStream().use { it.write(bytes) }
+            target.outputStream().use { writeWithProgress(it, bytes, target.name) }
             Toast.makeText(this, getString(R.string.file_saved, target.name), Toast.LENGTH_LONG).show()
             // v1.3.28 — kartu unduhan selesai (tap → buka via FileProvider)
             DownloadNotifier.completed(this, target.name, mimeType, DownloadNotifier.fileProviderUri(this, target))

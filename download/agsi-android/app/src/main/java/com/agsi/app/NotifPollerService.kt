@@ -443,7 +443,9 @@ class NotifPollerService : Service() {
             title = ev.title,
             body = ev.body,
             url = ev.url,
-            channel = ev.channel,
+            // v1.3.30 — channel mengikuti pilihan suara Profil (NotifSound);
+            // ev.channel hanya bawaan — pilihan pengguna selalu menang.
+            channel = NotifSound.channelFor(this, ev.kind),
             unreadCount = ev.unreadCount,
             chatQuickReply = ev.kind == "chat",
         )

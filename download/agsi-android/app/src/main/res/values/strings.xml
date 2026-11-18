@@ -93,4 +93,14 @@
     <string name="notif_perm_message">Tanpa izin notifikasi, pesanan baru, chat CS, dan pembayaran masuk TIDAK berbunyi / tidak muncul popup — bisa ada pesanan yang terlewat. Aktifkan notifikasi AGSI agar tidak ada pesanan yang nyasar.</string>
     <string name="notif_perm_open_settings">Buka Setelan Notifikasi</string>
     <string name="notif_perm_later">Nanti</string>
+
+    <!-- Label pilihan SUARA NOTIFIKASI (v1.3.30 — Profil ▸ Notifikasi Push ▸
+         Suara Notifikasi; dipakai nama channel varian & katalog UI web) -->
+    <string name="sound_chime_name">AGSI Chime (klasik)</string>
+    <string name="sound_ding_name">Ding</string>
+    <string name="sound_bell_name">Bel</string>
+    <string name="sound_marimba_name">Marimba</string>
+    <string name="sound_pop_name">Pop</string>
+    <string name="sound_system_name">Suara Sistem (setelan HP)</string>
+    <string name="sound_silent_name">Senyap (getar saja)</string>
 </resources>
