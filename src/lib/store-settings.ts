@@ -39,6 +39,139 @@ export async function readStoreSettingsRow(): Promise<StoreSetting> {
   }
 }
 
+/** Baris hasil query meta: nama field sama dgn StoreSetting, kolom bytes diganti boolean. */
+type StoreSettingsMetaRow = {
+  deliveryEnabled: boolean;
+  qrisEnabled: boolean;
+  ewalletEnabled: boolean;
+  bannerEnabled: boolean;
+  bannerTitle: string | null;
+  bannerText: string | null;
+  bannerImageData: boolean; // true = ada gambar (bytes TIDAK dimuat)
+  bannerUpdatedAt: Date | null;
+  promoStripEnabled: boolean;
+  promoStripBadge: string;
+  promoStripTitle: string;
+  promoStripText: string;
+  menuHeroEnabled: boolean;
+  menuHeroBadge: string;
+  menuHeroTitle: string;
+  menuHeroText: string;
+  menuHeroImageData: boolean;
+  menuHeroUpdatedAt: Date | null;
+  menuPromoVouchersEnabled: boolean;
+  menuPromoVouchersMax: number;
+  menuPromoBanners: unknown;
+  menuPromoBannersUpdatedAt: Date | null;
+  menuPromoBanner1ImageData: boolean;
+  menuPromoBanner2ImageData: boolean;
+  videoPromoEnabled: boolean;
+  videoPromoSlides: unknown;
+  videoPromoUpdatedAt: Date | null;
+  videoPromoSlot1Data: boolean;
+  videoPromoSlot2Data: boolean;
+  videoPromoSlot3Data: boolean;
+  videoPromoSlot1Mime: string | null;
+  videoPromoSlot2Mime: string | null;
+  videoPromoSlot3Mime: string | null;
+};
+
+/** Bentuk mentah hasil $queryRaw (boolean bisa 1/0 di SQLite, tanggal bisa string, JSON bisa string). */
+type RawMetaRow = {
+  [K in keyof StoreSettingsMetaRow]: StoreSettingsMetaRow[K] extends boolean
+    ? boolean | number
+    : StoreSettingsMetaRow[K] extends Date | null
+      ? Date | string | null
+      : StoreSettingsMetaRow[K];
+};
+
+/**
+ * Baris meta RINGAN untuk snapshot PUBLIK: SATU query read-only yang TIDAK
+ * memuat bytes media (±9 MB base64 di produksi: 3 video + 4 gambar). Boolean
+ * keberadaan bytes dihitung di SQL ("col IS NOT NULL AS col") — nama field
+ * tetap sama dengan StoreSetting agar pemakai snapshot tak perlu diubah.
+ * Dulu findUnique seluruh baris mengirim ±9 MB per request /api/settings.
+ */
+export async function readStoreSettingsMetaRow(): Promise<StoreSettingsMetaRow> {
+  const query = () =>
+    db.$queryRaw<RawMetaRow[]>`
+      SELECT "deliveryEnabled", "qrisEnabled", "ewalletEnabled",
+             "bannerEnabled", "bannerTitle", "bannerText",
+             ("bannerImageData" IS NOT NULL) AS "bannerImageData", "bannerUpdatedAt",
+             "promoStripEnabled", "promoStripBadge", "promoStripTitle", "promoStripText",
+             "menuHeroEnabled", "menuHeroBadge", "menuHeroTitle", "menuHeroText",
+             ("menuHeroImageData" IS NOT NULL) AS "menuHeroImageData", "menuHeroUpdatedAt",
+             "menuPromoVouchersEnabled", "menuPromoVouchersMax",
+             "menuPromoBanners", "menuPromoBannersUpdatedAt",
+             ("menuPromoBanner1ImageData" IS NOT NULL) AS "menuPromoBanner1ImageData",
+             ("menuPromoBanner2ImageData" IS NOT NULL) AS "menuPromoBanner2ImageData",
+             "videoPromoEnabled", "videoPromoSlides", "videoPromoUpdatedAt",
+             ("videoPromoSlot1Data" IS NOT NULL) AS "videoPromoSlot1Data",
+             ("videoPromoSlot2Data" IS NOT NULL) AS "videoPromoSlot2Data",
+             ("videoPromoSlot3Data" IS NOT NULL) AS "videoPromoSlot3Data",
+             "videoPromoSlot1Mime", "videoPromoSlot2Mime", "videoPromoSlot3Mime"
+      FROM "StoreSetting" WHERE "id" = 'main' LIMIT 1`;
+
+  let r = (await query())[0];
+  if (!r) {
+    // Instalasi baru: buat baris default sekali (pola sama dengan readStoreSettingsRow).
+    try {
+      await db.storeSetting.create({ data: { id: "main" } });
+    } catch {
+      // Baris dibuat request lain di saat bersamaan — aman dibaca ulang.
+    }
+    r = (await query())[0];
+    if (!r) throw new Error("Baris pengaturan toko (StoreSetting id=main) gagal disiapkan.");
+  }
+
+  const asDate = (v: Date | string | null): Date | null =>
+    v == null ? null : v instanceof Date ? v : new Date(v);
+  const asBool = (v: unknown): boolean => v === true || v === 1;
+  const asJson = (v: unknown): unknown => {
+    if (typeof v !== "string") return v;
+    try {
+      return JSON.parse(v);
+    } catch {
+      return v;
+    }
+  };
+  return {
+    deliveryEnabled: asBool(r.deliveryEnabled),
+    qrisEnabled: asBool(r.qrisEnabled),
+    ewalletEnabled: asBool(r.ewalletEnabled),
+    bannerEnabled: asBool(r.bannerEnabled),
+    bannerTitle: r.bannerTitle,
+    bannerText: r.bannerText,
+    bannerImageData: asBool(r.bannerImageData),
+    bannerUpdatedAt: asDate(r.bannerUpdatedAt),
+    promoStripEnabled: asBool(r.promoStripEnabled),
+    promoStripBadge: r.promoStripBadge,
+    promoStripTitle: r.promoStripTitle,
+    promoStripText: r.promoStripText,
+    menuHeroEnabled: asBool(r.menuHeroEnabled),
+    menuHeroBadge: r.menuHeroBadge,
+    menuHeroTitle: r.menuHeroTitle,
+    menuHeroText: r.menuHeroText,
+    menuHeroImageData: asBool(r.menuHeroImageData),
+    menuHeroUpdatedAt: asDate(r.menuHeroUpdatedAt),
+    menuPromoVouchersEnabled: asBool(r.menuPromoVouchersEnabled),
+    menuPromoVouchersMax: r.menuPromoVouchersMax,
+    menuPromoBanners: asJson(r.menuPromoBanners),
+    menuPromoBannersUpdatedAt: asDate(r.menuPromoBannersUpdatedAt),
+    menuPromoBanner1ImageData: asBool(r.menuPromoBanner1ImageData),
+    menuPromoBanner2ImageData: asBool(r.menuPromoBanner2ImageData),
+    videoPromoEnabled: asBool(r.videoPromoEnabled),
+    videoPromoSlides: asJson(r.videoPromoSlides),
+    videoPromoUpdatedAt: asDate(r.videoPromoUpdatedAt),
+    videoPromoSlot1Data: asBool(r.videoPromoSlot1Data),
+    videoPromoSlot2Data: asBool(r.videoPromoSlot2Data),
+    videoPromoSlot3Data: asBool(r.videoPromoSlot3Data),
+    videoPromoSlot1Mime: r.videoPromoSlot1Mime,
+    videoPromoSlot2Mime: r.videoPromoSlot2Mime,
+    videoPromoSlot3Mime: r.videoPromoSlot3Mime,
+  };
+}
+
 /** Pastikan baris pengaturan ada SEBELUM `update` (pengganti pola `upsert`). */
 async function ensureStoreRowForWrite(): Promise<void> {
   const row = await db.storeSetting.findUnique({ where: { id: "main" }, select: { id: true } });
@@ -617,7 +750,9 @@ export type StoreSettingsSnapshot = {
  * tanpa kunci tulis.
  */
 export async function getStoreSettingsSnapshot(): Promise<StoreSettingsSnapshot> {
-  const row = await readStoreSettingsRow();
+  // Meta ringan (tanpa bytes media ±9 MB) — dulu findUnique seluruh baris
+  // membuat /api/settings mengirim ±9 MB dari DB per request (±6 dtk).
+  const row = await readStoreSettingsMetaRow();
   const banners = readMenuPromoBanners(row.menuPromoBanners);
   const slides = readVideoPromoSlides(row.videoPromoSlides);
   return {
