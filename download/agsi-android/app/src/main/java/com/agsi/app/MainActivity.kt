@@ -251,21 +251,13 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // ⏰ Bangunkan layar saat HP tidur/terkunci: notifikasi penting (full
-        // -screen intent dari PushService/NotifPollerService) menampilkan
-        // aplikasi LANGSUNG di atas layar kunci — dapur tidak melewatkan
-        // pesanan walau HP tergeletak layar mati (permintaan pemilik v1.3.3).
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-            )
-        }
-
+        // v1.3.36 (permintaan pemilik): layar terkunci → NOTIFIKASI SAJA,
+        // aplikasi tidak dibuka. Flag setShowWhenLocked/setTurnScreenOn dari
+        // v1.3.3 (aplikasi tampil di atas layar kunci via full-screen intent)
+        // dihapus — notifikasi tetap masuk kartu layar kunci + suara + getar
+        // (AgsiNotifications), ketukan kartu membuka aplikasi SETELAH buka
+        // kunci (alur baku Android).
+        //
         // v1.3.25 — layar TIDAK terkunci sendiri selama aplikasi di depan:
         // kasir melayani pesanan tidak disela kunci layar otomatis di tengah
         // pencatatan (permintaan pemilik: "aplikasi tetap terbuka"). Tombol
