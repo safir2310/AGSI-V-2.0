@@ -104,11 +104,12 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   // pemilik): sheet "Notifikasi Push" kini benar-benar tersambung lewat
   // menu di bawah — sebelumnya sheet sudah dibuat TAPI tidak pernah
   // dirender di mana pun. Deskripsi menu = status LANGSUNG perangkat
-  // (aplikasi native / web, suara terpilih, kartu layanan), disegar saat
-  // profil dibuka & setiap kali sheet ditutup.
+  // (aplikasi native / web, suara terpilih), disegar saat profil dibuka &
+  // setiap kali sheet ditutup. v1.3.33: kartu "AGSI aktif" dihapus —
+  // deskripsi tidak lagi menyebut kartu status bar.
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifDesc, setNotifDesc] = useState(
-    "Suara, izin & kartu status bar — atur di sini",
+    "Suara, izin & pemantau latar belakang — atur di sini",
   );
   useEffect(() => {
     let alive = true;
@@ -119,9 +120,7 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
         if (st.native) {
           const key = currentNotificationSound();
           const label = SOUND_LABELS[key ?? ""] ?? "AGSI Chime";
-          setNotifDesc(
-            `Aktif ✓ — suara ${label} · kartu "AGSI aktif" tetap di status bar`,
-          );
+          setNotifDesc(`Aktif ✓ — suara ${label} · pemantau berjalan di latar belakang`);
         } else if (st.permission === "granted") {
           setNotifDesc("Aktif ✓ — notifikasi browser/web push menyala");
         } else {
