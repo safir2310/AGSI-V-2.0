@@ -612,11 +612,12 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
 
   const save = async () => {
     if (saving) return;
-    if (enabled && previewSrc === null && !title.trim()) {
+    // popup kini GAMBAR SAJA — tanpa gambar, tidak ada yang bisa ditampilkan
+    if (enabled && previewSrc === null) {
       showNotice({
         type: "error",
         title: "Banner Belum Siap",
-        message: "Unggah gambar banner atau isi judul dulu — popup butuh minimal satu konten.",
+        message: "Unggah gambar banner dulu — popup beranda kini menampilkan gambar saja.",
       });
       return;
     }
@@ -845,7 +846,8 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
     }
   };
 
-  const hasAnyContent = previewSrc !== null || !!title.trim();
+  // popup gambar saja — konten = ada gambar (dipilih/baru dari server)
+  const hasAnyContent = previewSrc !== null;
   const active = enabled && hasAnyContent;
 
   // Portal ke <body> agar modal tidak terjebak stacking context `main` (z-10)
