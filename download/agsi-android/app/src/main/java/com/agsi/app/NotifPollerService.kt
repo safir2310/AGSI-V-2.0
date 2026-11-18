@@ -39,11 +39,13 @@ import java.util.concurrent.Executors
  *                                tidak dobel dengan push FCM)
  *
  * Cara kerja:
- *  - v1.3.9: layanan BIASA TANPA notifikasi (permintaan pemilik — kartu
- *    layanan "AGSI aktif" yang dulu disembunyikan 0-piksel kini dihapus
- *    total). start() hanya dari aplikasi yang sedang di depan; polling
- *    jangka panjang dilindungi izin pengecualian baterai yang diminta
- *    LANGSUNG dari MainActivity saat aplikasi dibuka.
+ *  - v1.3.31 — KARTU LAYANAN TETAP DI STATUS BAR (permintaan pemilik):
+ *    layanan kini FOREGROUND SERVICE dengan kartu "AGSI aktif" yang SELALU
+ *    tampil — saat aplikasi dibuka maupun ditutup, bahkan sejak HP dinyalakan
+ *    (BootReceiver). Kartu senyap (IMPORTANCE_LOW, tanpa getar/suara) dan
+ *    ketuk kartu membuka aplikasi. Layanan tidak lagi menghentikan diri saat
+ *    FCM aktif — notifikasi lokal tetap dipadamkan lewat gate fcmActive
+ *    (tidak ada kartu ganda), pemantau tetap berjaga + kartu tetap ada.
  *  - Hanya memantau saat aplikasi DI LATAR BELAKANG; saat aplikasi tampil di
  *    depan, popup + suara di halaman web (NotifWatchers) yang bekerja —
  *    siklus pertama setelah kembali ke latar belakang dipakai sebagai
@@ -55,8 +57,8 @@ import java.util.concurrent.Executors
  *  - Sesi login habis (401) → polling melambat (backoff 5 menit) sampai
  *    pengguna membuka aplikasi & login lagi.
  *
- * Bisa dimatikan dari Profil → Notifikasi Push → "Notifikasi Latar Belakang"
- * (jembatan AgsiNative.setNotifPolling).
+ * Bisa dimatikan dari Profil → Notifikasi Push → "Berjalan di Latar
+ * Belakang" (jembatan AgsiNative.setNotifPolling) — kartu ikut hilang.
  */
 class NotifPollerService : Service() {
 
@@ -84,6 +86,13 @@ class NotifPollerService : Service() {
 
         private const val SESSION_PREFIX = "agsi_session="
 
+        /** ID channel kartu layanan (v1.331 — id BARU: channel lama
+         *  "agsi_service" masuk daftar LEGACY_CHANNELS yang dihapus) */
+        private const val SERVICE_CHANNEL = "agsi_service_v1"
+
+        /** ID kartu layanan di NotificationManager */
+        private const val SERVICE_NOTIF_ID = 99_100
+
         fun isEnabled(ctx: Context): Boolean =
             ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, true)
 
@@ -94,29 +103,24 @@ class NotifPollerService : Service() {
             if (on) start(ctx) else stop(ctx)
         }
 
+        /** v1.3.31 — kartu layanan selalu ada (selama saklar aktif): tidak
+         *  lagi melewati start saat FCM aktif di server — kartu "AGSI aktif"
+         *  harus tampil apa pun jalur notifikasinya. */
         fun startIfEnabled(ctx: Context) {
             if (!isEnabled(ctx)) return
-            val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            // Push FCM kini mekanisme UTAMA. Bila pemeriksaan terakhir
-            // menyatakan FCM aktif di server DAN perangkat punya token FCM,
-            // layanan pemantau tidak perlu jalan (tanpa notifikasi layanan,
-            // tanpa polling) — hemat baterai. Cek ulang tiap 6 jam agar bila
-            // FCM di server dimatikan, pemantau bangun lagi sendiri.
-            val fcmActive = prefs.getBoolean(KEY_FCM_ACTIVE, false)
-            if (fcmActive && PushRegistrar.cachedToken(ctx).isNotBlank()) {
-                val last = prefs.getLong(KEY_FCM_CHECKED_AT, 0L)
-                if (System.currentTimeMillis() - last < 6 * 60 * 60_000L) return
-            }
             start(ctx)
         }
 
         fun start(ctx: Context) {
             try {
-                // v1.3.9: layanan BIASA tanpa notifikasi — startForegroundService
-                // (wajib menampilkan notifikasi layanan) tidak dipakai lagi.
-                // start() hanya dipanggil dari aplikasi yang berada di depan
-                // (MainActivity), jadi startService biasa sah di semua versi.
-                ctx.startService(Intent(ctx, NotifPollerService::class.java))
+                // v1.3.31 — FOREGROUND SERVICE: wajib startForegroundService +
+                // kartu notifikasi (startForeground ≤5 dtk, lihat onCreate).
+                // Sah dipanggil dari MainActivity (app di depan) maupun dari
+                // BootReceiver (pengecualian resmi sistem).
+                ContextCompat.startForegroundService(
+                    ctx,
+                    Intent(ctx, NotifPollerService::class.java),
+                )
             } catch (e: Exception) {
                 Log.w(TAG, "Gagal memulai layanan notifikasi", e)
             }
@@ -155,16 +159,69 @@ class NotifPollerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        // v1.3.9: TANPA notifikasi layanan & TANPA startForeground — kartu
-        // "AGSI aktif" tidak pernah dibuat lagi. Izin berjalan di latar
-        // belakang (pengecualian baterai) diminta langsung dari MainActivity.
+        // v1.3.31 — kartu layanan "AGSI aktif" TETAP TAMPIL di status bar
+        // (foreground service). Senyap: IMPORTANCE_LOW tanpa suara/getar —
+        // kartu hanya penanda + penjaga layanan, bukan pengganggu.
+        ensureServiceChannel(this)
+        startForegroundCompat()
         stopped = false
         wasForeground = true
         handler.postDelayed(tick, 4_000)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // startForeground dipanggil lagi di sini — startForegroundService()
+        // dari BootReceiver / restart START_STICKY selalu lewat onStartCommand
+        // dan sistem mengawasi panggilan startForeground ≤5 dtk.
+        startForegroundCompat()
         return START_STICKY
+    }
+
+    /** Kartu layanan yang menetap: senyap, tanpa waktu, ketuk → buka AGSI. */
+    private fun startForegroundCompat() {
+        val n = NotificationCompat.Builder(this, SERVICE_CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFFF97316.toInt()) // orange-500 — warna AGSI
+            .setContentTitle(getString(R.string.notif_service_title))
+            .setContentText(getString(R.string.notif_service_text))
+            .setContentIntent(AgsiNotifications.deepLinkIntent(this, "/"))
+            .setOngoing(true)
+            .setShowWhen(false)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            // tampil seketika saat layanan mulai (Android 12+), bukan ditahan
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .build()
+        if (Build.VERSION.SDK_INT >= 34) {
+            // Android 14+ wajib menyebut tipe FGS — "specialUse" untuk
+            // pemantauan pesanan milik aplikasi sendiri (APK sideload).
+            startForeground(
+                SERVICE_NOTIF_ID,
+                n,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+            )
+        } else {
+            startForeground(SERVICE_NOTIF_ID, n)
+        }
+    }
+
+    /** Channel kartu layanan — senyap (LOW): muncul di daftar notifikasi
+     *  tanpa suara, ikon kecil di status bar. */
+    private fun ensureServiceChannel(ctx: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE)
+            as? android.app.NotificationManager ?: return
+        if (nm.getNotificationChannel(SERVICE_CHANNEL) != null) return
+        val ch = android.app.NotificationChannel(
+            SERVICE_CHANNEL,
+            ctx.getString(R.string.channel_service_name),
+            android.app.NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = ctx.getString(R.string.channel_service_desc)
+            setSound(null, null)
+            enableVibration(false)
+            setShowBadge(false)
+        }
+        nm.createNotificationChannel(ch)
     }
 
     override fun onDestroy() {
@@ -200,11 +257,11 @@ class NotifPollerService : Service() {
 
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-        // ---- FCM aktif di server? → push FCM yang bekerja; kalau perangkat
-        // punya token, layanan pemantau HENTIKAN DIRI (tidak ada notifikasi
-        // ganda, tanpa notifikasi "layanan berjalan", hemat baterai). Bila
-        // FCM aktif di server tapi perangkat TIDAK punya token (GMS hilang),
-        // pemantau tetap jalan sebagai penyelamat notifikasi.
+        // ---- FCM aktif di server? → push FCM yang bekerja; notifikasi lokal
+        // pemantau DIPADAMKAN lewat gate fcmActive (tidak ada notifikasi
+        // ganda). v1.3.31 — layanan TIDAK lagi menghentikan diri: kartu
+        // "AGSI aktif" harus tetap ada di status bar walau FCM aktif, dan
+        // pemantau tetap berjaga bila FCM mati di server / token hilang.
         if (pollCount % FCM_CHECK_EVERY == 1) {
             val (_, cfg) = getJson("/api/push/config", cookie)
             val active = cfg?.optBoolean("configured", false) == true
@@ -212,14 +269,7 @@ class NotifPollerService : Service() {
                 .putBoolean(KEY_FCM_ACTIVE, active)
                 .putLong(KEY_FCM_CHECKED_AT, System.currentTimeMillis())
                 .apply()
-            if (active && PushRegistrar.cachedToken(this).isNotBlank()) {
-                Log.i(TAG, "FCM aktif di server & token perangkat tersedia — layanan pemantau berhenti")
-                stopped = true
-                handler.removeCallbacks(tick)
-                stopSelf()
-                return
-            }
-            if (active) Log.i(TAG, "FCM aktif di server — notifikasi lokal dipadamkan (token kosong, pemantau lanjut)")
+            if (active) Log.i(TAG, "FCM aktif di server — notifikasi lokal dipadamkan (kartu layanan tetap ada)")
         }
         val fcmActive = prefs.getBoolean(KEY_FCM_ACTIVE, false)
 
