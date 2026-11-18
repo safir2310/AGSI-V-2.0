@@ -18,7 +18,7 @@
  * Tanpa argumen koneksi — Prisma CLI membaca DATABASE_URL dari environment
  * (schema: prisma/schema.prisma, datasource url = env("DATABASE_URL")).
  */
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import path from "node:path";
 
@@ -48,12 +48,21 @@ const prismaBin = path.resolve(process.cwd(), "node_modules", ".bin", "prisma");
 for (const file of files) {
   const full = path.join(sqlDir, file);
   console.log(`[schema-extras] Terapkan ${file} …`);
-  try {
-    execFileSync(prismaBin, ["db", "execute", "--file", full, "--schema", "prisma/schema.prisma"], {
-      stdio: "inherit",
-      env: process.env,
-    });
-  } catch {
+  const res = spawnSync(prismaBin, ["db", "execute", "--file", full, "--schema", "prisma/schema.prisma"], {
+    stdio: ["ignore", "inherit", "pipe"],
+    env: process.env,
+  });
+  const errText = res.stderr ? res.stderr.toString() : "";
+  if (errText) process.stderr.write(errText);
+  if (res.status !== 0) {
+    // v1.3.34 — KONEKSI (P1001) ≠ KEAGAGALAN SQL: gangguan jaringan build →
+    // db.prisma.io dilaporkan dgn kode keluar 42 (khusus) sehingga skrip
+    // build-with-retry.sh bisa membedakan "coba lagi / lanjut dgn peringatan"
+    // dari kegagalan SQL sungguhan yang wajib membatalkan deploy.
+    if (errText.includes("P1001") || errText.includes("Can't reach database server")) {
+      console.error("[schema-extras] KONEKSI DB TAK TERJANGKAU DARI BUILD (P1001) — kode 42 (bukan kegagalan SQL)");
+      process.exit(42);
+    }
     console.error(`[schema-extras] GAGAL menerapkan ${file} — hentikan build.`);
     process.exit(1);
   }
