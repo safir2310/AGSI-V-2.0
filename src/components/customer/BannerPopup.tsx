@@ -90,7 +90,7 @@ export function BannerPopup({ go }: BannerPopupProps) {
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={prefersReduced ? undefined : { scale: 0.9, y: 20, opacity: 0 }}
             transition={{ type: "spring", stiffness: 320, damping: 24 }}
-            className="relative w-full max-w-sm"
+            className="relative w-full max-w-[min(94vw,30rem)]"
           >
             {/* Kartu poster 3D — papan miring dengan kedalaman berlapis */}
             <div className="tilt-3d overflow-hidden rounded-3xl bg-white shadow-[0_30px_60px_-12px_rgba(0,0,0,0.55)] ring-1 ring-orange-100">
@@ -115,7 +115,7 @@ export function BannerPopup({ go }: BannerPopupProps) {
                   src={banner.bannerImageUrl ?? ""}
                   alt={banner.bannerTitle ?? "Banner promo AGSI"}
                   onError={() => setImgBroken(true)}
-                  className="max-h-[46dvh] w-full object-cover"
+                  className="aspect-square w-full object-cover"
                 />
               </button>
             )}

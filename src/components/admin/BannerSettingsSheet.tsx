@@ -925,7 +925,8 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-black text-neutral-800">Popup Banner</p>
                         <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-500">
-                          Tampilkan popup promo saat pelanggan membuka halaman Beranda.
+                          Tampilkan popup promo saat pelanggan membuka halaman Beranda. Gambar tampil
+                          penuh kotak 1:1 (persegi) — disarankan foto promo rasio 1:1, mis. 1080×1080.
                         </p>
                         <span
                           className={cn(
@@ -953,9 +954,9 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                   </p>
                   <div className="overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm">
                     {previewSrc ? (
-                      <img src={previewSrc} alt="Pratinjau banner" className="aspect-video w-full object-cover" />
+                      <img src={previewSrc} alt="Pratinjau banner" className="aspect-square w-full object-cover" />
                     ) : (
-                      <div className="flex aspect-video w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-orange-50 to-orange-100/60 text-neutral-400">
+                      <div className="flex aspect-square w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-orange-50 to-orange-100/60 text-neutral-400">
                         <ImageIcon className="h-7 w-7" />
                         <span className="text-[11px] font-semibold">Belum ada gambar banner</span>
                       </div>
