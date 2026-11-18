@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, Megaphone, X } from "lucide-react";
+import { X } from "lucide-react";
+
 import { useSettingsStore, type BannerInfo } from "@/lib/hooks";
 import type { AppView } from "@/lib/store";
 
@@ -12,16 +13,18 @@ type BannerPopupProps = {
 };
 
 /**
- * POPUP BANNER BERANDA.
+ * POPUP BANNER BERANDA — GAMBAR SAJA (tanpa teks).
  *
  * Konten diatur admin dari Profil Admin → "Popup Banner Beranda"
- * (aktif/nonaktif + gambar upload + judul & pesan).
+ * (aktif/nonaktif + upload gambar persegi 1:1).
  *
  * Aturan tampil:
- *  - Hanya di Beranda, saat banner AKTIF dan punya gambar.
+ *  - Hanya di Beranda, saat banner AKTIF dan punya GAMBAR (tanpa gambar
+ *    popup tidak tampil — teks memang dihapus dari popup).
+ *  - Ukuran kotak 1:1 (persegi penuh), selebar mungkin di layar.
  *  - Muncul 1x per sesi browser untuk tiap versi banner (kunci sessionStorage
- *    memakai bannerUpdatedAt) — tidak mengganggu tiap kali pindah tab.
- *    Admin mengunggah/menyimpan banner baru → versi naik → popup tampil lagi.
+ *    memakai bannerUpdatedAt) — admin menyimpan banner baru → versi naik →
+ *    popup tampil lagi.
  *  - Delay ±700ms agar hero sempat tampil dulu (terasa natural, bukan flash).
  */
 export function BannerPopup({ go }: BannerPopupProps) {
@@ -62,10 +65,9 @@ export function BannerPopup({ go }: BannerPopupProps) {
     go("menu");
   }, [dismiss, go]);
 
-  // Popup hanya berisi gambar ATAU judul — kalau dua-duanya rusak/kosong, jangan tampil
+  // Popup hanya berisi gambar 1:1 — tanpa gambar, popup tidak tampil
   const showImage = !!banner.bannerImageUrl && !imgBroken;
-  const showText = !!banner.bannerTitle || !!banner.bannerText;
-  const visible = open && (showImage || showText);
+  const visible = open && showImage;
 
   // Portal ke <body> agar popup tidak terjebak stacking context `main` (z-10)
   // — selalu tampil DI ATAS navigasi bawah liquid glass (z-50) & header (z-40).
@@ -103,7 +105,7 @@ export function BannerPopup({ go }: BannerPopupProps) {
               <X className="h-4.5 w-4.5" />
             </button>
 
-            {/* Gambar banner */}
+            {/* Gambar banner — kotak penuh 1:1, ketuk untuk buka menu */}
             {showImage && (
               <button
                 onClick={handleCta}
@@ -118,31 +120,6 @@ export function BannerPopup({ go }: BannerPopupProps) {
                   className="aspect-square w-full object-cover"
                 />
               </button>
-            )}
-
-            {/* Judul & pesan (juga dipakai sebagai fallback bila gambar gagal) */}
-            {showText && (
-              <div className="bg-gradient-to-b from-orange-50/70 to-white px-5 pb-5 pt-4 text-center">
-                <span className="chip-3d mb-2 inline-flex items-center gap-1 rounded-full bg-orange-600 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-white">
-                  <Megaphone className="h-3 w-3" /> Info Promo
-                </span>
-                {banner.bannerTitle && (
-                  <h2 className="text-3d text-lg font-black leading-snug text-neutral-900">
-                    {banner.bannerTitle}
-                  </h2>
-                )}
-                {banner.bannerText && (
-                  <p className="mt-1 text-xs font-medium leading-relaxed text-neutral-500">
-                    {banner.bannerText}
-                  </p>
-                )}
-                <button
-                  onClick={handleCta}
-                  className="chip-3d press-effect mt-4 inline-flex items-center gap-1.5 rounded-full bg-orange-600 px-5 py-2.5 text-xs font-extrabold text-white transition hover:bg-orange-700"
-                >
-                  Pesan Sekarang <ArrowRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
             )}
             </div>
           </motion.div>
@@ -160,8 +137,8 @@ function seenKey(version: string) {
 
 function shouldShow(b: BannerInfo): boolean {
   if (!b.bannerEnabled) return false;
-  // butuh minimal satu konten: gambar ATAU judul
-  if (!b.bannerImageUrl && !b.bannerTitle) return false;
+  // popup kini gambar saja — tanpa gambar, tidak tampil
+  if (!b.bannerImageUrl) return false;
   if (!b.bannerVersion) return true; // tanpa versi → tampil (mis. data lama)
   try {
     return sessionStorage.getItem(seenKey(b.bannerVersion)) !== "1";

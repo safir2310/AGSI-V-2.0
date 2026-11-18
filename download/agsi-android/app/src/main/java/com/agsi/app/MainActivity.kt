@@ -768,11 +768,21 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    /** v1.3.35 — tanda alur verifikasi biometrik sedang berjalan. Dua
+     *  BiometricPrompt bersamaan (ketukan ganda pada tombol aktifkan) membuat
+     *  yang kedua melempar IllegalStateException di sebagian perangkat —
+     *  kini ditahan dan dilaporkan sebagai gagal yang jelas. */
+    private var biometricFlowActive = false
+
     /**
      * Alur aktivasi biometrik (dipakai dialog tawaran & Profil → Login
      * Biometrik via jembatan AgsiNative). Verifikasi dulu, baru disimpan.
      */
     fun showBiometricEnableFlow(onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+        if (biometricFlowActive) {
+            onFailure("verifikasi sedang berjalan")
+            return
+        }
         when (AppLock.availability(this)) {
             AppLock.Availability.OK -> Unit
             AppLock.Availability.NOT_ENROLLED -> {
@@ -786,12 +796,14 @@ class MainActivity : AppCompatActivity() {
                 return
             }
         }
+        biometricFlowActive = true
         AppLock.authenticate(
             this,
             title = getString(R.string.biometric_enable_prompt_title),
             subtitle = getString(R.string.biometric_enable_prompt_subtitle),
             negativeText = getString(R.string.biometric_enable_prompt_negative),
         ) { ok, code ->
+            biometricFlowActive = false
             if (ok) {
                 AppLock.setEnabled(this, true)
                 onSuccess()
