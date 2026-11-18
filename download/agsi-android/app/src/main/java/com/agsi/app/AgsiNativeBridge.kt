@@ -184,6 +184,31 @@ class AgsiNativeBridge(
     fun isNotifPollingEnabled(): Boolean = NotifPollerService.isEnabled(appContext)
 
     /**
+     * SUARA NOTIFIKASI (v1.3.30 — permintaan pemilik): pilihan suara dari
+     * Profil ▸ Notifikasi Push ▸ "Suara Notifikasi". Disimpan per perangkat;
+     * berlaku untuk SEMUA notifikasi berikutnya (FCM & poller) walau aplikasi
+     * ditutup / layar terkunci. key katalog: chime | ding | bell | marimba |
+     * pop | system | silent. Return true bila key dikenal & tersimpan.
+     */
+    @JavascriptInterface
+    fun setNotificationSound(key: String): Boolean = NotifSound.set(appContext, key)
+
+    /** Pilihan suara aktif saat ini (key katalog di atas). */
+    @JavascriptInterface
+    fun getNotificationSound(): String = NotifSound.get(appContext)
+
+    /** Katalog suara sebagai JSON [{"key","label"}] — label dari aplikasi. */
+    @JavascriptInterface
+    fun getNotificationSoundCatalog(): String = NotifSound.catalogJson(appContext)
+
+    /** Putar pratinjau suara (stream notifikasi — sama seperti saat pesanan masuk). */
+    @JavascriptInterface
+    fun previewNotificationSound(key: String): Boolean {
+        NotifSound.preview(appContext, key)
+        return true
+    }
+
+    /**
      * IZIN BERJALAN DI LATAR BELAKANG (v1.3.12): true bila AGSI sudah
      * dikecualikan dari optimasi baterai (dialog sistem "izinkan AGSI
      * mengabaikan optimasi baterai" pernah disetujui). Dipakai baris status

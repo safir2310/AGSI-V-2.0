@@ -8,11 +8,14 @@ import {
   Bell,
   BellOff,
   BellRing,
+  Check,
   Loader2,
   Monitor,
+  Play,
   Send,
   Smartphone,
   TriangleAlert,
+  Volume2,
   X,
   Zap,
 } from "lucide-react";
@@ -20,13 +23,18 @@ import { apiFetch } from "@/lib/api";
 import { useNoticeStore } from "@/lib/store";
 import {
   batteryUnrestricted,
+  currentNotificationSound,
   disableWebPush,
   enableWebPush,
   fetchPushConfig,
+  notificationSoundCatalog,
   openAutostartSettings,
+  previewNotificationSound,
   readPushStatus,
   registerNativeTokenIfPresent,
   requestBatteryUnrestriction,
+  setNotificationSound,
+  type NotificationSound,
   type PushConfig,
   type PushStatus,
 } from "@/lib/push-client";
@@ -172,6 +180,44 @@ export function PushSettingsSheet({ open, onClose }: { open: boolean; onClose: (
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  // ===== v1.3.30 — SUARA NOTIFIKASI (permintaan pemilik): pilihan suara
+  // per perangkat dari Profil. Hanya aplikasi Android 1.3.30+ (bridge punya
+  // katalog); APK lama → kartu petunjuk pembaruan. Pilihan tersimpan di
+  // perangkat (SharedPreferences) dan langsung berlaku untuk notifikasi
+  // berikutnya — walau aplikasi ditutup / layar terkunci.
+  const [soundCatalog, setSoundCatalog] = useState<NotificationSound[] | null>(null);
+  const [sound, setSound] = useState<string | null>(null);
+  const soundAvailable = soundCatalog !== null;
+  useEffect(() => {
+    if (open && st.status?.native) {
+      const cat = notificationSoundCatalog();
+      setSoundCatalog(cat);
+      setSound(currentNotificationSound());
+    } else {
+      setSoundCatalog(null);
+      setSound(null);
+    }
+  }, [open, st.status?.native]);
+
+  const pickSound = useCallback(
+    (key: string) => {
+      if (setNotificationSound(key)) {
+        setSound(key);
+        showNotice({
+          type: "success",
+          autoCloseMs: 2600,
+          title: "Suara notifikasi diperbarui ✓",
+          message: "Pesanan & chat berikutnya akan berbunyi dengan suara yang baru dipilih.",
+        });
+      }
+    },
+    [showNotice],
+  );
+
+  const previewSound = useCallback((key: string) => {
+    previewNotificationSound(key);
+  }, []);
 
   const enable = useCallback(async () => {
     if (!st.config) return;
@@ -443,6 +489,71 @@ export function PushSettingsSheet({ open, onClose }: { open: boolean; onClose: (
                       muncul segera.
                     </div>
                   )}
+
+                  {/* v1.3.30 — Suara Notifikasi (permintaan pemilik): pilihan
+                      suara + pratinjau, tersimpan per perangkat (APK 1.3.30+) */}
+                  {status?.native &&
+                    (soundAvailable ? (
+                      <div className="mb-4 rounded-2xl border border-neutral-200 bg-white p-4">
+                        <div className="mb-1 flex items-center gap-2">
+                          <Volume2 className="h-4 w-4 text-orange-600" />
+                          <p className="text-[12px] font-black text-neutral-800">Suara Notifikasi</p>
+                        </div>
+                        <p className="mb-3 text-[10px] leading-relaxed text-neutral-500">
+                          Berlaku untuk pesanan, pembayaran &amp; chat — walau aplikasi tertutup dan layar
+                          terkunci. Tekan ▶ untuk mendengar pratinjaunya.
+                        </p>
+                        <div className="space-y-1.5">
+                          {(soundCatalog ?? []).map((s) => {
+                            const active = sound === s.key;
+                            return (
+                              <div
+                                key={s.key}
+                                className={cn(
+                                  "flex items-center gap-2 rounded-xl px-2.5 py-2 transition",
+                                  active ? "bg-orange-50 ring-1 ring-orange-200" : "bg-neutral-50"
+                                )}
+                              >
+                                <button
+                                  onClick={() => pickSound(s.key)}
+                                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                                  aria-pressed={active}
+                                >
+                                  <span
+                                    className={cn(
+                                      "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                                      active ? "border-orange-600 bg-orange-600" : "border-neutral-300 bg-white"
+                                    )}
+                                  >
+                                    {active && <Check className="h-2.5 w-2.5 text-white" />}
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      "truncate text-[11px] font-bold",
+                                      active ? "text-orange-700" : "text-neutral-700"
+                                    )}
+                                  >
+                                    {s.label}
+                                  </span>
+                                </button>
+                                <button
+                                  onClick={() => previewSound(s.key)}
+                                  aria-label={`Pratinjau ${s.label}`}
+                                  className="press-effect flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-600/10 text-orange-600 hover:bg-orange-600/20"
+                                >
+                                  <Play className="h-3 w-3" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-3 text-[10.5px] leading-relaxed text-amber-800">
+                        Pemilih <b>Suara Notifikasi</b> tersedia di aplikasi AGSI 1.3.30+ — perbarui aplikasi
+                        dari menu Unduh untuk mengganti suara pesanan masuk.
+                      </div>
+                    ))}
 
                   {/* Peringatan server belum siap */}
                   {!serverOk && !status?.native && (

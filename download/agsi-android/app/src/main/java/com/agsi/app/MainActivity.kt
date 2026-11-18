@@ -70,6 +70,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -217,7 +218,7 @@ class MainActivity : AppCompatActivity() {
                 return@registerForActivityResult
             }
             try {
-                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                contentResolver.openOutputStream(uri)?.use { writeWithProgress(it, bytes, name) }
                     ?: throw IOException("Tidak bisa membuka output stream")
                 Toast.makeText(this, getString(R.string.file_saved, name), Toast.LENGTH_LONG).show()
                 // v1.3.28 — kartu unduhan selesai (tap → buka file hasil SAF)
@@ -950,7 +951,10 @@ class MainActivity : AppCompatActivity() {
                 .setTitle(fileName)
                 .setDescription(getString(R.string.download_desc))
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                // v1.3.32 — subfolder "AGSI/" (konsisten dgn struk & laporan
+                // dari jembatan saveFile): semua unduhan AGSI kini dalam satu
+                // folder Unduhan/AGSI, mudah dicari di aplikasi Files.
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "AGSI/$fileName")
             CookieManager.getInstance().getCookie(url)?.let {
                 request.addRequestHeader("Cookie", it)
             }
@@ -1016,6 +1020,27 @@ class MainActivity : AppCompatActivity() {
         wv.post { wv.evaluateJavascript(script, null) }
     }
 
+    /** Tulis bytes PER BAGIAN sambil memperbarui kartu unduhan di status bar
+     *  dengan persabagan NYATA (v1.3.30 — permintaan pemilik: unduhan struk
+     *  lebih "tajam"): baris progres terisi + "67% · 1,2 MB". Bagian 256 KB,
+     *  laporan tiap ≥10% (file kecil: sekali tulis + langsung 100%). */
+    private fun writeWithProgress(out: OutputStream, bytes: ByteArray, fileName: String) {
+        val chunk = 256 * 1024
+        var written = 0
+        var lastPct = -100
+        do {
+            val len = minOf(chunk, bytes.size - written)
+            out.write(bytes, written, len)
+            written += len
+            val pct = if (bytes.isEmpty()) 100 else written * 100 / bytes.size
+            if (pct - lastPct >= 10 || written == bytes.size) {
+                lastPct = pct
+                DownloadNotifier.progress(this, fileName, pct, written.toLong())
+            }
+        } while (written < bytes.size)
+        out.flush()
+    }
+
     /**
      * Simpan file (base64 dari web) ke folder Unduhan.
      *  - Android 10+ : MediaStore Downloads → Unduhan/AGSI, tanpa dialog,
@@ -1047,7 +1072,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                     ?: throw IOException("MediaStore menolak penyimpanan")
-                resolver.openOutputStream(uri)?.use { it.write(bytes) }
+                resolver.openOutputStream(uri)?.use { writeWithProgress(it, bytes, fileName) }
                     ?: throw IOException("Tidak bisa membuka output stream")
                 values.clear()
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0)
@@ -1137,14 +1162,51 @@ class MainActivity : AppCompatActivity() {
                 target = File(dir, "$base (${i})$ext")
                 i++
             }
-            target.outputStream().use { it.write(bytes) }
+            target.outputStream().use { writeWithProgress(it, bytes, target.name) }
             Toast.makeText(this, getString(R.string.file_saved, target.name), Toast.LENGTH_LONG).show()
+            // v1.3.32 — DAFTARKAN ke DownloadManager SISTEM: struk & laporan
+            // masuk daftar "Unduhan" resmi Android (aplikasi Files/Unduhan) dan
+            // sistem menampilkan kartu unduhan selesai di status bar — persis
+            // unduhan lewat browser/Chrome. (Android 10+ tidak perlu: MediaStore
+            // Downloads sudah otomatis terdaftar di UI Unduhan sistem.)
+            registerCompletedDownload(target, mimeType)
             // v1.3.28 — kartu unduhan selesai (tap → buka via FileProvider)
             DownloadNotifier.completed(this, target.name, mimeType, DownloadNotifier.fileProviderUri(this, target))
             resolveBridge(cbId, true, target.name)
         } catch (e: Exception) {
             Log.w(TAG, "Simpan langsung Unduhan gagal — pakai dialog Simpan-ke (SAF)", e)
             launchSaveFileDialog(cbId, bytes, fileName, mimeType)
+        }
+    }
+
+    /**
+     * v1.3.32 — registrasi file yang sudah ditulis ke DownloadManager SISTEM
+     * (DownloadManager.addCompletedDownload — API resmi Android untuk
+     * mendaftarkan file hasil unduhan manual): file tampil di daftar Unduhan
+     * sistem dan bila showNotification=true sistem ikut menampilkan kartu
+     * "Unduhan selesai" di status bar.
+     *
+     * Hanya untuk Android 8–9 (jalur File langsung Unduhan/AGSI); di Android
+     * 10+ file tersimpan via MediaStore.Downloads yang sudah otomatis tampak
+     * di aplikasi Unduhan, dan addCompletedDownload dengan path MediaStore
+     * memang tidak sah (IllegalArgumentException) — dilewati.
+     * Gagal registrasi BUKAN kegagalan simpan: file tetap ada di Unduhan/AGSI.
+     */
+    private fun registerCompletedDownload(file: File, mimeType: String) {
+        try {
+            @Suppress("DEPRECATION")
+            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            dm.addCompletedDownload(
+                file.name,
+                "AGSI — struk & laporan", // deskripsi kartu unduhan sistem
+                true, // tampil di UI Unduhan (aplikasi Files / Unduhan)
+                mimeType,
+                file.absolutePath,
+                file.length(),
+                true, // sistem menampilkan notifikasi unduhan selesai di status bar
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Registrasi DownloadManager sistem gagal — file tetap tersimpan", e)
         }
     }
 
