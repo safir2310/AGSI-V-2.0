@@ -951,7 +951,10 @@ class MainActivity : AppCompatActivity() {
                 .setTitle(fileName)
                 .setDescription(getString(R.string.download_desc))
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                // v1.3.32 — subfolder "AGSI/" (konsisten dgn struk & laporan
+                // dari jembatan saveFile): semua unduhan AGSI kini dalam satu
+                // folder Unduhan/AGSI, mudah dicari di aplikasi Files.
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "AGSI/$fileName")
             CookieManager.getInstance().getCookie(url)?.let {
                 request.addRequestHeader("Cookie", it)
             }
@@ -1161,12 +1164,49 @@ class MainActivity : AppCompatActivity() {
             }
             target.outputStream().use { writeWithProgress(it, bytes, target.name) }
             Toast.makeText(this, getString(R.string.file_saved, target.name), Toast.LENGTH_LONG).show()
+            // v1.3.32 — DAFTARKAN ke DownloadManager SISTEM: struk & laporan
+            // masuk daftar "Unduhan" resmi Android (aplikasi Files/Unduhan) dan
+            // sistem menampilkan kartu unduhan selesai di status bar — persis
+            // unduhan lewat browser/Chrome. (Android 10+ tidak perlu: MediaStore
+            // Downloads sudah otomatis terdaftar di UI Unduhan sistem.)
+            registerCompletedDownload(target, mimeType)
             // v1.3.28 — kartu unduhan selesai (tap → buka via FileProvider)
             DownloadNotifier.completed(this, target.name, mimeType, DownloadNotifier.fileProviderUri(this, target))
             resolveBridge(cbId, true, target.name)
         } catch (e: Exception) {
             Log.w(TAG, "Simpan langsung Unduhan gagal — pakai dialog Simpan-ke (SAF)", e)
             launchSaveFileDialog(cbId, bytes, fileName, mimeType)
+        }
+    }
+
+    /**
+     * v1.3.32 — registrasi file yang sudah ditulis ke DownloadManager SISTEM
+     * (DownloadManager.addCompletedDownload — API resmi Android untuk
+     * mendaftarkan file hasil unduhan manual): file tampil di daftar Unduhan
+     * sistem dan bila showNotification=true sistem ikut menampilkan kartu
+     * "Unduhan selesai" di status bar.
+     *
+     * Hanya untuk Android 8–9 (jalur File langsung Unduhan/AGSI); di Android
+     * 10+ file tersimpan via MediaStore.Downloads yang sudah otomatis tampak
+     * di aplikasi Unduhan, dan addCompletedDownload dengan path MediaStore
+     * memang tidak sah (IllegalArgumentException) — dilewati.
+     * Gagal registrasi BUKAN kegagalan simpan: file tetap ada di Unduhan/AGSI.
+     */
+    private fun registerCompletedDownload(file: File, mimeType: String) {
+        try {
+            @Suppress("DEPRECATION")
+            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            dm.addCompletedDownload(
+                file.name,
+                "AGSI — struk & laporan", // deskripsi kartu unduhan sistem
+                true, // tampil di UI Unduhan (aplikasi Files / Unduhan)
+                mimeType,
+                file.absolutePath,
+                file.length(),
+                true, // sistem menampilkan notifikasi unduhan selesai di status bar
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Registrasi DownloadManager sistem gagal — file tetap tersimpan", e)
         }
     }
 
