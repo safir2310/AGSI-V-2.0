@@ -22,6 +22,8 @@ import {
   X,
 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { CourierMapSheet } from "@/components/courier/CourierMapSheet";
+import type { MapPoint } from "@/components/shared/LiveMap";
 import { apiFetch } from "@/lib/api";
 import { useNoticeStore } from "@/lib/store";
 import { formatDateTime, formatIDR, type OrderData } from "@/lib/types";
@@ -118,6 +120,10 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
   const [tab, setTab] = useState<Tab>("antaran");
   const [setorArmed, setSetorArmed] = useState(false);
   const [setorBusy, setSetorBusy] = useState(false);
+  // ===== Pelacakan real-time (permintaan pemilik): kurir mengirim GPS
+  // berkala selama ada antaran aktif & membuka peta lokasi pelanggan =====
+  const [livePos, setLivePos] = useState<MapPoint | null>(null);
+  const [mapOrder, setMapOrder] = useState<OrderData | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -144,6 +150,49 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
     const iv = setInterval(() => void load(), 15000);
     return () => clearInterval(iv);
   }, [load]);
+
+  // ===== PELACAKAN REAL-TIME — kurir mengirim GPS tiap 8 dtk selama ada
+  // antaran aktif (permintaan pemilik: pelanggan melihat kurir bergerak di
+  // peta). Hanya saat halaman terlihat (hemat baterai) & tanpa melempar.
+  const activeDeliveryIds = (orders ?? [])
+    .filter((o) => o.type === "DELIVERY" && o.status === "READY")
+    .map((o) => o.id)
+    .join(",");
+
+  useEffect(() => {
+    if (!activeDeliveryIds) return;
+    const ids = activeDeliveryIds.split(",");
+
+    const send = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      if (typeof navigator === "undefined" || !navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setLivePos(p);
+          for (const id of ids) {
+            try {
+              await apiFetch("/api/courier/location", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ orderId: id, lat: p.lat, lng: p.lng }),
+              });
+            } catch {
+              // satu gagal → lanjut pesanan berikut (interval berikutnya kirim ulang)
+            }
+          }
+        },
+        () => {
+          // GPS ditolak/tidak tersedia — pelanggan hanya melihat timeline
+        },
+        { enableHighAccuracy: true, timeout: 9000, maximumAge: 6000 },
+      );
+    };
+
+    send();
+    const iv = setInterval(send, 8000);
+    return () => clearInterval(iv);
+  }, [activeDeliveryIds]);
 
   /** Galat aksi hilang sendiri beberapa detik */
   useEffect(() => {
@@ -577,16 +626,23 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
                   </div>
                 </div>
 
-                {/* Aksi: rute + sampai tujuan */}
+                {/* Aksi: peta pelanggan + rute + sampai tujuan */}
                 {!done && (
                   <div className="flex gap-2 border-t border-emerald-50 px-4 py-3">
+                    <button
+                      onClick={() => setMapOrder(o)}
+                      aria-label={`Lihat peta pelanggan ${o.code}`}
+                      className="press-effect flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-700 ring-1 ring-orange-200 transition hover:bg-orange-100"
+                    >
+                      <MapPin className="h-4 w-4" />
+                    </button>
                     <a
                       href={mapsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="press-effect flex h-10 flex-[1.4] items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 text-[12px] font-black text-emerald-700 hover:bg-emerald-100"
+                      className="press-effect flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 text-[12px] font-black text-emerald-700 hover:bg-emerald-100"
                     >
-                      <Navigation className="h-4 w-4" /> Buka Rute GPS
+                      <Navigation className="h-4 w-4" /> Rute GPS
                     </a>
                     <button
                       onClick={() => void completeDelivery(o)}
@@ -623,6 +679,9 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
           <RefreshCw className="h-3.5 w-3.5" /> {error} — Ketuk untuk coba lagi
         </button>
       )}
+
+      {/* ===== SHEET PETA PELANGGAN (pelacakan real-time) ===== */}
+      <CourierMapSheet order={mapOrder} livePos={livePos} onClose={() => setMapOrder(null)} />
 
       {/* ===== SHEET RIWAYAT PENGANTARAN ===== */}
       {createPortal(

@@ -191,6 +191,13 @@ model Order {
   courierName        String? // nama kurir AGSI yang mengantar
   courierPhone       String? // no. HP kurir (opsional — tombol telepon/WA)
   onTheWayAt         DateTime? // waktu kurir berangkat dari toko
+  // ===== Posisi LANGSUNG kurir (type DELIVERY, dari aplikasi kurir) =====
+  // Kurir yang membuka beranda saat ada pesanan aktif mengirim GPS tiap ±8
+  // dtk (POST /api/courier/location) → pelanggan melihat kurir bergerak di
+  // peta (Lacak Kurir). NULL = kurir belum mengirim posisi / pesanan selesai.
+  courierLat         Float? // lintang terakhir kurir (-90..90)
+  courierLng         Float? // bujur terakhir kurir (-90..180)
+  courierLocAt       DateTime? // waktu posisi terakhir dikirim
   // ===== Akun kurir (role COURIER) yang ditugaskan =====
   // Terisi saat staff menugaskan AKUN kurir (bukan cuma nama bebas) —
   // akun kurir itu bisa melihat pesanan ini di beranda kurirnya lengkap
