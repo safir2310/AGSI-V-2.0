@@ -9,6 +9,7 @@ import {
   CheckCheck,
   ChefHat,
   ClipboardList,
+  Camera,
   Loader2,
   MessageCircle,
   Phone,
@@ -24,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { PaymentBadge, SourceBadge, StatusBadge } from "@/components/shared/StatusBadge";
 import { ReceiptSheet } from "@/components/shared/ReceiptSheet";
+import { PhotoProofModal } from "@/components/shared/PhotoProofModal";
 import { useOrdersStore } from "@/lib/hooks";
 import { useNoticeStore, useUiStore } from "@/lib/store";
 import { apiFetch } from "@/lib/api";
@@ -45,6 +47,8 @@ export function AdminOrdersView() {
   const [filter, setFilter] = useState<string>("ALL");
   const [updating, setUpdating] = useState<string | null>(null);
   const [receiptOrder, setReceiptOrder] = useState<OrderData | null>(null);
+  // BUKTI FOTO PENGIRIMAN (permintaan pemilik): foto dari kurir dilihat admin
+  const [proofOrder, setProofOrder] = useState<OrderData | null>(null);
   /** Dialog "Serahkan ke Kurir" — pesanan antar yang siap diantar */
   const [courierOrder, setCourierOrder] = useState<OrderData | null>(null);
   const [courierName, setCourierName] = useState("");
@@ -393,6 +397,17 @@ export function AdminOrdersView() {
                       >
                         <Printer className="h-4 w-4" />
                       </button>
+                      {/* Bukti foto pengiriman dari kurir (pesanan antar) */}
+                      {o.type === "DELIVERY" && o.deliveryPhotoAt && (
+                        <button
+                          onClick={() => setProofOrder(o)}
+                          aria-label={`Lihat bukti foto pengiriman ${o.code}`}
+                          title="Lihat bukti foto pengiriman"
+                          className="press-effect flex h-9 w-9 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-600 shadow-sm transition hover:bg-emerald-100"
+                        >
+                          <Camera className="h-4 w-4" />
+                        </button>
+                      )}
                       {/* Chat pelanggan pemilik pesanan (disembunyikan utk pesanan POS tanpa akun member) */}
                       {o.userId && (
                         <button
@@ -514,6 +529,7 @@ export function AdminOrdersView() {
 
       {/* ===== SHEET CETAK STRUK ===== */}
       <ReceiptSheet open={!!receiptOrder} order={receiptOrder} onClose={() => setReceiptOrder(null)} />
+      <PhotoProofModal order={proofOrder} onClose={() => setProofOrder(null)} />
 
       {/* ===== DIALOG SERAHKAN KE KURIR (pesanan antar) ===== */}
       <AnimatePresence>

@@ -198,6 +198,12 @@ model Order {
   courierLat         Float? // lintang terakhir kurir (-90..90)
   courierLng         Float? // bujur terakhir kurir (-90..180)
   courierLocAt       DateTime? // waktu posisi terakhir dikirim
+  // ===== BUKTI FOTO PENGIRIMAN (permintaan pemilik) =====
+  // Kurir mengunggah foto (paket di depan rumah/diserahkan ke pelanggan)
+  // sebelum menekan "Sampai Tujuan" — WAJIB untuk antar via akun kurir.
+  // Datanya di tabel DeliveryPhoto agar daftar 100 pesanan tetap ringan;
+  // kolom ini hanya PENANDA ringan "foto sudah ada" untuk UI admin/pelanggan.
+  deliveryPhotoAt    DateTime? // waktu bukti foto diunggah; NULL = belum ada
   // ===== Akun kurir (role COURIER) yang ditugaskan =====
   // Terisi saat staff menugaskan AKUN kurir (bukan cuma nama bebas) —
   // akun kurir itu bisa melihat pesanan ini di beranda kurirnya lengkap
@@ -225,9 +231,29 @@ model Order {
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   items              OrderItem[]
+  deliveryPhoto      DeliveryPhoto?
 
   @@index([status])
   @@index([createdAt])
+}
+
+// ===== BUKTI FOTO PENGIRIMAN KURIR (permintaan pemilik) =====
+// Foto (±100–200 KB, dikompresi di perangkat kurir) sebagai bukti pengiriman:
+// kurir WAJIB mengunggah sebelum "Sampai Tujuan"; admin & pelanggan dapat
+// melihatnya lewat GET /api/orders/[id]/delivery-photo. Tabel terpisah dari
+// Order supaya daftar 100 pesanan TIDAK ikut memuat bytes foto (payload list
+// tetap ringan; foto diambil on-demand saat tombol buka ditekan).
+model DeliveryPhoto {
+  id         String   @id @default(cuid())
+  orderId    String   @unique
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  data       String // base64 (data-URL utuh juga diterima — decode tahan banting)
+  mime       String? // image/jpeg | image/png | image/webp
+  uploadedAt DateTime @default(now())
+  uploadedByUserId String? // id akun kurir pengunggah
+  uploadedByName   String? // snapshot nama kurir (tampil di modal admin/pelanggan)
+
+  @@index([uploadedAt])
 }
 
 // ===== SETORAN UANG COD KURIR =====

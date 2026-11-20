@@ -19,9 +19,7 @@ import "leaflet/dist/leaflet.css";
 
 export type MapPoint = { lat: number; lng: number };
 
-type LeafletModules = {
-  L: typeof import("leaflet");
-};
+type LeafletModule = typeof import("leaflet");
 
 type MarkerBundle = {
   courier: import("leaflet").Marker | null;
@@ -31,7 +29,7 @@ type MarkerBundle = {
 };
 
 /** Ikon marker titik-titik (divIcon — tidak butuh gambar bawaan Leaflet). */
-function pinIcon(L: LeafletModules["L"], emoji: string, ring: string) {
+function pinIcon(L: LeafletModule, emoji: string, ring: string) {
   return L.divIcon({
     className: "",
     html: `<div style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;font-size:19px;line-height:1;background:#fff;border:2px solid ${ring};border-radius:9999px;box-shadow:0 2px 8px rgba(0,0,0,.25)">${emoji}</div>`,
@@ -57,7 +55,7 @@ export function LiveMap({
   const holderRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const bundleRef = useRef<MarkerBundle>({ courier: null, customer: null, line: null, fitted: false });
-  const LRef = useRef<LeafletModules["L"]["L"] | null>(null);
+  const LRef = useRef<LeafletModule | null>(null);
   const [failed, setFailed] = useState(false);
 
   // Init peta SEKALI

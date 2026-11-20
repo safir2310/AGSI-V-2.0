@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Bike, ClipboardList, Coins, QrCode, RefreshCw, ShoppingBag, Ticket, Timer, Utensils } from "lucide-react";
+import { Bike, Camera, ClipboardList, Coins, QrCode, RefreshCw, ShoppingBag, Ticket, Timer, Utensils } from "lucide-react";
 import { PaymentBadge, SourceBadge, StatusBadge } from "@/components/shared/StatusBadge";
 import { QrisPaySheet, type QrisPayOrder } from "@/components/shared/QrisPaySheet";
+import { PhotoProofModal } from "@/components/shared/PhotoProofModal";
 import { useOrdersStore } from "@/lib/hooks";
-import { formatDateTime, formatIDR } from "@/lib/types";
+import { formatDateTime, formatIDR, type OrderData } from "@/lib/types";
 import { formatDistance } from "@/lib/delivery";
 import { earnPointsForTotal } from "@/lib/points-rules";
 import { cn } from "@/lib/utils";
@@ -65,6 +66,8 @@ export function OrdersView() {
   const prefersReduced = useReducedMotion();
   const { orders, loading, load } = useOrdersStore();
   const [payOrder, setPayOrder] = useState<QrisPayOrder | null>(null);
+  // BUKTI FOTO PENGIRIMAN (permintaan pemilik): foto dari kurir dilihat pelanggan
+  const [proofOrder, setProofOrder] = useState<OrderData | null>(null);
 
   useEffect(() => {
     load("mine", true);
@@ -207,6 +210,18 @@ export function OrdersView() {
                   </div>
                 )
               )}
+
+              {/* BUKTI FOTO PENGIRIMAN — kurir mengunggah sebelum "Sampai Tujuan" */}
+              {o.type === "DELIVERY" && o.deliveryPhotoAt && (
+                <div className="border-t border-orange-50 px-4 py-2.5">
+                  <button
+                    onClick={() => setProofOrder(o)}
+                    className="press-effect flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-50 py-2.5 text-[12px] font-black text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-100"
+                  >
+                    <Camera className="h-4 w-4" /> Lihat Bukti Foto Pengiriman
+                  </button>
+                </div>
+              )}
             </motion.article>
           ))}
         </div>
@@ -221,6 +236,9 @@ export function OrdersView() {
           onPaid={() => void load("mine", true)}
         />
       )}
+
+      {/* Bukti foto pengiriman dari kurir */}
+      <PhotoProofModal order={proofOrder} onClose={() => setProofOrder(null)} />
     </div>
   );
 }

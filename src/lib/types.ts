@@ -129,6 +129,9 @@ export type OrderData = {
   courierUserId?: string | null;
   /** waktu kurir berangkat dari toko (ISO) — penanda "sedang diantar" */
   onTheWayAt?: string | null;
+  /** BUKTI FOTO PENGIRIMAN: waktu kurir mengunggah foto (null = belum ada) —
+   *  bytes diambil on-demand via /api/orders/[id]/delivery-photo */
+  deliveryPhotoAt?: string | null;
   /** ===== Pin GPS lokasi rumah pelanggan (DELIVERY) ===== */
   /** lintang pin GPS rumah pelanggan (null = pelanggan tidak menempel pin) */
   deliveryLat?: number | null;
