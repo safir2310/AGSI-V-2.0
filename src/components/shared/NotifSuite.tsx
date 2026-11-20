@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Bell, Bike, ChefHat, MessageCircle, PackageCheck, X } from "lucide-react";
 import { useAppStore, useUiStore } from "@/lib/store";
@@ -11,21 +11,22 @@ import { cn } from "@/lib/utils";
 /**
  * 🔔 SUITE NOTIFIKASI IN-APP (v1.3.13) — dipasang di AppShell, SEMUA role.
  *
- * Empat gaya tampil halaman (gaya kelima = POPUP tengah tetap di
+ * Tiga gaya tampil halaman (gaya keempat = POPUP tengah tetap di
  * CenterNotice yang sudah ada):
  *
  *   1. HEADS-UP  — kartu melayang turun dari atas (z-99), auto-tutup ±6,5
- *      dtk, ketuk → buka halaman tujuan; tombol ✕ menyimpan ke toast.
+ *      dtk, ketuk → buka halaman tujuan; tombol ✕ menyimpan ke banner.
  *   2. BANNER    — strip "N kabar baru" di atas (z-85), menempel sampai
  *      kabar dibuka / ditutup.
- *   3. FLOATING  — gelembung oranye melayang (z-90) bisa DISESER (drag,
- *      posisi tersimpan di localStorage) + angka kabar; ketuk → buka.
- *   5. TOAST     — pil kecil di bawah layar (z-100), auto-tutup 3,2 dtk.
+ *   3. TOAST     — pil kecil di bawah layar (z-100), auto-tutup 3,2 dtk.
+ *
+ * v1.3.38 (permintaan pemilik): FLOATING (gelembung oranye melayang yang
+ * bisa diseret) & lonceng header DIHAPUS dari SEMUA role.
  *
  * Semua mengambil data dari useNotifSuiteStore (lihat src/lib/notif-suite.ts);
  * event diisi oleh NotifWatchers (polling + tick push FCM) dan PushBridge
- * (web push browser). Banner & gelembung otomatis hilang saat pengguna
- * membuka halaman tujuan (view "orders"/"kurir" atau overlay chat terbuka).
+ * (web push browser). Banner otomatis hilang saat pengguna membuka halaman
+ * tujuan (view "orders"/"kurir" atau overlay chat terbuka).
  */
 
 /* Ikon & warna aksen per jenis kabar */
@@ -81,121 +82,13 @@ function ToastPill({ toast, onDone }: { toast: SuiteItem; onDone: () => void }) 
   );
 }
 
-/* ===== 3) FLOATING BUBBLE — gelembung melayang bisa diseret ===== */
-const BUBBLE_SIZE = 48;
-
-function FloatingBubble({
-  count,
-  url,
-  onOpen,
-}: {
-  count: number;
-  url: string;
-  onOpen: (url: string) => void;
-}) {
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const drag = useRef({ on: false, moved: false, px: 0, py: 0, x: 0, y: 0 });
-
-  // Posisi tersimpan (hasil seretan sebelumnya) — default: kanan, 62% tinggi
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("agsi-bubble-pos");
-      if (saved) {
-        const p = JSON.parse(saved) as { x: number; y: number };
-        if (typeof p.x === "number" && typeof p.y === "number") setPos(p);
-      }
-    } catch {
-      // localStorage tidak tersedia — pakai posisi default
-    }
-  }, []);
-
-  const clamp = useCallback((x: number, y: number) => {
-    const w = typeof window === "undefined" ? 360 : window.innerWidth;
-    const h = typeof window === "undefined" ? 720 : window.innerHeight;
-    return {
-      x: Math.min(Math.max(10, x), w - BUBBLE_SIZE - 18),
-      // hindari header atas & navigasi bawah
-      y: Math.min(Math.max(64, y), h - BUBBLE_SIZE - 96),
-    };
-  }, []);
-
-  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!pos) return;
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // capture gagal — seretan tetap jalan tanpa capture
-    }
-    drag.current = { on: true, moved: false, px: e.clientX, py: e.clientY, x: pos.x, y: pos.y };
-  };
-
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const d = drag.current;
-    if (!d.on) return;
-    const dx = e.clientX - d.px;
-    const dy = e.clientY - d.py;
-    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) d.moved = true;
-    if (d.moved) setPos(clamp(d.x + dx, d.y + dy));
-  };
-
-  const onPointerUp = () => {
-    const d = drag.current;
-    if (!d.on) return;
-    d.on = false;
-    if (d.moved && pos) {
-      // Dock ke tepi terdekat + simpan posisi
-      const w = typeof window === "undefined" ? 360 : window.innerWidth;
-      const docked = clamp(pos.x < w / 2 ? 10 : w - BUBBLE_SIZE - 18, pos.y);
-      setPos(docked);
-      try {
-        localStorage.setItem("agsi-bubble-pos", JSON.stringify(docked));
-      } catch {
-        // abaikan
-      }
-    } else if (!d.moved) {
-      onOpen(url); // ketukan biasa (bukan seretan) → buka halaman
-    }
-  };
-
-  if (count <= 0) return null;
-  const style: React.CSSProperties = pos
-    ? { left: pos.x, top: pos.y }
-    : { right: 14, top: "62%" };
-
-  return (
-    <motion.div
-      role="button"
-      aria-label={`Floating notification: ${count} kabar baru`}
-      initial={{ scale: 0 }}
-      animate={{ scale: 1 }}
-      exit={{ scale: 0 }}
-      className="fixed z-[90] flex cursor-grab touch-none select-none items-center justify-center rounded-full bg-gradient-to-br from-orange-600 to-amber-500 shadow-xl ring-2 ring-white/60 active:cursor-grabbing"
-      style={{ width: BUBBLE_SIZE, height: BUBBLE_SIZE, ...style }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-    >
-      <Bell className="h-5 w-5 text-white" />
-      <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-black text-white ring-2 ring-white">
-        {count > 99 ? "99+" : count}
-      </span>
-    </motion.div>
-  );
-}
-
 /* ================= KOMPONEN UTAMA ================= */
 
 export function NotifSuite({ user }: { user?: AppUser | null }) {
   const role = user?.role;
-  // v1.3.37 — halaman admin TANPA lonceng (permintaan pemilik): gelembung
-  // melayang disembunyikan untuk ADMIN/OWNER; kartu heads-up, banner &
-  // toast tetap jadi kabar berjalan.
-  const hideBubble = role === "ADMIN" || role === "OWNER";
   const headsUp = useNotifSuiteStore((s) => s.headsUp);
   const bannerCount = useNotifSuiteStore((s) => s.bannerCount);
   const bannerLatest = useNotifSuiteStore((s) => s.bannerLatest);
-  const bubbleCount = useNotifSuiteStore((s) => s.bubbleCount);
-  const bubbleUrl = useNotifSuiteStore((s) => s.bubbleUrl);
   const toasts = useNotifSuiteStore((s) => s.toasts);
 
   /** Buka halaman tujuan + tandai semua kabar suite sudah dibuka */
@@ -330,7 +223,7 @@ export function NotifSuite({ user }: { user?: AppUser | null }) {
                     // Konfirmasi ringan: kabar tetap tersimpan di banner & gelembung
                     useNotifSuiteStore.getState().pushToast({
                       kind: h.kind,
-                      title: "Kabar disimpan — cek strip atas atau ikon melayang 🔔",
+                      title: "Kabar disimpan — cek strip atas 🔔",
                       body: "",
                       url: h.url,
                     });
@@ -346,17 +239,8 @@ export function NotifSuite({ user }: { user?: AppUser | null }) {
         </AnimatePresence>
       </div>
 
-      {/* ===== 3) FLOATING — gelembung melayang bisa diseret ===== */}
-      <AnimatePresence>
-        {bubbleCount > 0 && !hideBubble && (
-          <FloatingBubble
-            key="suite-bubble"
-            count={bubbleCount}
-            url={bubbleUrl}
-            onOpen={openAndClear}
-          />
-        )}
-      </AnimatePresence>
+      {/* v1.3.38: FLOATING (gelembung melayang) DIHAPUS — permintaan pemilik.
+          Kabar tersimpan tetap terlihat lewat BANNER strip di atas. */}
 
       {/* ===== 5) TOAST — pil kecil di bawah layar ===== */}
       <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[100] flex flex-col items-center gap-2 px-4">

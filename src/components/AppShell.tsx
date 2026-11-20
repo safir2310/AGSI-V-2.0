@@ -12,8 +12,6 @@ import { MemberCardSheet } from "@/components/shared/MemberCardSheet";
 import { ChatSheet } from "@/components/shared/ChatSheet";
 import { AdminNewOrderWatcher, ChatNotifWatcher, CustomerNotifWatcher } from "@/components/shared/NotifWatchers";
 import { NotifSuite } from "@/components/shared/NotifSuite";
-import { NotifCenterSheet } from "@/components/shared/NotifCenterSheet";
-import { CENTER_UPDATED_EVENT, listEntries, unreadCount } from "@/lib/notif-center";
 import { PushBridge } from "@/components/shared/PushBridge";
 import { ErrorReporter } from "@/components/shared/ErrorReporter";
 import { SyncBridge } from "@/components/shared/SyncBridge";
@@ -38,7 +36,7 @@ import { hasValidConsent } from "@/lib/data-policy";
 import { hasValidTerms } from "@/lib/app-terms";
 import type { AppUser } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Bell, Coins } from "lucide-react";
+import { Coins } from "lucide-react";
 
 function isAdminRole(role?: string | null) {
   return role === "ADMIN" || role === "OWNER";
@@ -50,9 +48,10 @@ export function AppShell() {
   const [user, setUser] = useState<AppUser | null>(null);
   const [showSplash, setShowSplash] = useState(true);
   const [memberOpen, setMemberOpen] = useState(false);
-  // 🗂️ PUSAT NOTIFIKASI (v1.3.10): sheet daftar semua notifikasi + badge angka
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [centerUnread, setCenterUnread] = useState(0);
+  // v1.3.38 (permintaan pemilik): LONCENG notifikasi & gelembung melayang
+  // DIHAPUS dari semua halaman (sebelumnya sudah tanpa lonceng utk admin).
+  // Kabar tetap berjalan lewat heads-up, banner & toast; pusat notifikasi
+  // (NotifCenterSheet) ikut dinonaktifkan karena pintunya hilang.
   const view = useAppStore((s) => s.view);
   const go = useAppStore((s) => s.go);
   const clearCart = useCartStore((s) => s.clear);
@@ -62,28 +61,7 @@ export function AppShell() {
   const chatOpen = useUiStore((s) => s.chatOpen);
   const chatTargetUserId = useUiStore((s) => s.chatTargetUserId);
   const closeChat = useUiStore((s) => s.closeChat);
-  const chatUnread = useUiStore((s) => s.chatUnread);
-  // Angka badge lonceng = yang terbesar di antara chat belum dibaca & entri
-  // pusat notifikasi belum dibaca (kabar chat juga tercatat di pusat — max
-  // mencegah angka dobel).
-  const bellCount = Math.max(chatUnread, centerUnread);
   const splashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // 🔔 BADGE + PUSAT NOTIFIKASI (v1.3.10): angka belum dibaca menyala saat
-  // ada kabar baru (push masuk / riwayat diperbarui) dan mati setelah pusat
-  // notifikasi dibuka.
-  const refreshCenterUnread = useCallback(() => {
-    setCenterUnread(unreadCount(listEntries()));
-  }, []);
-  useEffect(() => {
-    refreshCenterUnread();
-    window.addEventListener(CENTER_UPDATED_EVENT, refreshCenterUnread);
-    window.addEventListener("agsi-push", refreshCenterUnread);
-    return () => {
-      window.removeEventListener(CENTER_UPDATED_EVENT, refreshCenterUnread);
-      window.removeEventListener("agsi-push", refreshCenterUnread);
-    };
-  }, [refreshCenterUnread]);
 
   // 🔗 DEEP LINK NOTIFIKASI (v1.3.10): aplikasi Android menyuntikkan event
   // "agsi-nav" setelah tap notifikasi (MainActivity.onPageFinished) → buka
@@ -321,30 +299,8 @@ export function AppShell() {
             </div>
             {user && (
               <div className="flex items-center gap-2">
-                {/* 🔔 LONCENG NOTIFIKASI — badge angka belum dibaca (kabar
-                    terkumpul di PUSAT NOTIFIKASI: notifikasi sistem saat
-                    aplikasi ditutup + popup real-time saat terbuka). Klik
-                    membuka pusat notifikasi.
-                    v1.3.37 (permintaan pemilik): halaman admin TANPA lonceng
-                    — ADMIN/OWNER tidak lagi melihat tombol ini. */}
-                {!isAdminRole(user.role) && (
-                  <button
-                    onClick={() => setNotifOpen(true)}
-                    aria-label={
-                      bellCount > 0
-                        ? `${bellCount} notifikasi belum dibaca — buka pusat notifikasi`
-                        : "Buka pusat notifikasi"
-                    }
-                    className="press-effect relative flex h-9 w-9 items-center justify-center rounded-full bg-orange-50 ring-1 ring-orange-200 transition hover:bg-orange-100 hover:ring-orange-300"
-                  >
-                    <Bell className="h-4.5 w-4.5 text-orange-700" />
-                    {bellCount > 0 && (
-                      <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-white shadow-md">
-                        {bellCount > 99 ? "99+" : bellCount}
-                      </span>
-                    )}
-                  </button>
-                )}
+                {/* v1.3.38: lonceng notifikasi DIHAPUS (permintaan pemilik) —
+                    kabar tetap lewat heads-up/banner/toast & push Android */}
                 {user.role === "CUSTOMER" ? (
                   /* Klik teks "Member" di kanan atas → buka kartu member lengkap
                      (saldo poin sengaja TIDAK ditampilkan di header — lihat di kartu) */
@@ -400,8 +356,9 @@ export function AppShell() {
       <CenterNotice />
 
       {/* ===== SUITE NOTIFIKASI IN-APP (v1.3.13): HEADS-UP atas + BANNER strip
-             + FLOATING gelembung + TOAST — gaya ke-5 (POPUP tengah) tetap di
-             CenterNotice; event dari NotifWatchers & PushBridge ===== */}
+             + TOAST — gaya ke-5 (POPUP tengah) tetap di CenterNotice;
+             v1.3.38: gelembung melayang (FLOATING) dihapus atas permintaan
+             pemilik; event dari NotifWatchers & PushBridge ===== */}
       {user && <NotifSuite user={user} />}
 
       {/* ===== WATCHER NOTIFIKASI MASUK (popup + suara khas AGSI) ===== */}
@@ -420,16 +377,7 @@ export function AppShell() {
 
       {/* ===== CHAT CS GLOBAL (popup notifikasi / tombol 💬 kartu pesanan admin) ===== */}
       {user && (
-        <>
-          <ChatSheet open={chatOpen} onClose={closeChat} user={user} targetUserId={chatTargetUserId} />
-          <NotifCenterSheet
-            open={notifOpen}
-            onClose={() => {
-              setNotifOpen(false);
-              refreshCenterUnread();
-            }}
-          />
-        </>
+        <ChatSheet open={chatOpen} onClose={closeChat} user={user} targetUserId={chatTargetUserId} />
       )}
 
       {/* ===== GATE PERSETUJUAN SYARAT & KEBIJAKAN =====
