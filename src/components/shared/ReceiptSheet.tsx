@@ -322,14 +322,10 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
             });
             return;
           }
-          if (printed.message !== "dibatalkan") {
-            // Printer sistem gagal → lanjutkan dengan simpan PDF anti-gagal
-            showNotice({
-              type: "info",
-              title: "Printer Sistem Gagal",
-              message: "Melanjutkan dengan menyimpan PDF struk ke Unduhan sebagai gantinya…",
-            });
-          }
+          // v1.3.38 — kartu "Printer Sistem Gagal" DIHAPUS (laporan pemilik:
+          // kartu itu selalu muncul di perangkat yang layanan cetaknya
+          // dimatikan ROM, mis. OPPO/realme). Cetak gagal → jatuh SENYAP ke
+          // simpan PDF: notifikasi unduhan tetap tampil di status bar.
         }
         await runStrukSaveFlow(name);
       })();
