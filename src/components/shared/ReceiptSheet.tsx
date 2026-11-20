@@ -16,7 +16,6 @@ import {
   nativePrintPdfSupported,
 } from "@/lib/native-file";
 import { buildStrukPdf } from "@/lib/struk-pdf";
-import { FileNameConfirm } from "@/components/shared/FileNameConfirm";
 import { useNoticeStore } from "@/lib/store";
 
 /**
@@ -272,12 +271,9 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
   /** Nama file terakhir yang tersimpan — ditampilkan sbg umpan balik singkat */
   const [savedAs, setSavedAs] = useState<string | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // v1.3.28 — popup konfirmasi nama file sebelum Simpan/Cetak (permintaan
-  // pemilik: "saat klik simpan atau cetak tampilkan popup nama file yg akan
-  // di simpan"): kedua tombol kini membuka popup nama file dahulu.
-  const [filePopup, setFilePopup] = useState<null | { mode: "save" | "print" }>(null);
-  const [popupName, setPopupName] = useState("");
-  const [popupBusy, setPopupBusy] = useState(false);
+  // v1.3.38 — popup konfirmasi nama file (v1.3.28) DIHAPUS (permintaan
+  // pemilik): klik Simpan/Cetak kini LANGSUNG terunduh seperti di Chrome —
+  // file ditulis ke Unduhan/AGSI + notifikasi unduhan di status bar.
 
   // Bersihkan timer umpan balik saat komponen dilepas
   useEffect(() => {
@@ -296,24 +292,47 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  /** Cetak struk. v1.3.28 — di APLIKASI ANDROID: popup nama file dulu
-      (permintaan pemilik), lalu dialog cetak SISTEM atas FILE PDF sungguhan
-      (PrintManager + PdfPrintAdapter — thermal 58/80 mm, Bluetooth, atau
-      "Simpan sebagai PDF"); bila printer sistem gagal → tangga simpan
-      anti-gagal v1.3.27 (simpan → coba lagi → lembar bagikan) dan penyimpanan
-      kini diberi notifikasi unduhan di status bar (sisi native).
+  /** Cetak struk. v1.3.38 — di APLIKASI ANDROID: LANGSUNG dialog cetak
+      SISTEM atas FILE PDF sungguhan (PrintManager + PdfPrintAdapter —
+      thermal 58/80 mm, Bluetooth, atau "Simpan sebagai PDF") tanpa popup
+      nama file; bila printer sistem gagal → tangga simpan anti-gagal
+      v1.3.27 (simpan → coba lagi → lembar bagikan) dan penyimpanan diberi
+      notifikasi unduhan di status bar (sisi native).
       Di browser: window.print() — portal struk menempel di <body>; aturan
       @media print menyembunyikan seluruh aplikasi dan menampilkan struk
       saja; judul dokumen diganti sementara menjadi kode struk agar opsi
       "Simpan sebagai PDF" otomatis bernama kode struk. */
   const printReceipt = () => {
-    if (!order) return;
-    // v1.3.28 — CETAK via PRINTER SISTEM (permintaan pemilik): popup nama
-    // file dulu, lalu dialog cetak sistem Android atas FILE PDF sungguhan
-    // (thermal 58/80 mm, Bluetooth, atau "Simpan sebagai PDF"). APK lama
-    // tanpa printPdf otomatis jatuh ke tangga simpan anti-gagal v1.3.27.
+    if (!order || !d) return;
+    const name = strukFileName(d.code, "pdf");
+    // v1.3.38 — CETAK via PRINTER SISTEM: LANGSUNG (tanpa popup), dialog
+    // cetak sistem Android atas FILE PDF sungguhan (thermal 58/80 mm,
+    // Bluetooth, atau "Simpan sebagai PDF"). APK lama tanpa printPdf
+    // otomatis jatuh ke tangga simpan anti-gagal v1.3.27.
     if (nativeSaveSupported()) {
-      openFilePopup("print");
+      void (async () => {
+        if (nativePrintPdfSupported()) {
+          const printed = await nativePrintPdf(buildStrukPdf(d), name);
+          if (printed.ok) {
+            showNotice({
+              type: "success",
+              autoCloseMs: 6500,
+              title: "Dialog Cetak Terbuka ✓",
+              message: `Struk ${name} dikirim ke printer sistem Android — pilih printer thermal 58/80 mm atau "Simpan sebagai PDF".`,
+            });
+            return;
+          }
+          if (printed.message !== "dibatalkan") {
+            // Printer sistem gagal → lanjutkan dengan simpan PDF anti-gagal
+            showNotice({
+              type: "info",
+              title: "Printer Sistem Gagal",
+              message: "Melanjutkan dengan menyimpan PDF struk ke Unduhan sebagai gantinya…",
+            });
+          }
+        }
+        await runStrukSaveFlow(name);
+      })();
       return;
     }
     // Di aplikasi Android TANPA jembatan simpan (APK < 1.2.5): jangan diam.
@@ -347,11 +366,11 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
    *  dibagikan (WhatsApp/email) atau dicetak ulang kapan saja. */
   const downloadReceipt = () => {
     if (!order || !d) return;
-    // v1.3.28 — SIMPAN PDF via popup nama file (permintaan pemilik): nama
-    // file ditampilkan & dapat disunting dulu, lalu ditulis ke folder
-    // Unduhan lewat jembatan native + notifikasi unduhan di status bar.
+    // v1.3.38 — SIMPAN PDF LANGSUNG (permintaan pemilik): klik → langsung
+    // ditulis ke folder Unduhan/AGSI lewat jembatan native + notifikasi
+    // unduhan di status bar — tanpa popup nama file, seperti unduhan Chrome.
     if (nativeSaveSupported()) {
-      openFilePopup("save");
+      void runStrukSaveFlow(strukFileName(d.code, "pdf"));
       return;
     }
     // Di aplikasi Android TANPA jembatan simpan (APK < 1.2.5): unduhan blob:
@@ -385,21 +404,6 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
     savedTimer.current = setTimeout(() => setSavedAs(null), 4000);
   };
 
-  /** v1.3.28 — buka popup nama file (Simpan/Cetak) dengan nama bawaan kode struk. */
-  const openFilePopup = (mode: "save" | "print") => {
-    if (!d) {
-      // v1.3.24 — jangan diam bila data struk tak terkumpul
-      showNotice({
-        type: "error",
-        title: "Simpan Struk Gagal",
-        message: "Data struk tidak dapat disiapkan — tutup sheet lalu buka lagi.",
-      });
-      return;
-    }
-    setPopupName(strukFileName(d.code, "pdf"));
-    setFilePopup({ mode });
-  };
-
   /** Tangga anti-gagal v1.3.27 (simpan → coba lagi → lembar bagikan) —
    *  dipakai tombol Simpan maupun fallback Cetak saat printer sistem gagal. */
   const runStrukSaveFlow = async (name: string) => {
@@ -425,45 +429,6 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
     if (savedTimer.current) clearTimeout(savedTimer.current);
     setSavedAs(name);
     savedTimer.current = setTimeout(() => setSavedAs(null), 4000);
-  };
-
-  /** Konfirmasi popup nama file: Cetak → printer sistem (FILE PDF sungguhan
-   *  via PdfPrintAdapter); Simpan → Unduhan/AGSI (+ notifikasi unduhan di
-   *  status bar, disisi native). Cetak gagal → jatuh ke tangga simpan. */
-  const confirmFilePopup = () => {
-    if (!d || !filePopup) return;
-    const base = popupName.trim() || strukFileName(d.code, "pdf");
-    const name = base.toLowerCase().endsWith(".pdf") ? base : `${base}.pdf`;
-    setPopupBusy(true);
-    void (async () => {
-      try {
-        if (filePopup.mode === "print" && nativePrintPdfSupported()) {
-          const printed = await nativePrintPdf(buildStrukPdf(d), name);
-          if (printed.ok) {
-            setFilePopup(null);
-            showNotice({
-              type: "success",
-              autoCloseMs: 6500,
-              title: "Dialog Cetak Terbuka ✓",
-              message: `Struk ${name} dikirim ke printer sistem Android — pilih printer thermal 58/80 mm atau "Simpan sebagai PDF".`,
-            });
-            return;
-          }
-          if (printed.message !== "dibatalkan") {
-            // Printer sistem gagal → lanjutkan dengan simpan PDF anti-gagal
-            showNotice({
-              type: "info",
-              title: "Printer Sistem Gagal",
-              message: "Melanjutkan dengan menyimpan PDF struk ke Unduhan sebagai gantinya…",
-            });
-          }
-        }
-        await runStrukSaveFlow(name);
-        setFilePopup(null);
-      } finally {
-        setPopupBusy(false);
-      }
-    })();
   };
 
   const d = order ? receiptData(order) : null;
@@ -639,29 +604,9 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
       )}
       </AnimatePresence>
 
-      {/* v1.3.28 — POPUP KONFIRMASI NAMA FILE (permintaan pemilik): muncul
-          saat tombol Simpan / Cetak diklik, menampilkan nama file yang akan
-          disimpan (bisa disunting) sebelum aksi lanjut. */}
-      <FileNameConfirm
-        open={!!filePopup}
-        title={filePopup?.mode === "print" ? "Cetak Struk" : "Simpan Struk"}
-        emoji={filePopup?.mode === "print" ? "🖨️" : "🧾"}
-        fileName={popupName}
-        onFileNameChange={setPopupName}
-        hint={
-          filePopup?.mode === "print"
-            ? 'Dialog printer sistem Android terbuka — pilih printer thermal 58/80 mm atau Bluetooth, atau pilih "Simpan sebagai PDF".'
-            : "File PDF struk disimpan ke folder Unduhan/AGSI — muncul notifikasi unduhan di status bar; ketuk untuk membuka file."
-        }
-        primaryLabel={filePopup?.mode === "print" ? "Cetak via Printer Sistem" : "Simpan ke Unduhan"}
-        secondaryLabel={filePopup?.mode === "print" ? "Simpan file saja" : undefined}
-        onSecondary={filePopup?.mode === "print" ? () => setFilePopup({ mode: "save" }) : undefined}
-        busy={popupBusy}
-        onCancel={() => {
-          if (!popupBusy) setFilePopup(null);
-        }}
-        onConfirm={confirmFilePopup}
-      />
+      {/* v1.3.38 — popup konfirmasi nama file DIHAPUS: klik Simpan/Cetak
+          langsung terunduh/cetak seperti unduhan di Chrome (file masuk
+          Unduhan/AGSI + notifikasi unduhan di status bar, sisi native). */}
 
       {/* ===== PORTAL STRUK: menempel langsung di <body> — satu-satunya
           bagian yang tampil di kertas saat window.print() dipanggil.
