@@ -93,8 +93,9 @@ export async function POST(req: NextRequest) {
           // tak ada perangkat terdaftar / push gagal → gabungkan kedua penyebab
           return NextResponse.json(
             {
+              // send.error sudah berprefiks "Email gagal terkirim: …" — jangan digandakan
               error:
-                `Email gagal terkirim: ${send.error ?? "layanan email bermasalah."} ` +
+                `${send.error ?? "Email gagal terkirim."} ` +
                 `Fallback notifikasi aplikasi juga tak bisa (belum ada perangkat terdaftar untuk akun ini). ` +
                 `Masuk sekali lewat aplikasi/web dan izinkan notifikasi agar perangkat terdaftar, atau verifikasi domain di resend.com/domains.`,
             },
