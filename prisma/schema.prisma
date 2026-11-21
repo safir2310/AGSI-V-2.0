@@ -9,9 +9,11 @@ generator client {
 }
 
 datasource db {
-  // Prisma Postgres (Vercel-ready): postgres://…@db.prisma.io:5432/postgres?sslmode=require
-  // variabel DATABASE_URL dipakai CLI (db push) sekaligus runtime aplikasi.
-  provider = "postgresql"
+  // Turso (libSQL/SQLite) — libsql://database-pink-kettle….turso.io
+  // Runtime memakai @prisma/adapter-libsql (lihat src/lib/db.ts); variabel
+  // DATABASE_URL dibaca runtime + CLI. URL libsql:// hanya dipakai adapter —
+  // perintah CLI (generate/validate) tak menyentuh DB.
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
