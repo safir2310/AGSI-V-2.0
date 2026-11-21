@@ -9,11 +9,11 @@ generator client {
 }
 
 datasource db {
-  // Turso (libSQL/SQLite) — libsql://database-pink-kettle….turso.io
-  // Runtime memakai @prisma/adapter-libsql (lihat src/lib/db.ts); variabel
-  // DATABASE_URL dibaca runtime + CLI. URL libsql:// hanya dipakai adapter —
-  // perintah CLI (generate/validate) tak menyentuh DB.
-  provider = "sqlite"
+  // Supabase (Postgres) — aws-1-ap-southeast-1.pooler.supabase.com (pooler
+  // pgbouncer utk serverless). Runtime: DATABASE_URL lewat PrismaClient
+  // standar (tanpa adapter). Era sebelumnya: Turso/libSQL (prisma/sql/
+  // sqlite-schema.sql), era awal: Prisma Postgres.
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

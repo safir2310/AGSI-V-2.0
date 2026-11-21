@@ -3,7 +3,7 @@
  * (provider sqlite). IDEMPOTEN & ADITIF — tidak pernah menghapus/mengubah
  * kolom yang sudah ada, tidak menulis data.
  *
- * Sumber kebenaran DDL: prisma/sql/sqlite-schema.sql (hasil
+ * Sumber kebenaran DDL: prisma/sqlite-schema.sql (hasil
  * `prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script`).
  *
  * Pemakaian: node scripts/turso-align.mjs
@@ -17,7 +17,7 @@ const TURSO_URL =
     : "libsql://database-pink-kettle-vercel-icfg-jgyaeywkuedf7avmnam1bgxs.aws-us-east-1.turso.io";
 const TOKEN = process.env.TURSO_AUTH_TOKEN || readFileSync("/home/z/my-project/scripts/.turso-token", "utf8").trim();
 
-const ddl = readFileSync("/home/z/my-project/prisma/sql/sqlite-schema.sql", "utf8");
+const ddl = readFileSync("/home/z/my-project/prisma/sqlite-schema.sql", "utf8");
 
 // ---- parse DDL → spesifikasi per tabel ----
 const tables = {}; // name -> { create, cols: [{name, def}], notnullNodefault: [] }

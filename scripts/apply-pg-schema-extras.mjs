@@ -22,9 +22,9 @@ import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import path from "node:path";
 
-const url = process.env.DATABASE_URL ?? "";
+const url = process.env.DIRECT_DATABASE_URL ?? "";
 if (!/^postgres(ql)?:\/\//.test(url)) {
-  console.log("[schema-extras] DATABASE_URL bukan Postgres — lewati (dev lokal).");
+  console.log("[schema-extras] DIRECT_DATABASE_URL tidak terpasang (bukan Postgres?) — lewati.");
   process.exit(0);
 }
 
@@ -50,7 +50,9 @@ for (const file of files) {
   console.log(`[schema-extras] Terapkan ${file} …`);
   const res = spawnSync(prismaBin, ["db", "execute", "--file", full, "--schema", "prisma/schema.prisma"], {
     stdio: ["ignore", "inherit", "pipe"],
-    env: process.env,
+    // Patch DDL berjalan lewat koneksi DIRECT (bukan pooler pgbouncer) —
+    // pooler transaksi hanya utk runtime serverless, bukan DDL/CLI.
+    env: { ...process.env, DATABASE_URL: url },
   });
   const errText = res.stderr ? res.stderr.toString() : "";
   if (errText) process.stderr.write(errText);
