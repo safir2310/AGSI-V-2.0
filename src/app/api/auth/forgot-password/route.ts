@@ -71,7 +71,8 @@ export async function POST(req: NextRequest) {
 
     const send = await sendEmail({
       to: normalized,
-      subject: "Kode Reset Password AGSI",
+      // sebut akun tujuan — penting saat OTP diteruskan ke inbox pemilik (fallback)
+      subject: `Kode Reset Password AGSI (untuk ${normalized})`,
       html: otpEmailHtml(otp, RESET_MINUTES),
     });
 
@@ -90,14 +91,44 @@ export async function POST(req: NextRequest) {
               note: `Email gagal terkirim (layanan email masih mode testing) — kode OTP dikirim lewat notifikasi aplikasi AGSI di perangkatmu (${delivered} perangkat).`,
             });
           }
-          // tak ada perangkat terdaftar / push gagal → gabungkan kedua penyebab
+          // Fallback kedua (pola recovery address): kirim OTP ke email pemilik
+          // akun Resend — satu-satunya penerima yang diizinkan saat mode
+          // testing. Hanya utk akun staff; OTP pelanggan tidak diteruskan.
+          const ownerInbox = process.env.RESEND_FALLBACK_TO?.trim();
+          if (ownerInbox) {
+            const send2 = await sendEmail({
+              to: ownerInbox,
+              subject: `Kode Reset Password AGSI (untuk ${normalized})`,
+              html: otpEmailHtml(otp, RESET_MINUTES),
+            });
+            if (send2.ok) {
+              return NextResponse.json({
+                ok: true,
+                minutes: RESET_MINUTES,
+                emailed: false,
+                viaOwnerEmail: true,
+                fallbackTo: ownerInbox,
+                note: `Layanan email masih mode testing — kode OTP dikirim ke email pemilik akun Resend (${ownerInbox}). Cek inbox & folder spam di sana.`,
+              });
+            }
+            return NextResponse.json(
+              {
+                // send.error & send2.error sudah berprefiks "Email gagal terkirim: …"
+                error:
+                  `${send.error ?? "Email gagal terkirim."} ` +
+                  `Fallback notifikasi aplikasi tak bisa (belum ada perangkat terdaftar) dan pengiriman ke inbox pemilik (${ownerInbox}) juga gagal. ` +
+                  `Verifikasi domain di resend.com/domains untuk solusi permanen.`,
+              },
+              { status: 502 }
+            );
+          }
+          // RESEND_FALLBACK_TO belum diisi → pandu konfigurasi
           return NextResponse.json(
             {
-              // send.error sudah berprefiks "Email gagal terkirim: …" — jangan digandakan
               error:
                 `${send.error ?? "Email gagal terkirim."} ` +
-                `Fallback notifikasi aplikasi juga tak bisa (belum ada perangkat terdaftar untuk akun ini). ` +
-                `Masuk sekali lewat aplikasi/web dan izinkan notifikasi agar perangkat terdaftar, atau verifikasi domain di resend.com/domains.`,
+                `Fallback notifikasi aplikasi tak bisa (belum ada perangkat terdaftar). ` +
+                `Isi env RESEND_FALLBACK_TO (email pemilik akun Resend) atau verifikasi domain di resend.com/domains.`,
             },
             { status: 502 }
           );
