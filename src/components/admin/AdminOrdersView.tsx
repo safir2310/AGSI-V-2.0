@@ -10,6 +10,7 @@ import {
   ChefHat,
   ClipboardList,
   Camera,
+  Clock,
   Loader2,
   MessageCircle,
   Phone,
@@ -29,7 +30,7 @@ import { PhotoProofModal } from "@/components/shared/PhotoProofModal";
 import { useOrdersStore } from "@/lib/hooks";
 import { useNoticeStore, useUiStore } from "@/lib/store";
 import { apiFetch } from "@/lib/api";
-import { formatDateTime, formatIDR, ORDER_STATUS_FLOW, ORDER_STATUS_LABEL, type CourierInfo, type OrderData } from "@/lib/types";
+import { formatDateTime, formatIDR, formatPickup, ORDER_STATUS_FLOW, ORDER_STATUS_LABEL, type CourierInfo, type OrderData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const STATUS_FILTERS = [
@@ -377,6 +378,13 @@ export function AdminOrdersView() {
                       <span className="flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-1">
                         {typeIcon(o.type)} {o.type === "DINE_IN" ? "Di tempat" : o.type === "TAKEAWAY" ? "Bungkus" : "Diantar"}
                       </span>
+                      {/* JADWAL JAM PENGAMBILAN (Bungkus — permintaan pemilik):
+                          dapur tahu kapan pelanggan datang mengambil */}
+                      {formatPickup(o.pickupAt) && (
+                        <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 ring-1 ring-amber-200">
+                          <Clock className="h-3 w-3" /> Ambil {formatPickup(o.pickupAt)}
+                        </span>
+                      )}
                       <span className="rounded-full bg-neutral-100 px-2 py-1">
                         {o.paymentMethod === "CASH" ? "💵 Tunai" : o.paymentMethod === "EWALLET" ? "👛 E-Wallet" : "📱 QRIS"}
                       </span>

@@ -97,6 +97,30 @@ export async function POST(req: NextRequest) {
     const now = new Date();
     const type = ["DINE_IN", "TAKEAWAY", "DELIVERY"].includes(body.type) ? body.type : "DINE_IN";
 
+    // ===== JADWAL JAM PENGAMBILAN (type TAKEAWAY — permintaan pemilik) =====
+    // Pelanggan "Bungkus / Ambil" dapat menjadwalkan jam datang mengambil
+    // pesanan (slot 30 menit, hari ini atau besok). Server memvalidasi ulang:
+    // hanya untuk TAKEAWAY, ISO valid, tidak di masa lalu (toleransi 10
+    // menit), dan maksimal besok — agar tidak bisa menyisipkan tanggal jauh
+    // lewat request langsung ke API.
+    let pickupAt: Date | null = null;
+    if (type === "TAKEAWAY" && body.pickupAt) {
+      const t = new Date(String(body.pickupAt));
+      if (Number.isNaN(t.getTime())) {
+        return NextResponse.json({ error: "Jadwal pengambilan tidak valid." }, { status: 400 });
+      }
+      if (t.getTime() < now.getTime() - 10 * 60 * 1000) {
+        return NextResponse.json(
+          { error: "Jadwal pengambilan sudah lewat — pilih jam yang lain." },
+          { status: 400 }
+        );
+      }
+      if (t.getTime() > now.getTime() + 2 * 24 * 60 * 60 * 1000) {
+        return NextResponse.json({ error: "Jadwal pengambilan maksimal untuk besok." }, { status: 400 });
+      }
+      pickupAt = t;
+    }
+
     // ===== SAKLAR LAYANAN TOKO (Profil Admin → Pengaturan Toko) =====
     // Layanan antar, QRIS, dan E-Wallet bisa dinonaktifkan admin — selain
     // disembunyikan di UI, checkout juga DITOLAK di sini agar tidak bisa
@@ -243,6 +267,7 @@ export async function POST(req: NextRequest) {
           deliveryFee,
           deliveryLat,
           deliveryLng,
+          pickupAt,
           phone: body.phone ? String(body.phone).slice(0, 20) : null,
           note: body.note ? String(body.note).slice(0, 300) : null,
           status: "PENDING",

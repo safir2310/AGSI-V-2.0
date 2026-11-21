@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Download, Printer, X } from "lucide-react";
-import type { OrderData } from "@/lib/types";
+import { formatPickup, type OrderData } from "@/lib/types";
 import { STORE_ADDRESS, STORE_PHONE } from "@/lib/store-info";
 import { isAgsiApp, pesanPerluPembaruan } from "@/lib/app-release";
 import {
@@ -107,6 +107,8 @@ function receiptData(o: OrderData) {
     phone: o.phone ?? o.userPhone ?? null,
     layanan,
     dest,
+    // JADWAL JAM PENGAMBILAN (Bungkus — permintaan pemilik): null = ambil sekarang
+    pickup: formatPickup(o.pickupAt),
     note: o.note,
     items: o.items.map((it) => ({
       name: it.name,
@@ -157,6 +159,7 @@ function buildStrukBody(d: ReceiptData): string {
     ${d.phone ? infoRow("No. HP", esc(d.phone)) : ""}
     ${infoRow("Layanan", esc(d.layanan))}
     ${d.dest ? infoRow(d.layanan === "Antar Pesanan" ? "Alamat" : "Detail", esc(d.dest)) : ""}
+    ${d.pickup ? infoRow("Jadwal Ambil", esc(d.pickup)) : ""}
     ${d.dibayar ? infoRow("Dibayar", esc(d.dibayar)) : ""}
   </table>
   ${d.note ? `<div class="note">Catatan: ${esc(d.note)}</div>` : ""}

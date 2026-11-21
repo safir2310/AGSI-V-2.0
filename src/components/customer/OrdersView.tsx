@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Bike, Camera, ClipboardList, Coins, QrCode, RefreshCw, ShoppingBag, Ticket, Timer, Utensils } from "lucide-react";
+import { Bike, Camera, ClipboardList, Clock, Coins, QrCode, RefreshCw, ShoppingBag, Ticket, Timer, Utensils } from "lucide-react";
 import { PaymentBadge, SourceBadge, StatusBadge } from "@/components/shared/StatusBadge";
 import { QrisPaySheet, type QrisPayOrder } from "@/components/shared/QrisPaySheet";
 import { PhotoProofModal } from "@/components/shared/PhotoProofModal";
 import { useOrdersStore } from "@/lib/hooks";
-import { formatDateTime, formatIDR, type OrderData } from "@/lib/types";
+import { formatDateTime, formatIDR, formatPickup, type OrderData } from "@/lib/types";
 import { formatDistance } from "@/lib/delivery";
 import { earnPointsForTotal } from "@/lib/points-rules";
 import { cn } from "@/lib/utils";
@@ -156,6 +156,13 @@ export function OrdersView() {
                   {o.tableNo && (
                     <span className="rounded-full bg-neutral-100 px-2 py-1 text-[10px] font-bold text-neutral-500">
                       Meja {o.tableNo}
+                    </span>
+                  )}
+                  {/* JADWAL JAM PENGAMBILAN (Bungkus — permintaan pemilik):
+                      null = ambil sekarang → badge tidak tampil */}
+                  {formatPickup(o.pickupAt) && (
+                    <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 ring-1 ring-amber-100">
+                      <Clock className="h-3 w-3" /> Ambil {formatPickup(o.pickupAt)}
                     </span>
                   )}
                   <SourceBadge source={o.source} />

@@ -217,6 +217,12 @@ model Order {
   // kurir membuka link Google Maps langsung ke titik ini.
   deliveryLat        Float? // lintang pin GPS (-90..90)
   deliveryLng        Float? // bujur pin GPS (-90..180)
+  // ===== JADWAL JAM PENGAMBILAN (type TAKEAWAY — permintaan pemilik) =====
+  // Pelanggan "Bungkus / Ambil" bisa menjadwalkan kapan datang mengambil
+  // pesanan (slot 30 menit, hari ini atau besok). Dapur menyiapkan pesanan
+  // menjelang jam tersebut. NULL = ambil sekarang (tanpa jadwal) — pesanan
+  // langsung masuk dapur seperti biasa.
+  pickupAt           DateTime? // jadwal jam pengambilan (null = ambil sekarang)
   // ===== Uang COD di tangan kurir (setoran) =====
   // Pesanan antar tunai yang diselesaikan kurir → paidVia = "COD" (uang
   // tunai berpindah ke tangan kurir, WAJIB disetor ke admin). Saat kurir
@@ -246,12 +252,12 @@ model Order {
 // Order supaya daftar 100 pesanan TIDAK ikut memuat bytes foto (payload list
 // tetap ringan; foto diambil on-demand saat tombol buka ditekan).
 model DeliveryPhoto {
-  id         String   @id @default(cuid())
-  orderId    String   @unique
-  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  data       String // base64 (data-URL utuh juga diterima — decode tahan banting)
-  mime       String? // image/jpeg | image/png | image/webp
-  uploadedAt DateTime @default(now())
+  id               String   @id @default(cuid())
+  orderId          String   @unique
+  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  data             String // base64 (data-URL utuh juga diterima — decode tahan banting)
+  mime             String? // image/jpeg | image/png | image/webp
+  uploadedAt       DateTime @default(now())
   uploadedByUserId String? // id akun kurir pengunggah
   uploadedByName   String? // snapshot nama kurir (tampil di modal admin/pelanggan)
 
@@ -268,7 +274,7 @@ model CourierSetoran {
   courierUserId String
   courier       User      @relation(fields: [courierUserId], references: [id], onDelete: Cascade)
   amount        Int // uang MENU yang disetor ke admin (total pesanan dikurangi ongkir)
-  ongkir        Int @default(0) // total ongkir pesanan terikat — PENDAPATAN KURIR, tidak ikut disetor
+  ongkir        Int       @default(0) // total ongkir pesanan terikat — PENDAPATAN KURIR, tidak ikut disetor
   orderCount    Int // banyaknya pesanan COD yang diikat setoran ini
   note          String? // catatan kurir (mis. "disetor sore, uang kembalian disiapkan")
   createdAt     DateTime  @default(now()) // waktu kurir menekan "Setor ke Admin"
@@ -449,15 +455,15 @@ model StoreSetting {
   // desktop. Diatur admin dari Profil → "Banner & Promo" (bagian AGSI Smart
   // Video Promo Banner). Bytes video disimpan base64 per slot (portabel di
   // semua lingkungan) & disajikan publik via /api/settings/video-promo/video.
-  videoPromoEnabled          Boolean   @default(false)
-  videoPromoSlides           Json? // array konfigurasi 3 slide (tanpa bytes video)
-  videoPromoUpdatedAt        DateTime? // versi konten video promo — cache-buster URL
-  videoPromoSlot1Data        String? // video slide 1 (base64)
-  videoPromoSlot1Mime        String?
-  videoPromoSlot2Data        String? // video slide 2 (base64)
-  videoPromoSlot2Mime        String?
-  videoPromoSlot3Data        String? // video slide 3 (base64)
-  videoPromoSlot3Mime        String?
+  videoPromoEnabled         Boolean   @default(false)
+  videoPromoSlides          Json? // array konfigurasi 3 slide (tanpa bytes video)
+  videoPromoUpdatedAt       DateTime? // versi konten video promo — cache-buster URL
+  videoPromoSlot1Data       String? // video slide 1 (base64)
+  videoPromoSlot1Mime       String?
+  videoPromoSlot2Data       String? // video slide 2 (base64)
+  videoPromoSlot2Mime       String?
+  videoPromoSlot3Data       String? // video slide 3 (base64)
+  videoPromoSlot3Mime       String?
   updatedAt                 DateTime  @updatedAt
 }
 
