@@ -322,6 +322,20 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
             });
             return;
           }
+          // v1.3.37 — layanan cetak dinonaktifkan ROM (OPPO/realme/MIUI):
+          // aplikasi SUDAH membuka halaman "Aktifkan" Print Spooler —
+          // bimbing pengguna, JANGAN senyap dan jangan simpan (pengguna
+          // akan kembali & menekan Cetak lagi setelah layanan aktif).
+          if (printed.message.startsWith("LAYANAN_CETAK_NONAKTIF")) {
+            showNotice({
+              type: "info",
+              autoCloseMs: 12000,
+              title: "Aktifkan Layanan Cetak HP",
+              message:
+                "Dialog cetak tidak muncul karena layanan 'Print Spooler' Android dimatikan di HP ini. Halaman pengaturannya sudah dibuka: tekan 'Aktifkan', kembali ke AGSI, lalu tekan Cetak Struk lagi.",
+            });
+            return;
+          }
           // v1.3.38 — kartu "Printer Sistem Gagal" DIHAPUS (laporan pemilik:
           // kartu itu selalu muncul di perangkat yang layanan cetaknya
           // dimatikan ROM, mis. OPPO/realme). Cetak gagal → jatuh SENYAP ke

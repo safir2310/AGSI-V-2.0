@@ -51,6 +51,14 @@
         android:name="android.hardware.location.gps"
         android:required="false" />
 
+    <!-- v1.3.37 — visibilitas paket layanan cetak (Android 11+): deteksi
+         dini Print Spooler yang dinonaktifkan ROM (OPPO/realme/MIUI) agar
+         dialog cetak bisa diarahkan ke halaman "Aktifkan" aplikasinya -->
+    <queries>
+        <package android:name="com.android.printspooler" />
+        <package android:name="com.android.print.spooler" />
+    </queries>
+
     <application
         android:name=".AgsiApp"
         android:allowBackup="false"

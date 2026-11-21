@@ -1269,13 +1269,35 @@ class MainActivity : AppCompatActivity() {
             resolveBridge(cbId, false, "data PDF tidak valid")
             return
         }
-        mainHandler.postDelayed({
-            resolveBridge(
-                cbId,
+        // v1.3.37 — penjaga jawaban tunggal: pengawas 12 dtk lama bisa
+        // menjawab "gagal" SETELAH jawaban sukses terkirim (dua jawaban
+        // satu cbId — web sudah lanjut). Kini hanya jalur PERTAMA yang dijawab.
+        var answered = false
+        fun done(ok: Boolean, message: String) {
+            if (answered) return
+            answered = true
+            resolveBridge(cbId, ok, message)
+        }
+        // v1.3.37 — deteksi dini layanan cetak dimatikan ROM (OPPO/realme/
+        // MIUI mematikan "Print Spooler" bawaan): print() TETAP mengembalikan
+        // job tapi dialog TIDAK PERNAH tampil — laporan pemilik "dialog
+        // printer tidak muncul". Bila nonaktif: halaman "Aktifkan" spooler
+        // langsung dibuka + jawaban sebab spesifik (bukan "sukses" palsu).
+        if (printSpoolerDisabled()) {
+            openPrintSpoolerSettings()
+            done(
+                false,
+                "LAYANAN_CETAK_NONAKTIF|Layanan cetak Android (Print Spooler) nonaktif di HP ini — halaman pengaturannya sudah dibuka: tekan 'Aktifkan', kembali ke AGSI, lalu tekan Cetak lagi.",
+            )
+            return
+        }
+        val watchdog = Runnable {
+            done(
                 false,
                 "Dialog cetak tidak terbuka. Aktifkan 'Cetak' di Pengaturan ▸ Aplikasi ▸ Tampilkan aplikasi sistem, atau pasang plugin printer Anda.",
             )
-        }, 12_000)
+        }
+        mainHandler.postDelayed(watchdog, 12_000)
         try {
             val dir = File(cacheDir, "print").apply { mkdirs() }
             val pdf = File(dir, fileName.ifBlank { "agsi-dokumen.pdf" })
@@ -1286,15 +1308,69 @@ class MainActivity : AppCompatActivity() {
                 PdfPrintAdapter(pdf, fileName),
                 PrintAttributes.Builder().build(),
             )
+            mainHandler.removeCallbacks(watchdog)
             if (job == null) {
-                resolveBridge(cbId, false, "Layanan cetak sistem tidak merespons. Periksa layanan cetak di Pengaturan.")
+                openPrintSpoolerSettings()
+                done(
+                    false,
+                    "LAYANAN_CETAK_NONAKTIF|Layanan cetak sistem tidak merespons — halaman pengaturan cetak dibuka; aktifkan layanan cetak lalu tekan Cetak lagi.",
+                )
                 return
             }
-            resolveBridge(cbId, true, "dialog cetak dibuka")
+            done(true, "dialog cetak dibuka")
         } catch (e: Exception) {
             Log.w(TAG, "Gagal menyiapkan cetak PDF", e)
-            resolveBridge(cbId, false, "Gagal menyiapkan cetak: ${e.message ?: "tidak diketahui"}")
+            mainHandler.removeCallbacks(watchdog)
+            done(false, "Gagal menyiapkan cetak: ${e.message ?: "tidak diketahui"}")
         }
+    }
+
+    /** v1.3.37 — apakah layanan cetak sistem (Print Spooler) dinonaktifkan?
+     *  ROM OPPO/realme/MIUI sering mematikannya bawaan → dialog cetak tidak
+     *  pernah tampil walau print() sukses. Paket tidak ada di ROM (nama lain)
+     *  = tidak diketahui → false (biarkan print() mencoba). */
+    private fun printSpoolerDisabled(): Boolean {
+        for (pkg in listOf("com.android.printspooler", "com.android.print.spooler")) {
+            try {
+                val st = packageManager.getApplicationEnabledSetting(pkg)
+                if (st == PackageManager.COMPONENT_ENABLED_STATE_DISABLED ||
+                    st == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
+                ) return true
+            } catch (_: Exception) {
+                // paket tidak ditemukan di ROM ini — coba kandidat berikutnya
+            }
+        }
+        return false
+    }
+
+    /** v1.3.37 — buka halaman untuk MENGAKTIFKAN layanan cetak, urut
+     *  tercepat: 1) detail aplikasi Print Spooler (satu ketuk "Aktifkan"),
+     *  2) halaman Pengaturan ▸ Cetak sistem, 3) toast panduan. */
+    fun openPrintSpoolerSettings() {
+        val candidates = mutableListOf<Intent>()
+        for (pkg in listOf("com.android.printspooler", "com.android.print.spooler")) {
+            try {
+                packageManager.getPackageInfo(pkg, 0)
+                candidates += Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.parse("package:$pkg"))
+            } catch (_: Exception) {
+                // paket tidak ada di ROM ini
+            }
+        }
+        candidates += Intent("android.settings.ACTION_PRINT_SETTINGS")
+        for (intent in candidates) {
+            try {
+                startActivity(intent)
+                return
+            } catch (_: Exception) {
+                // layar tidak tersedia — coba kandidat berikutnya
+            }
+        }
+        Toast.makeText(
+            this,
+            "Aktifkan 'Print Spooler' di Pengaturan ▸ Aplikasi ▸ Tampilkan aplikasi sistem",
+            Toast.LENGTH_LONG,
+        ).show()
     }
 
     /**
