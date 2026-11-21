@@ -127,6 +127,25 @@ async function tokensOfUser(userId: string): Promise<string[]> {
   return rows.map((r) => r.token);
 }
 
+/**
+ * Fallback OTP reset password untuk akun ADMIN/OWNER: saat email gagal
+ * terkirim (Resend mode testing — pengirim resend.dev hanya boleh ke email
+ * pemilik akun Resend), kode dikirim lewat notifikasi push ke perangkat
+ * terdaftar milik user itu sendiri (faktor kepemilikan perangkat).
+ * Return: jumlah perangkat yang berhasil menerima push.
+ */
+export async function notifyOtpEmailFailed(userId: string, code: string, minutes: number): Promise<number> {
+  const tokens = await tokensOfUser(userId);
+  if (tokens.length === 0) return 0;
+  const report = await sendToTokens(tokens, {
+    kind: "otp",
+    title: "Kode Reset Password AGSI",
+    body: `${code} — berlaku ${minutes} menit. Jangan bagikan kode ini ke siapa pun.`,
+    tag: "agsi-otp",
+  });
+  return report.sent;
+}
+
 /* ================= HELPER BISNIS ================= */
 
 const STAFF_ROLES = ["ADMIN", "OWNER", "CASHIER"];

@@ -3,6 +3,7 @@ import { randomInt } from "crypto";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { isEmailConfigured, otpEmailHtml, devLogOtp, sendEmail } from "@/lib/email";
+import { notifyOtpEmailFailed } from "@/lib/push";
 
 /**
  * POST /api/auth/forgot-password
@@ -12,6 +13,10 @@ import { isEmailConfigured, otpEmailHtml, devLogOtp, sendEmail } from "@/lib/ema
  * - OTP berlaku 10 menit, sekali pakai, maks 5 kali salah memasukkan
  *   (dikecek di langkah 2 — reset-password).
  * - Cooldown 60 detik antar permintaan kode (anti spam / brute force).
+ * - FALLBACK STAFF: bila email gagal terkirim di production (mis. Resend
+ *   masih mode testing — pengirim resend.dev hanya boleh ke email pemilik
+ *   akun Resend), akun ADMIN/OWNER menerima kode lewat notifikasi push ke
+ *   perangkat terdaftar miliknya sendiri.
  * - Development: bila Resend menolak (mis. penerima bukan email terverifikasi)
  *   OTP tetap tersimpan & dicatat ke `.otp-dev.log` supaya alur bisa diuji
  *   lokal. Production selalu gagal-keras agar masalah konfigurasi terlihat.
@@ -72,6 +77,30 @@ export async function POST(req: NextRequest) {
 
     if (!send.ok) {
       if (process.env.NODE_ENV === "production") {
+        // Fallback STAFF: ADMIN/OWNER menerima OTP via push ke perangkatnya
+        // (email Resend masih mode testing — tidak bisa kirim ke email lain).
+        if (user.role === "ADMIN" || user.role === "OWNER") {
+          const delivered = await notifyOtpEmailFailed(user.id, otp, RESET_MINUTES);
+          if (delivered > 0) {
+            return NextResponse.json({
+              ok: true,
+              minutes: RESET_MINUTES,
+              emailed: false,
+              viaPush: true,
+              note: `Email gagal terkirim (layanan email masih mode testing) — kode OTP dikirim lewat notifikasi aplikasi AGSI di perangkatmu (${delivered} perangkat).`,
+            });
+          }
+          // tak ada perangkat terdaftar / push gagal → gabungkan kedua penyebab
+          return NextResponse.json(
+            {
+              error:
+                `Email gagal terkirim: ${send.error ?? "layanan email bermasalah."} ` +
+                `Fallback notifikasi aplikasi juga tak bisa (belum ada perangkat terdaftar untuk akun ini). ` +
+                `Masuk sekali lewat aplikasi/web dan izinkan notifikasi agar perangkat terdaftar, atau verifikasi domain di resend.com/domains.`,
+            },
+            { status: 502 }
+          );
+        }
         return NextResponse.json({ error: send.error ?? "Email gagal terkirim." }, { status: 502 });
       }
       // Development: lanjutkan alur meski email gagal — OTP dicatat ke .otp-dev.log

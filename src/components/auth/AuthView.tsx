@@ -216,11 +216,19 @@ export function AuthView({ onSuccess }: AuthViewProps) {
         minutes: data.minutes ?? 10,
       });
       setOtpCooldown(60);
-      showNotice({
-        type: "success",
-        title: "Kode OTP Terkirim 📧",
-        message: `Kami mengirim kode OTP 6 digit ke ${sentTo}. Berlaku ${data.minutes ?? 10} menit — cek juga folder spam ya.${data.devNote ? ` (${data.devNote})` : ""}`,
-      });
+      if (data.viaPush) {
+        showNotice({
+          type: "success",
+          title: "Kode OTP via Notifikasi 📱",
+          message: `Email gagal terkirim (layanan email masih mode testing) — kode OTP 6 digit dikirim lewat NOTIFIKASI aplikasi AGSI di perangkatmu. Berlaku ${data.minutes ?? 10} menit.${data.note ? ` (${data.note})` : ""}`,
+        });
+      } else {
+        showNotice({
+          type: "success",
+          title: "Kode OTP Terkirim 📧",
+          message: `Kami mengirim kode OTP 6 digit ke ${sentTo}. Berlaku ${data.minutes ?? 10} menit — cek juga folder spam ya.${data.devNote ? ` (${data.devNote})` : ""}`,
+        });
+      }
     } catch {
       showNotice({ type: "error", title: "Koneksi Bermasalah", message: "Tidak dapat menghubungi server." });
     } finally {
