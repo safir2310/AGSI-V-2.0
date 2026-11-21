@@ -588,10 +588,13 @@ export function ReceiptSheet({ open, onClose, order }: ReceiptSheetProps) {
                 </p>
               ) : (
                 <p className="mt-1.5 text-center text-[10px] leading-relaxed text-neutral-400">
-                  <span className="font-semibold">Simpan</span> &amp; <span className="font-semibold">Cetak</span> kini
-                  menampilkan popup nama file dulu (contoh: <span className="font-semibold">Struk-AGSI-261106-A1B2.pdf</span>)
-                  — file masuk Unduhan/AGSI dengan notifikasi unduhan di status bar; dialog cetak
-                  printer sistem menyediakan printer thermal 58/80 mm &amp; "Simpan sebagai PDF".
+                  <span className="font-semibold">Simpan</span> menulis PDF struk (contoh:{" "}
+                  <span className="font-semibold">Struk-AGSI-261106-A1B2.pdf</span>) ke folder{" "}
+                  <span className="font-semibold">Unduhan/AGSI</span> dengan{" "}
+                  <span className="font-semibold">notifikasi unduhan di status bar</span> — ketuk
+                  kartunya untuk membuka file. <span className="font-semibold">Cetak</span> membuka
+                  dialog printer sistem atas PDF: printer thermal 58/80 mm, Bluetooth, atau &quot;Simpan
+                  sebagai PDF&quot;.
                 </p>
               )}
             </div>
