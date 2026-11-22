@@ -90,3 +90,4 @@ public/agsi-app.apk
 .android-sdk/
 .android-sdk-tmp/
 .gradle-home/
+scripts/.rkey
