@@ -13,10 +13,17 @@ import { notifyOtpEmailFailed } from "@/lib/push";
  * - OTP berlaku 10 menit, sekali pakai, maks 5 kali salah memasukkan
  *   (dikecek di langkah 2 — reset-password).
  * - Cooldown 60 detik antar permintaan kode (anti spam / brute force).
- * - FALLBACK STAFF: bila email gagal terkirim di production (mis. Resend
- *   masih mode testing — pengirim resend.dev hanya boleh ke email pemilik
- *   akun Resend), akun ADMIN/OWNER menerima kode lewat notifikasi push ke
- *   perangkat terdaftar miliknya sendiri.
+ * - FALLBACK (production, email gagal terkirim — mis. Resend masih mode
+ *   testing: pengirim resend.dev hanya boleh ke email pemilik akun Resend):
+ *   1) SEMUA peran → kode dikirim lewat notifikasi push ke perangkat
+ *      terdaftar milik akun itu sendiri (faktor kepemilikan perangkat);
+ *   2) ADMIN/OWNER → bila tak ada perangkat, kode diteruskan ke inbox
+ *      pemilik akun Resend (RESEND_FALLBACK_TO); OTP pelanggan tak pernah
+ *      diteruskan ke sana (privasi).
+ * - Record PasswordReset dibuat SEBELUM pengiriman — semua jalur sukses
+ *   (email / push / inbox pemilik) memakai record yang sama, sehingga kode
+ *   yang diterima via notifikasi selalu bisa diverifikasi di langkah 2
+ *   (memperbaiki bug lama versi 1.3.30).
  * - Development: bila Resend menolak (mis. penerima bukan email terverifikasi)
  *   OTP tetap tersimpan & dicatat ke `.otp-dev.log` supaya alur bisa diuji
  *   lokal. Production selalu gagal-keras agar masalah konfigurasi terlihat.
@@ -68,6 +75,25 @@ export async function POST(req: NextRequest) {
 
     // OTP 6 digit acak (crypto-secure), disimpan sebagai hash — bukan teks polos
     const otp = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    devLogOtp(normalized, otp);
+
+    // Record dibuat SEBELUM pengiriman: semua jalur sukses (email / push /
+    // inbox pemilik) wajib punya record agar langkah 2 bisa memverifikasi —
+    // memperbaiki bug lama versi 1.3.30 (jalur fallback tidak menyimpan
+    // record sehingga kode via notifikasi selalu ditolak di langkah 2).
+    await db.passwordReset.deleteMany({
+      where: { email: normalized, expiresAt: { lt: new Date() } },
+    });
+    await db.passwordReset.deleteMany({
+      where: { email: normalized, usedAt: null },
+    });
+    await db.passwordReset.create({
+      data: {
+        email: normalized,
+        codeHash: hashPassword(otp),
+        expiresAt: new Date(Date.now() + RESET_MINUTES * 60 * 1000),
+      },
+    });
 
     const send = await sendEmail({
       to: normalized,
@@ -78,22 +104,24 @@ export async function POST(req: NextRequest) {
 
     if (!send.ok) {
       if (process.env.NODE_ENV === "production") {
-        // Fallback STAFF: ADMIN/OWNER menerima OTP via push ke perangkatnya
-        // (email Resend masih mode testing — tidak bisa kirim ke email lain).
+        // Fallback 1 — SEMUA peran: push ke perangkat terdaftar milik akun
+        // itu sendiri (email Resend masih mode testing — pengirim resend.dev
+        // hanya boleh ke email pemilik akun Resend).
+        const delivered = await notifyOtpEmailFailed(user.id, otp, RESET_MINUTES);
+        if (delivered > 0) {
+          return NextResponse.json({
+            ok: true,
+            minutes: RESET_MINUTES,
+            emailed: false,
+            viaPush: true,
+            note: `Email gagal terkirim (layanan email masih mode testing) — kode OTP dikirim lewat notifikasi aplikasi AGSI di perangkatmu (${delivered} perangkat).`,
+          });
+        }
+        // Fallback 2 — STAFF (ADMIN/OWNER): pola recovery address — kirim OTP
+        // ke inbox pemilik akun Resend, satu-satunya penerima yang diizinkan
+        // saat mode testing. OTP pelanggan TIDAK pernah diteruskan ke sana
+        // (privasi).
         if (user.role === "ADMIN" || user.role === "OWNER") {
-          const delivered = await notifyOtpEmailFailed(user.id, otp, RESET_MINUTES);
-          if (delivered > 0) {
-            return NextResponse.json({
-              ok: true,
-              minutes: RESET_MINUTES,
-              emailed: false,
-              viaPush: true,
-              note: `Email gagal terkirim (layanan email masih mode testing) — kode OTP dikirim lewat notifikasi aplikasi AGSI di perangkatmu (${delivered} perangkat).`,
-            });
-          }
-          // Fallback kedua (pola recovery address): kirim OTP ke email pemilik
-          // akun Resend — satu-satunya penerima yang diizinkan saat mode
-          // testing. Hanya utk akun staff; OTP pelanggan tidak diteruskan.
           const ownerInbox = process.env.RESEND_FALLBACK_TO?.trim();
           if (ownerInbox) {
             const send2 = await sendEmail({
@@ -133,27 +161,19 @@ export async function POST(req: NextRequest) {
             { status: 502 }
           );
         }
-        return NextResponse.json({ error: send.error ?? "Email gagal terkirim." }, { status: 502 });
+        // Pelanggan tanpa perangkat terdaftar: jelaskan penyebab + jalan keluar
+        return NextResponse.json(
+          {
+            error:
+              `${send.error ?? "Email gagal terkirim."} ` +
+              `Belum ada perangkat aplikasi AGSI yang terdaftar untuk akun ini, jadi kode tidak bisa dikirim lewat notifikasi. ` +
+              `Login sekali di aplikasi dengan akun ini lalu ulangi lupa password, atau tunggu admin memverifikasi domain di resend.com/domains agar OTP email terkirim normal.`,
+          },
+          { status: 502 }
+        );
       }
       // Development: lanjutkan alur meski email gagal — OTP dicatat ke .otp-dev.log
     }
-    devLogOtp(normalized, otp);
-
-    // Hapus sesi verifikasi lama: yang sudah kedaluwarsa (kebersihan tabel)
-    // dan yang belum terpakai milik email ini (satu OTP aktif per email).
-    await db.passwordReset.deleteMany({
-      where: { email: normalized, expiresAt: { lt: new Date() } },
-    });
-    await db.passwordReset.deleteMany({
-      where: { email: normalized, usedAt: null },
-    });
-    await db.passwordReset.create({
-      data: {
-        email: normalized,
-        codeHash: hashPassword(otp),
-        expiresAt: new Date(Date.now() + RESET_MINUTES * 60 * 1000),
-      },
-    });
 
     return NextResponse.json({
       ok: true,

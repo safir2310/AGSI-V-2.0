@@ -128,7 +128,7 @@ async function tokensOfUser(userId: string): Promise<string[]> {
 }
 
 /**
- * Fallback OTP reset password untuk akun ADMIN/OWNER: saat email gagal
+ * Fallback OTP reset password untuk semua peran: saat email gagal
  * terkirim (Resend mode testing — pengirim resend.dev hanya boleh ke email
  * pemilik akun Resend), kode dikirim lewat notifikasi push ke perangkat
  * terdaftar milik user itu sendiri (faktor kepemilikan perangkat).
