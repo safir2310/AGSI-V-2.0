@@ -9,6 +9,7 @@ import {
   Loader2,
   LogIn,
   Mail,
+  MessageCircle,
   RotateCcw,
   UserPlus,
 } from "lucide-react";
@@ -45,9 +46,13 @@ export function AuthView({ onSuccess }: AuthViewProps) {
     confirmPassword: "",
     sentTo: "",
     minutes: 10,
-    /** no. WhatsApp tujuan OTP (mask 62xxx••••345) — null = tak dikirim via WA */
+    /** kanal OTP yang dipakai saat mengirim kode (langkah 1 → 2) */
+    channel: "email" as "email" | "whatsapp",
+    /** no. WhatsApp tujuan OTP (mask 62xxx••••345) — terisi bila kanal WhatsApp */
     waTo: null as string | null,
   });
+  /** Pilihan kanal OTP di langkah 1 — TERPISAH: email ATAU WhatsApp (2 opsi) */
+  const [otpChannel, setOtpChannel] = useState<"email" | "whatsapp">("email");
   /* Hitungan mundur cooldown tombol "Kirim ulang OTP" (detik) */
   const [otpCooldown, setOtpCooldown] = useState(0);
 
@@ -189,7 +194,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
     }
   };
 
-  /* ===== Lupa Password — Langkah 1: kirim OTP ke email (Resend) ===== */
+  /* ===== Lupa Password — Langkah 1: kirim OTP via kanal pilihan (Email / WhatsApp) ===== */
   const sendCode = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!form.email.trim()) {
@@ -201,7 +206,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
       const res = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: form.email }),
+        body: JSON.stringify({ email: form.email, channel: otpChannel }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -216,34 +221,34 @@ export function AuthView({ onSuccess }: AuthViewProps) {
         confirmPassword: "",
         sentTo,
         minutes: data.minutes ?? 10,
+        channel: otpChannel,
         waTo: data.whatsappTo ?? null,
       });
       setOtpCooldown(60);
-      if (data.viaWhatsapp) {
-        showNotice({
-          type: "success",
-          title: "Kode OTP via WhatsApp 💬",
-          message: `Email gagal terkirim — kode OTP 6 digit dikirim ke WhatsApp ${data.whatsappTo}. Berlaku ${data.minutes ?? 10} menit.${data.note ? ` (${data.note})` : ""}`,
-        });
-      } else if (data.viaPush) {
+      const isWa = otpChannel === "whatsapp";
+      if (data.viaPush) {
         showNotice({
           type: "success",
           title: "Kode OTP via Notifikasi 📱",
-          message: `Email gagal terkirim (layanan email masih mode testing) — kode OTP 6 digit dikirim lewat NOTIFIKASI aplikasi AGSI di perangkatmu. Berlaku ${data.minutes ?? 10} menit.${data.note ? ` (${data.note})` : ""}`,
+          message: `${isWa ? "WhatsApp gagal terkirim" : "Email gagal terkirim (layanan email masih mode testing)"} — kode OTP 6 digit dikirim lewat NOTIFIKASI aplikasi AGSI di perangkatmu. Berlaku ${data.minutes ?? 10} menit.`,
         });
       } else if (data.viaOwnerEmail) {
         showNotice({
           type: "success",
           title: "Kode OTP ke Email Pemilik 📧",
-          message: `Layanan email masih mode testing — kode OTP 6 digit dikirim ke email pemilik akun Resend: ${data.fallbackTo}. Cek inbox & folder spam di sana. Berlaku ${data.minutes ?? 10} menit.${data.note ? ` (${data.note})` : ""}`,
+          message: `${isWa ? "WhatsApp gagal terkirim" : "Layanan email masih mode testing"} — kode OTP 6 digit dikirim ke email pemilik akun Resend: ${data.fallbackTo}. Cek inbox & folder spam di sana. Berlaku ${data.minutes ?? 10} menit.`,
+        });
+      } else if (isWa) {
+        showNotice({
+          type: "success",
+          title: "Kode OTP via WhatsApp 💬",
+          message: `Kami mengirim kode OTP 6 digit ke WhatsApp ${data.whatsappTo}. Berlaku ${data.minutes ?? 10} menit — pastikan nomor WhatsApp-mu aktif ya.`,
         });
       } else {
         showNotice({
           type: "success",
           title: "Kode OTP Terkirim 📧",
-          message: `Kami mengirim kode OTP 6 digit ke ${sentTo}.${
-            data.whatsappSent && data.whatsappTo ? ` Kode yang sama juga dikirim ke WhatsApp ${data.whatsappTo} 💬.` : ""
-          } Berlaku ${data.minutes ?? 10} menit — cek juga folder spam ya.${data.devNote ? ` (${data.devNote})` : ""}`,
+          message: `Kami mengirim kode OTP 6 digit ke ${sentTo}. Berlaku ${data.minutes ?? 10} menit — cek juga folder spam ya.${data.devNote ? ` (${data.devNote})` : ""}`,
         });
       }
     } catch {
@@ -287,7 +292,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
       }
       setMode("login");
       setForm((f) => ({ ...f, password: "" }));
-      setReset({ step: 1, code: "", newPassword: "", confirmPassword: "", sentTo: "", minutes: 10, waTo: null });
+      setReset({ step: 1, code: "", newPassword: "", confirmPassword: "", sentTo: "", minutes: 10, channel: "email", waTo: null });
       setOtpCooldown(0);
       showNotice({
         type: "success",
@@ -304,7 +309,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
 
   const backToLogin = () => {
     setMode("login");
-    setReset({ step: 1, code: "", newPassword: "", confirmPassword: "", sentTo: "", minutes: 10 });
+    setReset({ step: 1, code: "", newPassword: "", confirmPassword: "", sentTo: "", minutes: 10, channel: "email", waTo: null });
     setOtpCooldown(0);
   };
 
@@ -358,7 +363,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                   <p className="text-xs text-neutral-400">
                     {reset.step === 1
                       ? "Tenang, masukkan email akunmu dulu ya."
-                      : "Masukkan kode OTP dari email + password baru."}
+                      : "Masukkan kode OTP + password barumu."}
                   </p>
                 </div>
               </div>
@@ -393,7 +398,47 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                       />
                     </div>
                     <p className="text-[11px] text-neutral-400">
-                      Kami akan mengirim kode OTP 6 digit ke email ini.
+                      Email akun yang terdaftar.
+                    </p>
+                  </div>
+
+                  {/* 2 OPSI kanal OTP — terpisah: email ATAU WhatsApp (permintaan pemilik) */}
+                  <div className="space-y-1.5">
+                    <Label>Pengiriman Kode OTP</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setOtpChannel("email")}
+                        className={
+                          "press-effect flex flex-col items-center gap-1 rounded-2xl border-2 px-3 py-3 text-center transition-colors " +
+                          (otpChannel === "email"
+                            ? "border-orange-500 bg-orange-50 text-orange-700"
+                            : "border-neutral-200 bg-white text-neutral-500 hover:border-orange-200")
+                        }
+                      >
+                        <Mail className="h-5 w-5" />
+                        <span className="text-sm font-black">Email</span>
+                        <span className="text-[10px] leading-tight">Kode ke email akun</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOtpChannel("whatsapp")}
+                        className={
+                          "press-effect flex flex-col items-center gap-1 rounded-2xl border-2 px-3 py-3 text-center transition-colors " +
+                          (otpChannel === "whatsapp"
+                            ? "border-green-600 bg-green-50 text-green-700"
+                            : "border-neutral-200 bg-white text-neutral-500 hover:border-green-300")
+                        }
+                      >
+                        <MessageCircle className="h-5 w-5" />
+                        <span className="text-sm font-black">WhatsApp</span>
+                        <span className="text-[10px] leading-tight">Kode ke no. HP akun</span>
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-neutral-400">
+                      {otpChannel === "email"
+                        ? "Kode dikirim ke email terdaftar di atas."
+                        : "Kode dikirim via WhatsApp ke no. HP yang terdaftar pada akun."}
                     </p>
                   </div>
                   <Button
@@ -405,26 +450,26 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <>
-                        <Mail className="h-4 w-4" /> Kirim Kode OTP
+                        {otpChannel === "whatsapp" ? <MessageCircle className="h-4 w-4" /> : <Mail className="h-4 w-4" />} Kirim Kode OTP
                       </>
                     )}
                   </Button>
                 </form>
               ) : (
                 <form onSubmit={doReset} className="space-y-4">
-                  {/* Kotak info email tujuan OTP */}
+                  {/* Kotak info tujuan OTP sesuai kanal pilihan */}
                   <div className="rounded-2xl border border-orange-200 bg-orange-50 p-3.5 text-center">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-orange-700">
-                      📧 Kode OTP Terkirim
+                      {reset.channel === "whatsapp" ? "💬 Kode OTP Terkirim" : "📧 Kode OTP Terkirim"}
                     </p>
-                    <p className="mt-1 truncate text-sm font-black text-orange-700">{reset.sentTo}</p>
-                    {reset.waTo && (
-                      <p className="mt-1 text-[11px] font-bold text-green-700">
-                        💬 Kode yang sama juga dikirim ke WhatsApp {reset.waTo}
-                      </p>
+                    {reset.channel === "whatsapp" ? (
+                      <p className="mt-1 truncate text-sm font-black text-orange-700">WhatsApp {reset.waTo ?? "—"}</p>
+                    ) : (
+                      <p className="mt-1 truncate text-sm font-black text-orange-700">{reset.sentTo}</p>
                     )}
                     <p className="mt-1 text-[10px] text-neutral-500">
-                      Berlaku {reset.minutes} menit — cek juga folder spam.
+                      Berlaku {reset.minutes} menit
+                      {reset.channel === "whatsapp" ? " — pastikan nomor WhatsApp-mu aktif." : " — cek juga folder spam."}
                     </p>
                   </div>
 

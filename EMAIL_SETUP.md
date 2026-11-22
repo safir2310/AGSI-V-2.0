@@ -134,10 +134,16 @@ Env opsional:
 - `WHATSAPP_OTP_TEMPLATE_LANG` — kode bahasa template (bawaan `id`).
 
 Klien: `src/lib/whatsapp.ts` (normalisasi no. HP 08…/62…, pesan bebas →
-fallback template, mask nomor untuk tampilan). Perilaku UI di
-`AuthView.tsx`: bila email gagal tapi WhatsApp terkirim → pesan "Kode OTP via
-WhatsApp 💬"; bila email sukses + WhatsApp terkirim → kode dihalaman
-langkah-2 menampilkan nomor WA tujuan.
+fallback template, mask nomor untuk tampilan).
+
+Perilaku UI di `AuthView.tsx` (kanal TERPISAH — permintaan pemilik): halaman
+lupa password menyediakan **2 opsi pilihan** kanal — 📧 Email (bawaan) atau
+💬 WhatsApp. OTP hanya dikirim lewat kanal yang dipilih (API menerima
+`channel: "email" | "whatsapp"`; tanpa `channel` = email). Bila kanal
+terpilih gagal di production untuk akun staff → fallback push/notifikasi →
+inbox pemilik; untuk pelanggan → error disertai saran mencoba opsi lain.
+Bila akun tidak punya no. HP terdaftar, opsi WhatsApp ditolak dengan pesan
+yang jelas — gunakan opsi Email.
 
 ### Catatan penting nomor uji (Test Number)
 
