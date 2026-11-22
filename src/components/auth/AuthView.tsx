@@ -229,7 +229,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
         showNotice({
           type: "success",
           title: "Kode OTP via Notifikasi 📱",
-          message: `Email gagal terkirim (layanan email masih mode testing) — kode OTP 6 digit dikirim lewat NOTIFIKASI aplikasi AGSI di perangkatmu. Berlaku ${data.minutes ?? 10} menit.${data.note ? ` (${data.note})` : ""}`,
+          message: `Kode OTP 6 digit dikirim lewat NOTIFIKASI aplikasi AGSI di perangkatmu. Berlaku ${data.minutes ?? 10} menit.${data.note ? ` (${data.note})` : ""}`,
         });
       } else if (data.viaOwnerEmail) {
         showNotice({
