@@ -13,17 +13,28 @@ type BannerPopupProps = {
 };
 
 /**
- * POPUP BANNER BERANDA — GAMBAR SAJA (tanpa teks).
+ * POPUP BANNER BERANDA — poster promo besar (mengikuti desain referensi
+ * pemilik: popup promo Alfagift/Frestea Vaganza).
  *
  * Konten diatur admin dari Profil Admin → "Popup Banner Beranda"
- * (aktif/nonaktif + upload gambar persegi 1:1).
+ * (aktif/nonaktif + upload gambar + judul & pesan).
  *
- * Aturan tampil:
- *  - Hanya di Beranda, saat banner AKTIF dan punya GAMBAR (tanpa gambar
- *    popup tidak tampil — teks memang dihapus dari popup).
- *  - Ukuran kotak 1:1 (persegi penuh), selebar mungkin di layar.
+ * Struktur mengikuti referensi:
+ *  - Kartu poster PORTRAIT, latar gradien orange AGSI + ornamen pola titik
+ *    halftone & lengkung putih tipis.
+ *  - Zona gambar di atas: bingkai putih membulat, rasio 4:5 (portrait),
+ *    badge hitam "PROMO" di sudut kanan-atas gambar (gaya "Khusus Member").
+ *  - Judul pada PILL putih miring (gaya pill "FRESTEA/VAGANZA") + blok teks
+ *    syarat putih tebal rata tengah.
+ *  - Tombol CTA besar "BELANJA YUK!" amber dengan bevel 3D, posisinya DI
+ *    BAWAH kartu (di atas overlay), ketuk → buka Menu.
+ *  - Tombol tutup: lingkaran PUTIH ✕ hitam di tepi kanan-atas kartu.
+ *  - Overlay gelap ±70% + blur — Beranda tetap terlihat redup di belakang.
+ *
+ * Aturan tampil (dipertahankan dari versi lama):
+ *  - Hanya di Beranda, saat banner AKTIF dan punya gambar ATAU judul.
  *  - Muncul 1x per sesi browser untuk tiap versi banner (kunci sessionStorage
- *    memakai bannerUpdatedAt) — admin menyimpan banner baru → versi naik →
+ *    memakai bannerVersion) — admin menyimpan banner baru → versi naik →
  *    popup tampil lagi.
  *  - Delay ±700ms agar hero sempat tampil dulu (terasa natural, bukan flash).
  */
@@ -65,9 +76,10 @@ export function BannerPopup({ go }: BannerPopupProps) {
     go("menu");
   }, [dismiss, go]);
 
-  // Popup hanya berisi gambar 1:1 — tanpa gambar, popup tidak tampil
+  // Kartu tampil bila ada gambar ATAU teks — dua-duanya rusak/kosong → jangan tampil
   const showImage = !!banner.bannerImageUrl && !imgBroken;
-  const visible = open && showImage;
+  const showText = !!banner.bannerTitle || !!banner.bannerText;
+  const visible = open && (showImage || showText);
 
   // Portal ke <body> agar popup tidak terjebak stacking context `main` (z-10)
   // — selalu tampil DI ATAS navigasi bawah liquid glass (z-50) & header (z-40).
@@ -92,36 +104,85 @@ export function BannerPopup({ go }: BannerPopupProps) {
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={prefersReduced ? undefined : { scale: 0.9, y: 20, opacity: 0 }}
             transition={{ type: "spring", stiffness: 320, damping: 24 }}
-            className="relative w-full max-w-[min(94vw,30rem)]"
+            className="relative flex w-full max-w-[min(88vw,21rem)] flex-col items-center"
           >
-            {/* Kartu poster 3D — papan miring dengan kedalaman berlapis */}
-            <div className="tilt-3d overflow-hidden rounded-3xl bg-white shadow-[0_30px_60px_-12px_rgba(0,0,0,0.55)] ring-1 ring-orange-100">
-            {/* Tombol tutup */}
+            {/* Tombol tutup — lingkaran putih ✕ di tepi kanan-atas kartu (di luar kartu, seperti referensi) */}
             <button
               onClick={dismiss}
               aria-label="Tutup banner"
-              className="press-effect absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-neutral-900/45 text-white backdrop-blur-sm transition hover:bg-neutral-900/65"
+              className="press-effect absolute -right-2 -top-3.5 z-30 flex h-9 w-9 items-center justify-center rounded-full bg-white text-neutral-900 shadow-[0_8px_20px_rgba(0,0,0,0.45)] ring-1 ring-neutral-900/10 transition hover:bg-neutral-100"
             >
-              <X className="h-4.5 w-4.5" />
+              <X className="h-4.5 w-4.5" strokeWidth={2.75} />
             </button>
 
-            {/* Gambar banner — kotak penuh 1:1, ketuk untuk buka menu */}
-            {showImage && (
-              <button
-                onClick={handleCta}
-                aria-label="Buka menu"
-                className="block w-full cursor-pointer"
-                tabIndex={-1}
+            {/* Kartu poster portrait — ketuk kartu = buka menu */}
+            <button
+              onClick={handleCta}
+              aria-label="Buka menu"
+              className="tilt-3d relative w-full overflow-hidden rounded-[26px] bg-gradient-to-b from-orange-400 via-orange-500 to-orange-600 shadow-[0_30px_60px_-12px_rgba(0,0,0,0.55)] ring-1 ring-orange-200/60"
+            >
+              {/* Ornamen latar: pola titik halftone + lengkung putih tipis (seperti referensi) */}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 [background-image:radial-gradient(rgba(255,255,255,0.16)_1.5px,transparent_1.5px)] [background-size:17px_17px]"
+              />
+              <svg
+                aria-hidden
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 w-full text-white/20"
               >
-                <img
-                  src={banner.bannerImageUrl ?? ""}
-                  alt={banner.bannerTitle ?? "Banner promo AGSI"}
-                  onError={() => setImgBroken(true)}
-                  className="aspect-square w-full object-cover"
-                />
-              </button>
-            )}
-            </div>
+                <path d="M0,60 C25,40 75,80 100,55 L100,100 L0,100 Z" fill="currentColor" opacity="0.45" />
+                <path d="M0,70 C30,50 70,85 100,62" fill="none" stroke="currentColor" strokeWidth="1.2" />
+              </svg>
+
+              {/* Zona gambar atas — bingkai putih membulat + badge PROMO hitam di sudut kanan-atas */}
+              {showImage && (
+                <div className="relative m-3 mb-0 overflow-hidden rounded-2xl ring-[3px] ring-white/70">
+                  <img
+                    src={banner.bannerImageUrl ?? ""}
+                    alt={banner.bannerTitle ?? "Banner promo AGSI"}
+                    onError={() => setImgBroken(true)}
+                    className="aspect-[4/5] max-h-[46dvh] w-full object-cover"
+                  />
+                  <span className="absolute right-2.5 top-2.5 rounded-md bg-neutral-900/90 px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-white shadow">
+                    Promo
+                  </span>
+                </div>
+              )}
+
+              {/* Judul pill miring + blok teks syarat — putih tebal rata tengah */}
+              {showText && (
+                <div
+                  className={
+                    "relative flex flex-col items-center px-5 pb-5 text-center " +
+                    (showImage ? "pt-4" : "justify-center py-10")
+                  }
+                >
+                  {banner.bannerTitle && (
+                    <h2 className="-rotate-2 rounded-2xl bg-white px-5 py-1.5 text-lg font-black uppercase italic leading-tight text-orange-600 shadow-[0_10px_20px_rgba(0,0,0,0.28)]">
+                      {banner.bannerTitle}
+                    </h2>
+                  )}
+                  {banner.bannerText && (
+                    <p className="mt-3 line-clamp-8 whitespace-pre-line text-[11px] font-bold leading-relaxed text-white">
+                      {banner.bannerText}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Tanpa teks: beri ruang aman bawah agar kartu tetap proporsional */}
+              {!showText && showImage && <div className="h-3" />}
+            </button>
+
+            {/* CTA besar DI BAWAH kartu — amber dengan bevel 3D (seperti referensi "BELANJA YUK!") */}
+            <button
+              onClick={handleCta}
+              className="press-effect relative mt-4 flex h-12 w-[62%] items-center justify-center rounded-2xl bg-amber-400 text-sm font-black uppercase tracking-[0.08em] text-neutral-900 shadow-[0_7px_0_0_rgb(180_83_9/95),0_18px_30px_rgba(0,0,0,0.35)] transition hover:bg-amber-300 active:translate-y-[4px] active:shadow-[0_3px_0_0_rgb(180_83_9/95),0_10px_20px_rgba(0,0,0,0.3)]"
+            >
+              Belanja Yuk!
+            </button>
           </motion.div>
         </motion.div>
       )}
@@ -137,8 +198,8 @@ function seenKey(version: string) {
 
 function shouldShow(b: BannerInfo): boolean {
   if (!b.bannerEnabled) return false;
-  // popup kini gambar saja — tanpa gambar, tidak tampil
-  if (!b.bannerImageUrl) return false;
+  // butuh minimal satu konten: gambar ATAU judul
+  if (!b.bannerImageUrl && !b.bannerTitle) return false;
   if (!b.bannerVersion) return true; // tanpa versi → tampil (mis. data lama)
   try {
     return sessionStorage.getItem(seenKey(b.bannerVersion)) !== "1";
