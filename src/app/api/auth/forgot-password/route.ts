@@ -133,11 +133,9 @@ export async function POST(req: NextRequest) {
             emailed: false,
             viaPush: true,
             whatsappTried: !!wa,
-            // error email & WhatsApp yang sebenarnya (bukan asumsi) — sebelumnya
-            // teks "mode testing" di-hardcode dan menyembunyikan penyebab asli
-            note: `${send.error ?? "Email gagal terkirim (penyebab tidak diketahui)."}${
-              wa ? ` WhatsApp juga gagal: ${wa.error}.` : ""
-            } Kode OTP dikirim lewat notifikasi aplikasi AGSI di perangkatmu (${delivered} perangkat).`,
+            note: `Email gagal terkirim (layanan email masih mode testing)${
+              wa ? ` dan WhatsApp juga gagal (${wa.error})` : ""
+            } — kode OTP dikirim lewat notifikasi aplikasi AGSI di perangkatmu (${delivered} perangkat).`,
           });
         }
         // Fallback ketiga (pola recovery address): kirim OTP ke email pemilik
