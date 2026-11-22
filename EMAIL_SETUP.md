@@ -109,3 +109,42 @@ dengan password baru → bersih-bersih data uji).
 - `src/app/api/auth/forgot-password/route.ts` — langkah 1 (kirim OTP)
 - `src/app/api/auth/reset-password/route.ts` — langkah 2 (verifikasi OTP)
 - `src/components/auth/AuthView.tsx` — UI 2 langkah + kirim ulang OTP (60s)
+
+## 6. Jalur WhatsApp (OTP via WhatsApp — permintaan pemilik)
+
+Selain email, OTP lupa password kini juga dikirim ke **WhatsApp** nomor HP yang
+terdaftar pada akun (meta WhatsApp Cloud API, tanpa dependensi tambahan).
+
+Env yang wajib diisi (Vercel → Settings → Environment Variables):
+
+| Env | Isi |
+| --- | --- |
+| `WHATSAPP_ACCESS_TOKEN` | Token permanen dari developers.facebook.com (izin `whatsapp_business_messaging`) |
+| `WHATSAPP_PHONE_NUMBER_ID` | ID nomor WhatsApp Business (cek lewat `GET /{WABA_ID}/phone_numbers`) |
+| `WHATSAPP_BUSINESS_ACCOUNT_ID` | ID WhatsApp Business Account (WABA) |
+| `WHATSAPP_VERIFY_TOKEN` | Token verifikasi webhook (dipakai saat webhook pesan masuk diaktifkan) |
+
+Env opsional:
+
+- `WHATSAPP_OTP_TEMPLATE` — nama **template** OTP yang sudah disetujui Meta.
+  Pesan bebas hanya sah bagi pengguna yang pernah chat nomor bisnis dalam 24
+  jam terakhir; di luar itu Meta menolak (error 131047/131026) dan kode akan
+  otomatis mengulang lewat template ini. Tanpa env ini, kegagalan sesi 24 jam
+  dilaporkan apa adanya dan OTP tetap sampai via email.
+- `WHATSAPP_OTP_TEMPLATE_LANG` — kode bahasa template (bawaan `id`).
+
+Klien: `src/lib/whatsapp.ts` (normalisasi no. HP 08…/62…, pesan bebas →
+fallback template, mask nomor untuk tampilan). Perilaku UI di
+`AuthView.tsx`: bila email gagal tapi WhatsApp terkirim → pesan "Kode OTP via
+WhatsApp 💬"; bila email sukses + WhatsApp terkirim → kode dihalaman
+langkah-2 menampilkan nomor WA tujuan.
+
+### Catatan penting nomor uji (Test Number)
+
+Nomor bawaan Meta (verifikasi nama "Test Number", contoh +1 555-…) **hanya
+boleh mengirim ke maksimal 5 nomor penerima** yang didaftarkan di
+WhatsApp → API Setup → kolom "To". Untuk pelanggan umum, ganti ke nomor
+WhatsApp bisnis sungguhan (WhatsApp Manager → Tambah nomor → verifikasi),
+lalu perbarui env `WHATSAPP_PHONE_NUMBER_ID` dengan ID nomor barunya. PIN
+registrasi nomor disimpan di `.env` lokal (`WHATSAPP_REGISTER_PIN`) —
+JANGAN ditulis di berkas ini.

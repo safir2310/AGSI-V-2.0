@@ -45,6 +45,8 @@ export function AuthView({ onSuccess }: AuthViewProps) {
     confirmPassword: "",
     sentTo: "",
     minutes: 10,
+    /** no. WhatsApp tujuan OTP (mask 62xxx••••345) — null = tak dikirim via WA */
+    waTo: null as string | null,
   });
   /* Hitungan mundur cooldown tombol "Kirim ulang OTP" (detik) */
   const [otpCooldown, setOtpCooldown] = useState(0);
@@ -214,9 +216,16 @@ export function AuthView({ onSuccess }: AuthViewProps) {
         confirmPassword: "",
         sentTo,
         minutes: data.minutes ?? 10,
+        waTo: data.whatsappTo ?? null,
       });
       setOtpCooldown(60);
-      if (data.viaPush) {
+      if (data.viaWhatsapp) {
+        showNotice({
+          type: "success",
+          title: "Kode OTP via WhatsApp 💬",
+          message: `Email gagal terkirim — kode OTP 6 digit dikirim ke WhatsApp ${data.whatsappTo}. Berlaku ${data.minutes ?? 10} menit.${data.note ? ` (${data.note})` : ""}`,
+        });
+      } else if (data.viaPush) {
         showNotice({
           type: "success",
           title: "Kode OTP via Notifikasi 📱",
@@ -232,7 +241,9 @@ export function AuthView({ onSuccess }: AuthViewProps) {
         showNotice({
           type: "success",
           title: "Kode OTP Terkirim 📧",
-          message: `Kami mengirim kode OTP 6 digit ke ${sentTo}. Berlaku ${data.minutes ?? 10} menit — cek juga folder spam ya.${data.devNote ? ` (${data.devNote})` : ""}`,
+          message: `Kami mengirim kode OTP 6 digit ke ${sentTo}.${
+            data.whatsappSent && data.whatsappTo ? ` Kode yang sama juga dikirim ke WhatsApp ${data.whatsappTo} 💬.` : ""
+          } Berlaku ${data.minutes ?? 10} menit — cek juga folder spam ya.${data.devNote ? ` (${data.devNote})` : ""}`,
         });
       }
     } catch {
@@ -246,7 +257,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
   const doReset = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!/^\d{6}$/.test(reset.code.trim())) {
-      showNotice({ type: "error", title: "Kode Belum Lengkap", message: "Masukkan 6 digit kode OTP dari emailmu." });
+      showNotice({ type: "error", title: "Kode Belum Lengkap", message: "Masukkan 6 digit kode OTP dari email / WhatsApp-mu." });
       return;
     }
     const pwCheck = validatePassword(reset.newPassword, { email: form.email });
@@ -276,7 +287,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
       }
       setMode("login");
       setForm((f) => ({ ...f, password: "" }));
-      setReset({ step: 1, code: "", newPassword: "", confirmPassword: "", sentTo: "", minutes: 10 });
+      setReset({ step: 1, code: "", newPassword: "", confirmPassword: "", sentTo: "", minutes: 10, waTo: null });
       setOtpCooldown(0);
       showNotice({
         type: "success",
@@ -407,6 +418,11 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                       📧 Kode OTP Terkirim
                     </p>
                     <p className="mt-1 truncate text-sm font-black text-orange-700">{reset.sentTo}</p>
+                    {reset.waTo && (
+                      <p className="mt-1 text-[11px] font-bold text-green-700">
+                        💬 Kode yang sama juga dikirim ke WhatsApp {reset.waTo}
+                      </p>
+                    )}
                     <p className="mt-1 text-[10px] text-neutral-500">
                       Berlaku {reset.minutes} menit — cek juga folder spam.
                     </p>
