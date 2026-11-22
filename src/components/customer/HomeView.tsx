@@ -97,7 +97,62 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
     <div className="space-y-5">
       {/* ===== HERO ===== */}
       <section className="bg-brand-gradient relative overflow-hidden rounded-b-[2rem] px-5 pb-6 pt-[calc(1rem+env(safe-area-inset-top,0px))]">
-        <div className="pointer-events-none absolute -right-14 top-6 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
+        {/* Glow latar yang berarak pelan — hero terasa hidup, bukan gambar statis */}
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute -right-14 top-6 h-44 w-44 rounded-full bg-white/10 blur-2xl"
+          animate={prefersReduced ? undefined : { x: [0, -18, 0], y: [0, 12, 0], scale: [1, 1.12, 1] }}
+          transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute -left-16 bottom-2 h-40 w-40 rounded-full bg-yellow-200/20 blur-2xl"
+          animate={prefersReduced ? undefined : { x: [0, 20, 0], y: [0, -14, 0], scale: [1, 1.15, 1] }}
+          transition={{ duration: 11, repeat: Infinity, ease: "easeInOut", delay: 1.2 }}
+        />
+        {/* Objek melayang bertema menu — bergoyang & berputar pelan tanpa henti */}
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute left-[57%] top-1 select-none text-4xl leading-none opacity-80 drop-shadow-md"
+          animate={prefersReduced ? undefined : { y: [0, -12, 0], rotate: [0, 12, 0] }}
+          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+        >
+          🌶️
+        </motion.div>
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute bottom-1.5 left-[45%] select-none text-3xl leading-none opacity-70 drop-shadow-md"
+          animate={prefersReduced ? undefined : { y: [0, 9, 0], rotate: [0, -10, 0] }}
+          transition={{ duration: 7.5, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
+        >
+          🍗
+        </motion.div>
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-3 right-2 select-none text-3xl leading-none opacity-60 drop-shadow-md"
+          animate={prefersReduced ? undefined : { y: [0, -8, 0], rotate: [0, 8, 0] }}
+          transition={{ duration: 8.5, repeat: Infinity, ease: "easeInOut", delay: 1.6 }}
+        >
+          🍚
+        </motion.div>
+        {/* Kilau bintang kecil berdenyut di sela judul */}
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute left-[40%] top-16 select-none text-lg leading-none"
+          animate={prefersReduced ? undefined : { scale: [1, 1.35, 1], opacity: [0.9, 0.4, 0.9], rotate: [0, 18, 0] }}
+          transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
+        >
+          ✨
+        </motion.div>
+        {/* Kilau cahaya menyapu hero setiap beberapa detik */}
+        {!prefersReduced && (
+          <motion.div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 skew-x-[-12deg] bg-gradient-to-r from-transparent via-white/25 to-transparent"
+            animate={{ x: ["0%", "480%"] }}
+            transition={{ duration: 2.8, repeat: Infinity, repeatDelay: 7, ease: "easeInOut" }}
+          />
+        )}
         <div className="relative z-10 flex items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-orange-100">
@@ -151,14 +206,19 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
 
       {/* ===== KEUNGGULAN ===== */}
       <motion.section {...reveal(0.05)} className="grid grid-cols-3 gap-2.5 px-4">
-        {HIGHLIGHTS.map((h) => (
+        {HIGHLIGHTS.map((h, i) => (
           <div
             key={h.title}
             className="flex flex-col items-center gap-1 rounded-2xl border border-orange-100 bg-white p-3 text-center shadow-sm"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100">
+            {/* Ikon mengambang pelan bergantian — kartu keunggulan ikut terasa hidup */}
+            <motion.span
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100"
+              animate={prefersReduced ? undefined : { y: [0, -4, 0] }}
+              transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut", delay: i * 0.45 }}
+            >
               <h.icon className="h-4 w-4 text-orange-600" />
-            </span>
+            </motion.span>
             <p className="text-[11px] font-extrabold leading-tight text-neutral-800">{h.title}</p>
             <p className="text-[10px] leading-tight text-neutral-400">{h.desc}</p>
           </div>
