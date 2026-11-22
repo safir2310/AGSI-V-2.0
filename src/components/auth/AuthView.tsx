@@ -226,29 +226,37 @@ export function AuthView({ onSuccess }: AuthViewProps) {
       });
       setOtpCooldown(60);
       const isWa = otpChannel === "whatsapp";
-      if (data.viaPush) {
-        showNotice({
-          type: "success",
-          title: "Kode OTP via Notifikasi 📱",
-          message: `${isWa ? "WhatsApp gagal terkirim" : "Email gagal terkirim (layanan email masih mode testing)"} — kode OTP 6 digit dikirim lewat NOTIFIKASI aplikasi AGSI di perangkatmu. Berlaku ${data.minutes ?? 10} menit.`,
-        });
-      } else if (data.viaOwnerEmail) {
-        showNotice({
-          type: "success",
-          title: "Kode OTP ke Email Pemilik 📧",
-          message: `${isWa ? "WhatsApp gagal terkirim" : "Layanan email masih mode testing"} — kode OTP 6 digit dikirim ke email pemilik akun Resend: ${data.fallbackTo}. Cek inbox & folder spam di sana. Berlaku ${data.minutes ?? 10} menit.`,
-        });
-      } else if (isWa) {
+      if (isWa && !data.viaPush && !data.viaOwnerEmail) {
         showNotice({
           type: "success",
           title: "Kode OTP via WhatsApp 💬",
           message: `Kami mengirim kode OTP 6 digit ke WhatsApp ${data.whatsappTo}. Berlaku ${data.minutes ?? 10} menit — pastikan nomor WhatsApp-mu aktif ya.`,
         });
+      } else if (data.viaWhatsapp) {
+        showNotice({
+          type: "success",
+          title: "Kode OTP via WhatsApp 💬",
+          message: `Email gagal terkirim — kode OTP 6 digit dikirim ke WhatsApp ${data.whatsappTo}. Berlaku ${data.minutes ?? 10} menit.${data.note ? ` (${data.note})` : ""}`,
+        });
+      } else if (data.viaPush) {
+        showNotice({
+          type: "success",
+          title: "Kode OTP via Notifikasi 📱",
+          message: `${isWa ? "WhatsApp gagal terkirim" : "Email gagal terkirim (layanan email masih mode testing)"} — kode OTP 6 digit dikirim lewat NOTIFIKASI aplikasi AGSI di perangkatmu. Berlaku ${data.minutes ?? 10} menit.${data.note ? ` (${data.note})` : ""}`,
+        });
+      } else if (data.viaOwnerEmail) {
+        showNotice({
+          type: "success",
+          title: "Kode OTP ke Email Pemilik 📧",
+          message: `${isWa ? "WhatsApp gagal terkirim" : "Layanan email masih mode testing"} — kode OTP 6 digit dikirim ke email pemilik akun Resend: ${data.fallbackTo}. Cek inbox & folder spam di sana. Berlaku ${data.minutes ?? 10} menit.${data.note ? ` (${data.note})` : ""}`,
+        });
       } else {
         showNotice({
           type: "success",
           title: "Kode OTP Terkirim 📧",
-          message: `Kami mengirim kode OTP 6 digit ke ${sentTo}. Berlaku ${data.minutes ?? 10} menit — cek juga folder spam ya.${data.devNote ? ` (${data.devNote})` : ""}`,
+          message: `Kami mengirim kode OTP 6 digit ke ${sentTo}.${
+            data.whatsappSent && data.whatsappTo ? ` Kode yang sama juga dikirim ke WhatsApp ${data.whatsappTo} 💬.` : ""
+          } Berlaku ${data.minutes ?? 10} menit — cek juga folder spam ya.${data.devNote ? ` (${data.devNote})` : ""}`,
         });
       }
     } catch {
@@ -418,7 +426,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                       >
                         <Mail className="h-5 w-5" />
                         <span className="text-sm font-black">Email</span>
-                        <span className="text-[10px] leading-tight">Kode ke email akun</span>
+                        <span className="text-[10px] leading-tight">Kode ke email + cadangan WA</span>
                       </button>
                       <button
                         type="button"
@@ -437,7 +445,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                     </div>
                     <p className="text-[11px] text-neutral-400">
                       {otpChannel === "email"
-                        ? "Kode dikirim ke email terdaftar di atas."
+                        ? "Kode dikirim ke email terdaftar di atas — WhatsApp jadi cadangan otomatis bila email gagal."
                         : "Kode dikirim via WhatsApp ke no. HP yang terdaftar pada akun."}
                     </p>
                   </div>
@@ -466,6 +474,11 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                       <p className="mt-1 truncate text-sm font-black text-orange-700">WhatsApp {reset.waTo ?? "—"}</p>
                     ) : (
                       <p className="mt-1 truncate text-sm font-black text-orange-700">{reset.sentTo}</p>
+                    )}
+                    {reset.channel === "email" && reset.waTo && (
+                      <p className="mt-1 text-[11px] font-bold text-green-700">
+                        💬 Kode yang sama juga dikirim ke WhatsApp {reset.waTo}
+                      </p>
                     )}
                     <p className="mt-1 text-[10px] text-neutral-500">
                       Berlaku {reset.minutes} menit

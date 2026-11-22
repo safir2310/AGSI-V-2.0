@@ -9,11 +9,13 @@ import { notifyOtpEmailFailed } from "@/lib/push";
 /**
  * POST /api/auth/forgot-password
  * Langkah 1 alur lupa password: user memasukkan email terdaftar lalu MEMILIH
- * salah satu dari 2 OPSI kanal pengiriman OTP (permintaan pemilik — kanal
- * TERPISAH, tidak dikirim dua-duanya):
- *   - channel "email"    (bawaan): OTP dikirim lewat EMAIL (Resend)
- *   - channel "whatsapp"       : OTP dikirim lewat WHATSAPP (Cloud API Meta)
- *                                ke no. HP yang terdaftar pada akun
+ * salah satu dari 2 OPSI kanal pengiriman OTP (permintaan pemilik):
+ *   - channel "email"    (bawaan): OTP dikirim lewat EMAIL (Resend) DAN —
+ *                                seperti versi sebelumnya — sekaligus lewat
+ *                                WHATSAPP bila no. HP akun terdaftar & jalur
+ *                                siap (WhatsApp = cadangan otomatis)
+ *   - channel "whatsapp"       : OTP dikirim HANYA lewat WHATSAPP (Cloud API
+ *                                Meta) ke no. HP yang terdaftar pada akun
  *
  * - OTP berlaku 10 menit, sekali pakai, maks 5 kali salah memasukkan
  *   (dikecek di langkah 2 — reset-password).
@@ -84,13 +86,9 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-    } else if (!isEmailConfigured()) {
+    } else if (!isEmailConfigured() && !isWhatsAppConfigured()) {
       return NextResponse.json(
-        {
-          error: isWhatsAppConfigured()
-            ? "Layanan email belum aktif di server. Coba opsi WhatsApp (bila nomor HP akunmu terdaftar), atau minta admin mengisi RESEND_API_KEY (panduan: EMAIL_SETUP.md)."
-            : "Layanan email belum aktif di server. Minta admin mengisi RESEND_API_KEY di .env (panduan: EMAIL_SETUP.md).",
-        },
+        { error: "Layanan email & WhatsApp belum aktif di server. Minta admin mengisi RESEND_API_KEY dan WHATSAPP_ACCESS_TOKEN di .env (panduan: EMAIL_SETUP.md)." },
         { status: 503 }
       );
     }
@@ -117,7 +115,7 @@ export async function POST(req: NextRequest) {
     });
     devLogOtp(normalized, otp);
 
-    // ===== KIRIM OTP — HANYA lewat kanal yang dipilih user =====
+    // ===== KIRIM OTP — opsi WhatsApp: HANYA lewat WhatsApp =====
     if (otpChannel === "whatsapp") {
       const wa = await sendWhatsAppOtp(waPhone, otp, RESET_MINUTES);
       if (!wa.ok && process.env.NODE_ENV === "production") {
@@ -184,16 +182,37 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ===== Kanal EMAIL =====
-    const send = await sendEmail({
-      to: normalized,
-      // sebut akun tujuan — penting saat OTP diteruskan ke inbox pemilik (fallback)
-      subject: `Kode Reset Password AGSI (untuk ${normalized})`,
-      html: otpEmailHtml(otp, RESET_MINUTES),
-    });
+    // ===== Kanal EMAIL — seperti versi sebelumnya: EMAIL + WHATSAPP sekaligus =====
+    // (WhatsApp otomatis jadi cadangan bila email gagal — perilaku lama)
+    const send = isEmailConfigured()
+      ? await sendEmail({
+          to: normalized,
+          // sebut akun tujuan — penting saat OTP diteruskan ke inbox pemilik (fallback)
+          subject: `Kode Reset Password AGSI (untuk ${normalized})`,
+          html: otpEmailHtml(otp, RESET_MINUTES),
+        })
+      : { ok: false as const, error: "Layanan email belum dikonfigurasi di server (isi RESEND_API_KEY di .env — lihat EMAIL_SETUP.md)." };
+
+    // WhatsApp hanya bila jalurnya siap & akun punya no. HP terdaftar
+    const wa =
+      isWhatsAppConfigured() && user.phone
+        ? await sendWhatsAppOtp(user.phone, otp, RESET_MINUTES)
+        : null;
 
     if (!send.ok && process.env.NODE_ENV === "production") {
-      // Fallback STAFF: push ke perangkat terdaftar → inbox pemilik
+      // Fallback 1 — WhatsApp: email gagal tapi kode sampai via WhatsApp ✓
+      if (wa?.ok) {
+        return NextResponse.json({
+          ok: true,
+          minutes: RESET_MINUTES,
+          channel: "email",
+          emailed: false,
+          viaWhatsapp: true,
+          whatsappTo: maskWhatsappPhone(user.phone!),
+          note: `Email gagal terkirim (${send.error ?? "tidak diketahui"}) — kode OTP dikirim ke WhatsApp ${maskWhatsappPhone(user.phone!)}.`,
+        });
+      }
+      // Fallback 2 — STAFF: push ke perangkat terdaftar → inbox pemilik
       if (user.role === "ADMIN" || user.role === "OWNER") {
         const delivered = await notifyOtpEmailFailed(user.id, otp, RESET_MINUTES);
         if (delivered > 0) {
@@ -203,7 +222,9 @@ export async function POST(req: NextRequest) {
             channel: "email",
             emailed: false,
             viaPush: true,
-            note: `Email gagal terkirim (layanan email masih mode testing) — kode OTP dikirim lewat notifikasi aplikasi AGSI di perangkatmu (${delivered} perangkat).`,
+            note: `Email gagal terkirim (layanan email masih mode testing)${
+              wa ? ` dan WhatsApp juga gagal (${wa.error})` : ""
+            } — kode OTP dikirim lewat notifikasi aplikasi AGSI di perangkatmu (${delivered} perangkat).`,
           });
         }
         const ownerInbox = process.env.RESEND_FALLBACK_TO?.trim();
@@ -229,6 +250,7 @@ export async function POST(req: NextRequest) {
               // send.error & send2.error sudah berprefiks "Email gagal terkirim: …"
               error:
                 `${send.error ?? "Email gagal terkirim."} ` +
+                `${wa ? `WhatsApp juga gagal: ${wa.error} ` : ""}` +
                 `Fallback notifikasi aplikasi tak bisa (belum ada perangkat terdaftar) dan pengiriman ke inbox pemilik (${ownerInbox}) juga gagal. ` +
                 `Verifikasi domain di resend.com/domains untuk solusi permanen.`,
             },
@@ -240,16 +262,18 @@ export async function POST(req: NextRequest) {
           {
             error:
               `${send.error ?? "Email gagal terkirim."} ` +
+              `${wa ? `WhatsApp juga gagal: ${wa.error} ` : ""}` +
               `Fallback notifikasi aplikasi tak bisa (belum ada perangkat terdaftar). ` +
               `Isi env RESEND_FALLBACK_TO (email pemilik akun Resend) atau verifikasi domain di resend.com/domains.`,
           },
           { status: 502 }
         );
       }
-      // Pelanggan: laporkan penyebab asli + sarankan opsi lain
       return NextResponse.json(
         {
-          error: `${send.error ?? "Email gagal terkirim."} Coba opsi WhatsApp di halaman lupa password (bila nomor HP akunmu terdaftar).`,
+          error:
+            `${send.error ?? "Email gagal terkirim."} ` +
+            (wa ? ` WhatsApp juga gagal: ${wa.error}` : " Akun tidak punya no. HP untuk jalur WhatsApp — tambahkan no. HP di profil akun."),
         },
         { status: 502 }
       );
@@ -262,6 +286,10 @@ export async function POST(req: NextRequest) {
       channel: "email",
       /** false = email gagal terkirim (dev saja) — OTP ada di .otp-dev.log */
       emailed: send.ok,
+      /** jalur WhatsApp (cadangan otomatis — perilaku versi sebelumnya) */
+      whatsappSent: !!wa?.ok,
+      whatsappTo: wa?.ok ? maskWhatsappPhone(user.phone!) : undefined,
+      whatsappError: wa && !wa.ok ? wa.error : undefined,
       devNote: !send.ok ? "OTP dicatat di berkas .otp-dev.log (mode development)" : undefined,
     });
   } catch {

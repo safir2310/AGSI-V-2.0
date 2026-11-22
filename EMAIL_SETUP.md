@@ -136,14 +136,17 @@ Env opsional:
 Klien: `src/lib/whatsapp.ts` (normalisasi no. HP 08…/62…, pesan bebas →
 fallback template, mask nomor untuk tampilan).
 
-Perilaku UI di `AuthView.tsx` (kanal TERPISAH — permintaan pemilik): halaman
-lupa password menyediakan **2 opsi pilihan** kanal — 📧 Email (bawaan) atau
-💬 WhatsApp. OTP hanya dikirim lewat kanal yang dipilih (API menerima
-`channel: "email" | "whatsapp"`; tanpa `channel` = email). Bila kanal
-terpilih gagal di production untuk akun staff → fallback push/notifikasi →
-inbox pemilik; untuk pelanggan → error disertai saran mencoba opsi lain.
-Bila akun tidak punya no. HP terdaftar, opsi WhatsApp ditolak dengan pesan
-yang jelas — gunakan opsi Email.
+Perilaku UI di `AuthView.tsx` (2 opsi pilihan kanal — permintaan pemilik):
+halaman lupa password menyediakan **2 opsi pilihan** — 📧 Email (bawaan) atau
+💬 WhatsApp. API menerima `channel: "email" | "whatsapp"` (tanpa `channel` =
+email). Opsi **Email** mengirim lewat email DAN sekaligus lewat WhatsApp bila
+no. HP akun terdaftar & jalur siap (WhatsApp = cadangan otomatis bila email
+gagal — perilaku versi sebelumnya dipertahankan). Opsi **WhatsApp** mengirim
+HANYA lewat WhatsApp. Kanal terpilih yang gagal di production untuk akun
+staff → fallback push/notifikasi → inbox pemilik; untuk pelanggan → error
+apa adanya (opsi Email tetap menampilkan kegagalan WhatsApp bila cadangan
+ikut dikirim). Bila akun tidak punya no. HP terdaftar, opsi WhatsApp
+ditolak dengan pesan yang jelas — gunakan opsi Email.
 
 ### Catatan penting nomor uji (Test Number)
 
