@@ -27,7 +27,7 @@ export const ANDROID_CHANNEL_ID = "agsi_orders_v4";
 /** Channel khusus chat CS — aplikasi native membuat channel "agsi_chat_v4" */
 export const ANDROID_CHAT_CHANNEL_ID = "agsi_chat_v4";
 
-export type PushKind = "new_order" | "order_paid" | "order_status" | "chat" | "courier_task" | "test";
+export type PushKind = "new_order" | "order_paid" | "order_status" | "chat" | "courier_task" | "otp" | "test";
 
 export type PushPayload = {
   kind: PushKind;
