@@ -32,6 +32,17 @@ const HIGHLIGHTS = [
   { icon: Star, title: "Rating 4.9", desc: "Pelanggan puas" },
 ];
 
+/** Konfeti animasi "BOOM!" ulang tahun — arah & warna tetap (deterministik),
+    warna mengikuti brand: oranye + hijau sambal + aksen pesta. */
+const CONFETTI = [
+  { cls: "bg-amber-400 rounded-full", dx: 28, dy: -18, dur: 1.0 },
+  { cls: "bg-orange-500 rounded-[2px]", dx: -26, dy: -22, dur: 1.1 },
+  { cls: "bg-green-500 rounded-full", dx: 34, dy: 4, dur: 1.15 },
+  { cls: "bg-sky-400 rounded-[2px]", dx: -32, dy: 8, dur: 0.95 },
+  { cls: "bg-pink-400 rounded-full", dx: 14, dy: -32, dur: 1.05 },
+  { cls: "bg-yellow-300 rounded-[2px]", dx: -14, dy: -30, dur: 1.2 },
+];
+
 export function HomeView({ go }: { go: (v: AppView) => void }) {
   const prefersReduced = useReducedMotion();
   const products = useProductsStore((s) => s.products);
@@ -205,24 +216,27 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
       </section>
 
       {/* ===== JALANAN ANIMASI: DRIVER DI ATAS SEPEDA MOTOR BERJALAN =====
-          Inspirasi banner kurir (referensi pemilik): sepeda motor dengan
-          pengendara melaju menyentuh layar dari kanan ke kiri di atas jalan
-          aspal bermarka — dengan goyangan halus, asap knalpot, dan garis
-          kecepatan. Murni dekorasi: aria-hidden + pointer-events-none, dan
-          semua loop transform-only (hemat GPU), dimatikan saat reduced-motion. */}
+          Kurir melaju KIRI → KANAN (lebih cepat: siklus ±5,2 dtk + jeda
+          1,2 dtk) menyeret spanduk "Ayam Geprek Sambal Ijo" di belakang, dan
+          tiap putaran — saat motor tepat di tengah layar — muncul ledakan
+          konfeti "BOOM! 🎉" bergaya pesta ulang tahun (siklus boom 1,4+5,0 =
+          6,4 dtk = siklus motor 5,2+1,2). Emoji 🛵 dibalik horizontal agar
+          menghadap arah jalan. Murni dekorasi: aria-hidden + pointer-events-
+          none, semua loop transform-only (hemat GPU), dimatikan saat
+          reduced-motion (motor parkir statis). */}
       <section
         aria-hidden
         className="relative mx-4 h-[4.5rem] overflow-hidden rounded-2xl border border-orange-100 bg-gradient-to-b from-orange-50/80 to-amber-50/50 shadow-sm"
       >
-        {/* Pemandangan pinggir jalan — kurir mengantar pesanan pulang */}
-        <span className="pointer-events-none absolute left-2 top-1.5 select-none text-2xl leading-none opacity-90">
-          🏠
-        </span>
-        <span className="pointer-events-none absolute right-2 top-2 select-none text-xl leading-none opacity-70">
+        {/* Pemandangan pinggir jalan — kurir melaju menuju rumah pelanggan */}
+        <span className="pointer-events-none absolute left-2 top-2 select-none text-xl leading-none opacity-70">
           🌳
         </span>
-        <span className="pointer-events-none absolute right-14 top-2.5 select-none text-base leading-none opacity-60">
+        <span className="pointer-events-none absolute left-14 top-2.5 select-none text-base leading-none opacity-60">
           🌴
+        </span>
+        <span className="pointer-events-none absolute right-2 top-1.5 select-none text-2xl leading-none opacity-90">
+          🏠
         </span>
         {/* Permukaan jalan aspal + marka putus-putus kuning */}
         <div
@@ -235,40 +249,105 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
             backgroundRepeat: "repeat-x",
           }}
         />
-        {/* Driver + sepeda motor melaju: kanan → kiri, siklus ±9,5 dtk + jeda */}
+        {/* BOOM! ulang tahun — chip "BOOM! 🎉" meledak + konfeti beterbangan */}
+        <div className="pointer-events-none absolute inset-x-0 top-0.5 flex justify-center">
+          <motion.div
+            className="relative"
+            animate={
+              prefersReduced
+                ? undefined
+                : { scale: [0, 1.25, 1, 1], opacity: [0, 1, 1, 0], rotate: [-10, 5, 0, 0] }
+            }
+            transition={{
+              duration: 1.4,
+              times: [0, 0.15, 0.6, 1],
+              repeat: Infinity,
+              repeatDelay: 5,
+              delay: 2.2,
+              ease: "easeOut",
+            }}
+          >
+            <span className="inline-block rounded-full bg-amber-300 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider text-orange-950 shadow-lg ring-2 ring-white/70">
+              BOOM! 🎉
+            </span>
+            {CONFETTI.map((k, i) => (
+              <motion.span
+                key={i}
+                className={cn("pointer-events-none absolute left-1/2 top-1/2 h-1.5 w-1.5", k.cls)}
+                animate={
+                  prefersReduced
+                    ? undefined
+                    : {
+                        x: [0, k.dx * 0.7, k.dx],
+                        y: [0, k.dy * 0.7, k.dy],
+                        opacity: [1, 0.9, 0],
+                        rotate: [0, 120, 200],
+                        scale: [1, 0.85, 0.7],
+                      }
+                }
+                transition={{
+                  duration: k.dur,
+                  times: [0, 0.4, 1],
+                  repeat: Infinity,
+                  repeatDelay: 6.4 - k.dur,
+                  delay: 2.2,
+                  ease: "easeOut",
+                }}
+              />
+            ))}
+          </motion.div>
+        </div>
+        {/* Driver + sepeda motor melaju: kiri → kanan, ±5,2 dtk + jeda 1,2 dtk */}
         <motion.div
           className="absolute bottom-3 left-0"
-          animate={prefersReduced ? undefined : { x: ["106vw", "-26vw"] }}
-          transition={{ duration: 9.5, repeat: Infinity, repeatDelay: 2.2, ease: "linear" }}
+          style={prefersReduced ? { transform: "translateX(32vw)" } : undefined}
+          animate={prefersReduced ? undefined : { x: ["-20vw", "148vw"] }}
+          transition={{ duration: 5.2, repeat: Infinity, repeatDelay: 1.2, ease: "linear" }}
         >
           <motion.div
             className="relative"
-            animate={prefersReduced ? undefined : { y: [0, -3, 0], rotate: [0, 3, 0] }}
-            transition={{ duration: 0.55, repeat: Infinity, ease: "easeInOut" }}
+            animate={prefersReduced ? undefined : { y: [0, -3, 0], rotate: [0, 2.5, 0] }}
+            transition={{ duration: 0.5, repeat: Infinity, ease: "easeInOut" }}
           >
-            {/* Pengendara di atas sepeda motor (emoji sistem memuat driver) */}
-            <span className="block select-none text-[52px] leading-none drop-shadow-md">🛵</span>
-            {/* Asap knalpot mengepul ke belakang */}
+            {/* Spanduk brand terseret di belakang motor — bergoyang mengikuti laju */}
+            <motion.div
+              className="absolute right-full top-4 flex items-center"
+              animate={prefersReduced ? undefined : { rotate: [0, -3, 0], y: [0, 1.5, 0] }}
+              transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <span className="h-[2px] w-3 bg-neutral-700/70" />
+              <span className="whitespace-nowrap rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-orange-600 shadow-md ring-1 ring-orange-200">
+                Ayam Geprek <span className="text-green-600">Sambal Ijo</span>
+              </span>
+            </motion.div>
+            {/* Pengendara di atas sepeda motor — emoji dibalik agar menghadap kanan */}
+            <span
+              className="block select-none text-[52px] leading-none drop-shadow-md"
+              style={{ transform: "scaleX(-1)" }}
+            >
+              🛵
+            </span>
+            {/* Asap knalpot mengepul ke belakang (kiri) */}
             <motion.span
-              className="pointer-events-none absolute right-1 top-5 h-2 w-2 rounded-full bg-neutral-400/60"
-              animate={prefersReduced ? undefined : { x: [2, 14], scale: [0.7, 1.6], opacity: [0.55, 0] }}
-              transition={{ duration: 1.3, repeat: Infinity, ease: "easeOut" }}
+              className="pointer-events-none absolute left-1 top-5 h-2 w-2 rounded-full bg-neutral-400/60"
+              animate={prefersReduced ? undefined : { x: [-2, -14], scale: [0.7, 1.6], opacity: [0.55, 0] }}
+              transition={{ duration: 1.1, repeat: Infinity, ease: "easeOut" }}
             />
             <motion.span
-              className="pointer-events-none absolute right-2 top-7 h-1.5 w-1.5 rounded-full bg-neutral-400/50"
-              animate={prefersReduced ? undefined : { x: [2, 12], scale: [0.6, 1.5], opacity: [0.45, 0] }}
-              transition={{ duration: 1.1, repeat: Infinity, ease: "easeOut", delay: 0.45 }}
+              className="pointer-events-none absolute left-2 top-7 h-1.5 w-1.5 rounded-full bg-neutral-400/50"
+              animate={prefersReduced ? undefined : { x: [-2, -12], scale: [0.6, 1.5], opacity: [0.45, 0] }}
+              transition={{ duration: 0.95, repeat: Infinity, ease: "easeOut", delay: 0.35 }}
             />
             {/* Garis kecepatan tersibak di belakang motor */}
             <motion.span
-              className="pointer-events-none absolute right-0 top-6 h-[3px] w-5 rounded-full bg-white/75"
-              animate={prefersReduced ? undefined : { x: [-4, 16], opacity: [0, 0.95, 0] }}
-              transition={{ duration: 0.55, repeat: Infinity, ease: "easeOut" }}
+              className="pointer-events-none absolute left-0 top-6 h-[3px] w-5 rounded-full bg-white/75"
+              animate={prefersReduced ? undefined : { x: [4, -6, -16], opacity: [0, 0.95, 0] }}
+              transition={{ duration: 0.45, repeat: Infinity, ease: "easeOut" }}
             />
             <motion.span
-              className="pointer-events-none absolute right-0 top-9 h-[3px] w-3.5 rounded-full bg-white/60"
-              animate={prefersReduced ? undefined : { x: [-4, 14], opacity: [0, 0.8, 0] }}
-              transition={{ duration: 0.5, repeat: Infinity, ease: "easeOut", delay: 0.25 }}
+              className="pointer-events-none absolute left-0 top-9 h-[3px] w-3.5 rounded-full bg-white/60"
+              animate={prefersReduced ? undefined : { x: [4, -5, -14], opacity: [0, 0.8, 0] }}
+              transition={{ duration: 0.4, repeat: Infinity, ease: "easeOut", delay: 0.2 }}
             />
           </motion.div>
         </motion.div>
