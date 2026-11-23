@@ -254,6 +254,10 @@ export const COURIER_ANIM_COLORS = [
   "neutral",
 ] as const;
 
+/** Preset gaya animasi spanduk 3D (Profil Admin → "Animasi Beranda") —
+    klasik = wipe teks semula; sisanya varian transformasi 3D (perspektif CSS). */
+export const COURIER_ANIM_STYLES = ["klasik", "flip3d", "carousel3d", "zoom3d", "swing3d"] as const;
+
 export type CourierAnimInfo = {
   enabled: boolean;
   /** teks spanduk — dipotong per kata, kata TERAKHIR diberi warna aksen */
@@ -265,6 +269,8 @@ export type CourierAnimInfo = {
   fontSize: number;
   textColor: (typeof COURIER_ANIM_COLORS)[number];
   accentColor: (typeof COURIER_ANIM_COLORS)[number];
+  /** preset gaya animasi spanduk (klasik = wipe; sisanya varian 3D) */
+  animStyle: (typeof COURIER_ANIM_STYLES)[number];
   /** durasi satu siklus adegan (detik, 6–12) — makin kecil makin cepat */
   cycleSec: number;
   boom: boolean;
@@ -280,6 +286,7 @@ const FALLBACK_COURIER_ANIM: CourierAnimInfo = {
   fontSize: 10,
   textColor: "orange",
   accentColor: "green",
+  animStyle: "klasik",
   cycleSec: 8,
   boom: true,
 };
@@ -309,6 +316,9 @@ function normalizeCourierAnim(raw: unknown): CourierAnimInfo {
     accentColor: (COURIER_ANIM_COLORS as readonly string[]).includes(r.accentColor ?? "")
       ? (r.accentColor as CourierAnimInfo["accentColor"])
       : "green",
+    animStyle: (COURIER_ANIM_STYLES as readonly string[]).includes(r.animStyle ?? "")
+      ? (r.animStyle as CourierAnimInfo["animStyle"])
+      : "klasik",
     cycleSec: num(r.cycleSec, 6, 12, 8),
     boom: r.boom !== false,
   };

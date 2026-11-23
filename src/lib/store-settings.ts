@@ -780,6 +780,17 @@ export const COURIER_ANIM_COLORS = [
 ] as const;
 export type CourierAnimColor = (typeof COURIER_ANIM_COLORS)[number];
 
+/** Preset gaya animasi spanduk 3D (pilihan admin di "Animasi Beranda").
+    klasik = wipe teks semula; sisanya varian transformasi 3D (perspektif CSS). */
+export const COURIER_ANIM_STYLES = [
+  "klasik",
+  "flip3d",
+  "carousel3d",
+  "zoom3d",
+  "swing3d",
+] as const;
+export type CourierAnimStyle = (typeof COURIER_ANIM_STYLES)[number];
+
 /** Batas teks spanduk (karakter) & jumlah kata maksimal (kata ke-N jadi aksen). */
 export const COURIER_ANIM_TEXT_MAX = 48;
 export const COURIER_ANIM_WORDS_MAX = 5;
@@ -809,6 +820,8 @@ export type CourierAnimConfig = {
   textColor: CourierAnimColor;
   /** warna kata terakhir (aksen) */
   accentColor: CourierAnimColor;
+  /** preset gaya animasi spanduk (klasik = wipe; sisanya varian 3D) */
+  animStyle: CourierAnimStyle;
   /** durasi satu siklus adegan (detik, 6–12) — makin kecil makin cepat */
   cycleSec: number;
   /** tampilkan ledakan BOOM! 🎉 + konfeti di tengah siklus */
@@ -826,6 +839,7 @@ export const DEFAULT_COURIER_ANIM: CourierAnimConfig = {
   fontSize: 10,
   textColor: "orange",
   accentColor: "green",
+  animStyle: "klasik",
   cycleSec: 8,
   boom: true,
 };
@@ -858,6 +872,9 @@ export function normalizeCourierAnimConfig(raw: unknown): CourierAnimConfig {
     accentColor: (COURIER_ANIM_COLORS as readonly string[]).includes(r.accentColor ?? "")
       ? (r.accentColor as CourierAnimColor)
       : DEFAULT_COURIER_ANIM.accentColor,
+    animStyle: (COURIER_ANIM_STYLES as readonly string[]).includes(r.animStyle ?? "")
+      ? (r.animStyle as CourierAnimStyle)
+      : DEFAULT_COURIER_ANIM.animStyle,
     cycleSec: clampNum(r.cycleSec, COURIER_ANIM_CYCLE_MIN, COURIER_ANIM_CYCLE_MAX, DEFAULT_COURIER_ANIM.cycleSec),
     boom: r.boom !== false,
   };

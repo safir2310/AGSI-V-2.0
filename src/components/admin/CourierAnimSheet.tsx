@@ -10,6 +10,7 @@ import { apiFetch } from "@/lib/api";
 import {
   COURIER_ANIM_COLORS,
   COURIER_ANIM_FONTS,
+  COURIER_ANIM_STYLES,
   COURIER_ANIM_WEIGHTS,
   refreshSettings,
   useSettingsStore,
@@ -34,6 +35,21 @@ const WEIGHT_LABELS: Record<CourierAnimInfo["weight"], string> = {
   bold: "Tebal",
   extrabold: "Sangat Tebal",
   black: "Hitam",
+};
+/** Label & penjelasan preset gaya animasi spanduk (klasik + varian 3D). */
+const STYLE_LABELS: Record<CourierAnimInfo["animStyle"], string> = {
+  klasik: "Klasik",
+  flip3d: "Kartu 3D",
+  carousel3d: "Karosel 3D",
+  zoom3d: "Zoom 3D",
+  swing3d: "Ayun 3D",
+};
+const STYLE_DESCS: Record<CourierAnimInfo["animStyle"], string> = {
+  klasik: "Teks terbuka wipe kiri → kanan seperti spanduk toko (bawaan).",
+  flip3d: "Kapsul membalik dari atas seperti kartu 3D, melipat balik saat motor pergi.",
+  carousel3d: "Kapsul masuk berputar seperti pintu karosel, keluar memutar menjauh.",
+  zoom3d: "Kapsul mendekat dari kejauhan (kecil & buram), melesat mendekat saat pergi.",
+  swing3d: "Kapsul bergantung & berayun seperti papan toko, keluar sambil mengayun.",
 };
 /** Warna pratinjau swatch (hex — hanya untuk UI; teks asli memakai kelas Tailwind). */
 const COLOR_HEX: Record<CourierAnimInfo["textColor"], string> = {
@@ -304,6 +320,31 @@ export function CourierAnimSheet({ open, onClose }: CourierAnimSheetProps) {
                       </ChoiceChip>
                     ))}
                   </div>
+                </div>
+
+                {/* ===== GAYA ANIMASI 3D ===== */}
+                <div className="rounded-2xl border border-orange-100 bg-white p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[13px] font-bold text-neutral-800">Gaya Animasi Spanduk</p>
+                    <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-orange-700">
+                      3D
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {COURIER_ANIM_STYLES.map((s) => (
+                      <ChoiceChip
+                        key={s}
+                        active={draft.animStyle === s}
+                        onClick={() => setDraft((d) => ({ ...d, animStyle: s }))}
+                      >
+                        {STYLE_LABELS[s]}
+                      </ChoiceChip>
+                    ))}
+                  </div>
+                  <p className="mt-2.5 rounded-xl bg-orange-50 px-3 py-2 text-[11px] leading-relaxed text-neutral-600 ring-1 ring-orange-100">
+                    {STYLE_DESCS[draft.animStyle]} Coba satu per satu — pratinjau di atas langsung
+                    berubah.
+                  </p>
                 </div>
 
                 {/* ===== GAYA HURUF ===== */}

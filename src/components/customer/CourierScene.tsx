@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion, type TargetAndTransition, type Transition } from "framer-motion";
 import type { CourierAnimInfo } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
@@ -75,6 +75,52 @@ function splitBannerWords(text: string): SceneWord[] {
   return list.map((t, i) => ({ text: t, accent: i === list.length - 1 }));
 }
 
+/** Preset animasi kapsul spanduk 3D per gaya pilihan admin. Semua preset
+    memakai garis waktu yang sama dengan kata-katanya (7 titik fraksi siklus,
+    membentang 0→1 dengan tahan di kedua ujung — framer-motion memakai WAAPI:
+    times wajib berakhir di 1 agar teks tidak "muncul balik" setelah motor
+    pergi) dan transformPerspective agar rotasi terasa benar-benar 3D.
+    klasik = null (wipe clip-path semula, inline di JSX). */
+function pill3dAnim(style: CourierAnimInfo["animStyle"]): TargetAndTransition | null {
+  const P = [900, 900, 900, 900, 900, 900, 900];
+  switch (style) {
+    case "flip3d": // Kartu 3D — membalik dari atas seperti kartu, melipat balik saat motor pergi
+      return {
+        transformPerspective: P,
+        rotateX: [88, 88, 46, 0, 0, -88, -88],
+        opacity: [0, 0, 0.65, 1, 1, 0, 0],
+        y: [12, 12, 3, 0, 0, -8, -8],
+        scale: [0.92, 0.92, 1.03, 1, 1, 0.95, 0.95],
+      };
+    case "carousel3d": // Karosel 3D — masuk berputar seperti pintu karosel, keluar memutar menjauh
+      return {
+        transformPerspective: [1100, 1100, 1100, 1100, 1100, 1100, 1100],
+        rotateY: [-104, -104, -62, 0, 0, 118, 118],
+        opacity: [0, 0, 0.7, 1, 1, 0, 0],
+        x: [-16, -16, -7, 0, 0, 18, 18],
+      };
+    case "zoom3d": // Zoom 3D — mendekat dari kejauhan (kecil & buram), melesat mendekat saat pergi
+      return {
+        transformPerspective: P,
+        scale: [0.22, 0.22, 0.82, 1, 1, 1.65, 1.65],
+        opacity: [0, 0, 0.85, 1, 1, 0, 0],
+        filter: ["blur(7px)", "blur(7px)", "blur(2px)", "blur(0px)", "blur(0px)", "blur(9px)", "blur(9px)"],
+      };
+    case "swing3d": // Ayun 3D — bergantung & berayun seperti papan toko, keluar sambil mengayun
+      return {
+        transformPerspective: P,
+        rotateY: [64, 64, -16, 10, -6, 30, 30],
+        rotateZ: [0, 0, 3, -2, 1.5, -7, -7],
+        opacity: [0, 0, 1, 1, 1, 0, 0],
+      };
+    default:
+      return null;
+  }
+}
+
+/** Ease 7-titik preset 3D — sama dengan ease kata (pop-in easeOut). */
+const PILL_3D_EASE: Transition["ease"] = ["linear", "easeOut", "easeOut", "linear", "easeIn", "linear"];
+
 export function CourierScene({ cfg }: { cfg: CourierAnimInfo }) {
   const prefersReduced = useReducedMotion();
   const words = useMemo(() => splitBannerWords(cfg.text), [cfg.text]);
@@ -108,17 +154,22 @@ export function CourierScene({ cfg }: { cfg: CourierAnimInfo }) {
   // terakhir baru setengah pop-up, sehingga tepi terbukanya kapsul SELALU
   // berada di depan kata yang sudah tampak penuh → tidak ada kata terpotong
   const wipeEnd = wordIn(words.length - 1) + WORD_POP * 0.5;
+  // Preset gaya animasi kapsul pilihan admin — klasik = wipe semula,
+  // selain itu transformasi 3D dengan garis waktu yang sama dengan kata
+  const pill3d = pill3dAnim(cfg.animStyle);
+  const pill3dTimes = [0, wordIn(0), wordIn(0) + WORD_POP, wordIn(0) + WORD_POP * 2, RIDE.textOut, RIDE.textGone, 1];
 
   return (
     /* ===== JALANAN ANIMASI: KURIR + TIPOGRAFI KINETIK (dikelola admin dari
-        Profil → "Animasi Beranda": teks, font, gaya, warna, ukuran, kecepatan,
-        BOOM) — satu siklus cfg.cycleSec dtk: motor masuk dari kiri lalu
-        BERHENTI → spanduk di belakangnya terbuka (wipe kiri → kanan) sambil
-        kata-katanya muncul berurutan dengan tipografi kinetik (slide-in per
-        kata, tracking mengetat, motion blur hilang, pop-up) → BOOM! konfeti →
-        motor melesat ke kanan sambil teks memudar (fade out + tracking melebar
-        + motion blur). Emoji 🛵 dibalik agar menghadap kanan. Murni
-        dekorasi: aria-hidden + pointer-events-none, dimatikan saat
+        Profil → "Animasi Beranda": teks, font, gaya huruf, warna, ukuran,
+        GAYA ANIMASI 3D, kecepatan, BOOM) — satu siklus cfg.cycleSec dtk:
+        motor masuk dari kiri lalu BERHENTI → spanduk di belakangnya tampil
+        dengan gaya pilihan admin (wipe klasik / flip / karosel / zoom / ayun
+        3D) sambil kata-katanya muncul berurutan dengan tipografi kinetik
+        (slide-in per kata, tracking mengetat, motion blur hilang, pop-up) →
+        BOOM! konfeti → motor melesat ke kanan sambil teks memudar (fade out +
+        tracking melebar + motion blur). Emoji 🛵 dibalik agar menghadap kanan.
+        Murni dekorasi: aria-hidden + pointer-events-none, dimatikan saat
         reduced-motion (motor & teks tampil statis, BOOM disembunyikan). */
     <section
       ref={roadRef}
@@ -225,9 +276,11 @@ export function CourierScene({ cfg }: { cfg: CourierAnimInfo }) {
             animate={prefersReduced ? undefined : { rotate: [0, -1, 0], y: [0, 0.6, 0] }}
             transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
           >
-            {/* Kapsul spanduk — TEXT REVEAL: terbuka dari kiri ke kanan (clip-path),
-                lalu menutup ke arah kanan saat motor pergi. Font, ketebalan,
-                gaya huruf & ukuran mengikuti konfigurasi admin */}
+            {/* Kapsul spanduk — gaya animasi pilihan admin:
+                klasik  = TEXT REVEAL wipe kiri→kanan (clip-path), menutup kanan saat pergi;
+                flip3d / carousel3d / zoom3d / swing3d = varian 3D (rotateX/Y, zoom, ayun)
+                dengan perspektif CSS. Font, ketebalan, gaya huruf & ukuran
+                mengikuti konfigurasi admin */}
             <motion.span
               className={cn(
                 "flex items-center gap-[3px] whitespace-nowrap rounded-full bg-white px-2.5 py-1 shadow-md ring-1 ring-orange-200",
@@ -239,23 +292,36 @@ export function CourierScene({ cfg }: { cfg: CourierAnimInfo }) {
               animate={
                 prefersReduced
                   ? undefined
-                  : {
-                      clipPath: [
-                        "inset(-40% 100% -40% 0%)",
-                        "inset(-40% 100% -40% 0%)",
-                        "inset(-40% -12% -40% 0%)",
-                        "inset(-40% -12% -40% 0%)",
-                        "inset(-40% -12% -40% 110%)",
-                        "inset(-40% -12% -40% 110%)",
-                      ],
-                    }
+                  : pill3d
+                    ? pill3d
+                    : {
+                        clipPath: [
+                          "inset(-40% 100% -40% 0%)",
+                          "inset(-40% 100% -40% 0%)",
+                          "inset(-40% -12% -40% 0%)",
+                          "inset(-40% -12% -40% 0%)",
+                          "inset(-40% -12% -40% 110%)",
+                          "inset(-40% -12% -40% 110%)",
+                        ],
+                      }
               }
-              transition={{
-                duration: cycle,
-                times: [0, RIDE.textIn, wipeEnd, RIDE.textOut, RIDE.textGone, 1],
-                ease: ["linear", "linear", "linear", "easeIn", "linear"],
-                repeat: Infinity,
-              }}
+              transition={
+                prefersReduced
+                  ? undefined
+                  : pill3d
+                    ? {
+                        duration: cycle,
+                        times: pill3dTimes,
+                        ease: PILL_3D_EASE,
+                        repeat: Infinity,
+                      }
+                    : {
+                        duration: cycle,
+                        times: [0, RIDE.textIn, wipeEnd, RIDE.textOut, RIDE.textGone, 1],
+                        ease: ["linear", "linear", "linear", "easeIn", "linear"],
+                        repeat: Infinity,
+                      }
+              }
             >
               {words.map((w, i) => {
                 const tIn = wordIn(i);

@@ -22,8 +22,9 @@ type BannerPopupProps = {
  * Struktur mengikuti referensi:
  *  - Kartu poster PORTRAIT, latar gradien orange AGSI + ornamen pola titik
  *    halftone & lengkung putih tipis.
- *  - Zona gambar di atas: bingkai putih membulat, rasio 4:5 (portrait),
- *    badge hitam "PROMO" di sudut kanan-atas gambar (gaya "Khusus Member").
+ *  - Zona gambar di atas: bingkai putih membulat, rasio 4:5 (portrait).
+ *    (Chip teks "PROMO" dihapus — permintaan pemilik: poster bersih tanpa
+ *    label tambahan; kartu diperkecil sedikit 88vw→80vw / 21rem→19rem.)
  *  - Judul pada PILL putih miring (gaya pill "FRESTEA/VAGANZA") + blok teks
  *    syarat putih tebal rata tengah.
  *  - Tombol CTA besar "BELANJA YUK!" amber dengan bevel 3D, posisinya DI
@@ -104,7 +105,7 @@ export function BannerPopup({ go }: BannerPopupProps) {
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={prefersReduced ? undefined : { scale: 0.9, y: 20, opacity: 0 }}
             transition={{ type: "spring", stiffness: 320, damping: 24 }}
-            className="relative flex w-full max-w-[min(88vw,21rem)] flex-col items-center"
+            className="relative flex w-full max-w-[min(80vw,19rem)] flex-col items-center"
           >
             {/* Tombol tutup — lingkaran putih ✕ di tepi kanan-atas kartu (di luar kartu, seperti referensi) */}
             <button
@@ -136,7 +137,8 @@ export function BannerPopup({ go }: BannerPopupProps) {
                 <path d="M0,70 C30,50 70,85 100,62" fill="none" stroke="currentColor" strokeWidth="1.2" />
               </svg>
 
-              {/* Zona gambar atas — bingkai putih membulat + badge PROMO hitam di sudut kanan-atas */}
+              {/* Zona gambar atas — bingkai putih membulat (tanpa chip teks agar
+                  poster dari admin tampil bersih penuh) */}
               {showImage && (
                 <div className="relative m-3 mb-0 overflow-hidden rounded-2xl ring-[3px] ring-white/70">
                   <img
@@ -145,9 +147,6 @@ export function BannerPopup({ go }: BannerPopupProps) {
                     onError={() => setImgBroken(true)}
                     className="aspect-[4/5] max-h-[46dvh] w-full object-cover"
                   />
-                  <span className="absolute right-2.5 top-2.5 rounded-md bg-neutral-900/90 px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-white shadow">
-                    Promo
-                  </span>
                 </div>
               )}
 

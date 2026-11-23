@@ -9,6 +9,7 @@ import {
   COURIER_ANIM_FONT_MAX,
   COURIER_ANIM_CYCLE_MIN,
   COURIER_ANIM_CYCLE_MAX,
+  COURIER_ANIM_STYLES,
   DEFAULT_COURIER_ANIM,
   MENU_PROMO_BANNER_THEMES,
   getBannerSettings,
@@ -606,6 +607,12 @@ export async function PUT(req: NextRequest) {
           return NextResponse.json({ error: "Warna aksen tidak dikenal." }, { status: 400 });
         }
         cap.accentColor = String(c.accentColor) as CourierAnimPatch["accentColor"];
+      }
+      if ("animStyle" in c) {
+        if (!(COURIER_ANIM_STYLES as readonly string[]).includes(String(c.animStyle))) {
+          return NextResponse.json({ error: "Gaya animasi tidak dikenal." }, { status: 400 });
+        }
+        cap.animStyle = String(c.animStyle) as CourierAnimPatch["animStyle"];
       }
       if ("cycleSec" in c) {
         const n = Number(c.cycleSec);
