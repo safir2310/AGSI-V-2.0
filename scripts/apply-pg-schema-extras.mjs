@@ -33,6 +33,11 @@ let files = [];
 try {
   files = readdirSync(sqlDir)
     .filter((f) => f.toLowerCase().endsWith(".sql"))
+    // Lewati file era SQLite (mis. sqlite-schema.sql) — sintaksnya tidak valid
+    // di Postgres ("type datetime does not exist") dan membuat seluruh run
+    // schema-extras gagal → patch yang berada SETELAH file itu tidak pernah
+    // diterapkan (v1.3.35).
+    .filter((f) => !f.toLowerCase().includes("sqlite"))
     .sort();
 } catch {
   console.log("[schema-extras] Tidak ada folder prisma/sql — lewati.");

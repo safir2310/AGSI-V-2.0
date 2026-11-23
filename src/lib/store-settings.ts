@@ -26,6 +26,7 @@ import type { StoreSetting } from "@prisma/client";
  * pembuatan baris hanya terjadi di jalur tulis atau bila benar-benar belum ada.
  */
 export async function readStoreSettingsRow(): Promise<StoreSetting> {
+  await ensureCourierAnimColumn();
   const row = await db.storeSetting.findUnique({ where: { id: "main" } });
   if (row) return row;
   // Baris belum ada (instalasi baru) → buat sekali. Balapan antar request
@@ -94,6 +95,7 @@ type RawMetaRow = {
  * Dulu findUnique seluruh baris mengirim ±9 MB per request /api/settings.
  */
 export async function readStoreSettingsMetaRow(): Promise<StoreSettingsMetaRow> {
+  await ensureCourierAnimColumn();
   const query = () =>
     db.$queryRaw<RawMetaRow[]>`
       SELECT "deliveryEnabled", "qrisEnabled", "ewalletEnabled",
@@ -183,6 +185,30 @@ async function ensureStoreRowForWrite(): Promise<void> {
     await db.storeSetting.create({ data: { id: "main" } });
   } catch {
     // Baris dibuat request lain di saat bersamaan — aman lanjut ke update.
+  }
+}
+
+/* [JARING PENGAMAN] Kolom "courierAnim" bisa belum ada di DB yang dihubungi
+   RUNTIME bila patch SQL build tidak sampai ke database yang sama (mis.
+   DIRECT_DATABASE_URL menunjuk DB berbeda dari DATABASE_URL — kasus nyata
+   v1.3.35: 015-courier-anim.sql "berhasil" di DB build, runtime tetap tanpa
+   kolom → /api/settings jatuh ke fallback dan banner/promo tersimpan tidak
+   tampil). Buat kolomnya SEKALI per proses lewat koneksi runtime yang pasti
+   benar — ADD COLUMN IF NOT EXISTS murni aditif & idempotent (sama dengan
+   prisma/sql/015-courier-anim.sql), tanpa menyentuh data apa pun. */
+let courierAnimColumnEnsured = false;
+async function ensureCourierAnimColumn(): Promise<void> {
+  if (courierAnimColumnEnsured) return;
+  courierAnimColumnEnsured = true;
+  try {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "StoreSetting" ADD COLUMN IF NOT EXISTS "courierAnim" JSONB`
+    );
+  } catch (e) {
+    console.warn(
+      "[store-settings] penerapan kolom courierAnim lewat runtime gagal (abaikan bila memang sudah ada):",
+      e instanceof Error ? e.message : e
+    );
   }
 }
 
