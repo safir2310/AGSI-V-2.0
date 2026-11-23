@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
 import {
+  COURIER_ANIM_COLORS,
+  COURIER_ANIM_FONTS,
+  COURIER_ANIM_WEIGHTS,
+  COURIER_ANIM_TEXT_MAX,
+  COURIER_ANIM_FONT_MIN,
+  COURIER_ANIM_FONT_MAX,
+  COURIER_ANIM_CYCLE_MIN,
+  COURIER_ANIM_CYCLE_MAX,
+  DEFAULT_COURIER_ANIM,
   MENU_PROMO_BANNER_THEMES,
   getBannerSettings,
+  getCourierAnimSettings,
   getMenuHeroSettings,
   getMenuPromoSettings,
   getPromoStripSettings,
@@ -10,6 +20,7 @@ import {
   getStoreSettingsSnapshot,
   getVideoPromoSettings,
   updateBannerSettings,
+  updateCourierAnimSettings,
   updateMenuHeroSettings,
   updateMenuPromoSettings,
   updatePromoStripSettings,
@@ -17,6 +28,7 @@ import {
   updateVideoPromoSettings,
   VIDEO_PROMO_MAX_SLIDES,
   type BannerPatch,
+  type CourierAnimPatch,
   type MenuHeroPatch,
   type MenuPromoBannerPatch,
   type MenuPromoPatch,
@@ -94,6 +106,9 @@ export async function GET() {
               : null,
         })),
       },
+      // Adegan animasi kurir + tipografi kinetik Beranda (konfigurasi kecil,
+      // aman ikut snapshot publik — tanpa bytes media)
+      courierAnim: snap.courierAnim,
     });
   } catch {
     return NextResponse.json(
@@ -147,6 +162,8 @@ export async function GET() {
             videoUrl: null,
           })),
         },
+        // Adegan animasi kurir + tipografi kinetik Beranda (konfigurasi bawaan)
+        courierAnim: { ...DEFAULT_COURIER_ANIM },
       },
       { status: 200 }
     );
@@ -162,6 +179,8 @@ export async function GET() {
  * Body mPromo : { menuPromoVouchersEnabled?, menuPromoVouchersMax?, menuPromoBanners?: [...] } —
  *               carousel promo Menu: slide voucher + 2 banner promo custom
  *               (menuPromoBanners: [{ slot: 1|2, enabled?, badge?, title?, text?, emoji?, theme?, imageData?, imageRemove? }])
+ * Body anim   : { courierAnim?: { enabled?, text?, font?, weight?, caps?, italic?, fontSize?, textColor?, accentColor?, cycleSec?, boom? } } —
+ *               adegan animasi kurir + tipografi kinetik di Beranda
  */
 export async function PUT(req: NextRequest) {
   const user = await getCurrentUser();
@@ -517,13 +536,104 @@ export async function PUT(req: NextRequest) {
       promoResult = await updatePromoStripSettings(pp);
     }
 
+    // ===== Animasi kurir + tipografi kinetik Beranda (satu objek JSON) =====
+    let courierAnimResult: Awaited<ReturnType<typeof updateCourierAnimSettings>> | null = null;
+    if ("courierAnim" in body) {
+      const raw = body.courierAnim;
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        return NextResponse.json({ error: "courierAnim harus berupa objek." }, { status: 400 });
+      }
+      const c = raw as Record<string, unknown>;
+      const cap: CourierAnimPatch = {};
+      if ("enabled" in c) {
+        if (typeof c.enabled !== "boolean") {
+          return NextResponse.json({ error: "courierAnim.enabled harus boolean." }, { status: 400 });
+        }
+        cap.enabled = c.enabled;
+      }
+      if ("text" in c) {
+        const t = String(c.text ?? "").trim();
+        if (t.length > COURIER_ANIM_TEXT_MAX) {
+          return NextResponse.json(
+            { error: `Teks spanduk maksimal ${COURIER_ANIM_TEXT_MAX} karakter.` },
+            { status: 400 }
+          );
+        }
+        cap.text = t || DEFAULT_COURIER_ANIM.text; // kosong → kembali ke teks bawaan
+      }
+      if ("font" in c) {
+        if (!(COURIER_ANIM_FONTS as readonly string[]).includes(String(c.font))) {
+          return NextResponse.json({ error: "Font teks tidak dikenal." }, { status: 400 });
+        }
+        cap.font = String(c.font) as CourierAnimPatch["font"];
+      }
+      if ("weight" in c) {
+        if (!(COURIER_ANIM_WEIGHTS as readonly string[]).includes(String(c.weight))) {
+          return NextResponse.json({ error: "Ketebalan teks tidak dikenal." }, { status: 400 });
+        }
+        cap.weight = String(c.weight) as CourierAnimPatch["weight"];
+      }
+      if ("caps" in c) {
+        if (typeof c.caps !== "boolean") {
+          return NextResponse.json({ error: "courierAnim.caps harus boolean." }, { status: 400 });
+        }
+        cap.caps = c.caps;
+      }
+      if ("italic" in c) {
+        if (typeof c.italic !== "boolean") {
+          return NextResponse.json({ error: "courierAnim.italic harus boolean." }, { status: 400 });
+        }
+        cap.italic = c.italic;
+      }
+      if ("fontSize" in c) {
+        const n = Number(c.fontSize);
+        if (!Number.isFinite(n) || n < COURIER_ANIM_FONT_MIN || n > COURIER_ANIM_FONT_MAX) {
+          return NextResponse.json(
+            { error: `Ukuran teks harus angka ${COURIER_ANIM_FONT_MIN}–${COURIER_ANIM_FONT_MAX}.` },
+            { status: 400 }
+          );
+        }
+        cap.fontSize = n;
+      }
+      if ("textColor" in c) {
+        if (!(COURIER_ANIM_COLORS as readonly string[]).includes(String(c.textColor))) {
+          return NextResponse.json({ error: "Warna teks tidak dikenal." }, { status: 400 });
+        }
+        cap.textColor = String(c.textColor) as CourierAnimPatch["textColor"];
+      }
+      if ("accentColor" in c) {
+        if (!(COURIER_ANIM_COLORS as readonly string[]).includes(String(c.accentColor))) {
+          return NextResponse.json({ error: "Warna aksen tidak dikenal." }, { status: 400 });
+        }
+        cap.accentColor = String(c.accentColor) as CourierAnimPatch["accentColor"];
+      }
+      if ("cycleSec" in c) {
+        const n = Number(c.cycleSec);
+        if (!Number.isFinite(n) || n < COURIER_ANIM_CYCLE_MIN || n > COURIER_ANIM_CYCLE_MAX) {
+          return NextResponse.json(
+            { error: `Kecepatan siklus harus angka ${COURIER_ANIM_CYCLE_MIN}–${COURIER_ANIM_CYCLE_MAX} detik.` },
+            { status: 400 }
+          );
+        }
+        cap.cycleSec = n;
+      }
+      if ("boom" in c) {
+        if (typeof c.boom !== "boolean") {
+          return NextResponse.json({ error: "courierAnim.boom harus boolean." }, { status: 400 });
+        }
+        cap.boom = c.boom;
+      }
+      courierAnimResult = await updateCourierAnimSettings(cap);
+    }
+
     if (
       Object.keys(patch).length === 0 &&
       !bannerResult &&
       !promoResult &&
       !menuHeroResult &&
       !menuPromoResult &&
-      !videoPromoResult
+      !videoPromoResult &&
+      !courierAnimResult
     ) {
       return NextResponse.json(
         { error: "Tidak ada pengaturan yang diubah." },
@@ -553,6 +663,7 @@ export async function PUT(req: NextRequest) {
       },
       menuPromo: menuPromoResult ?? (await getMenuPromoSettings()),
       videoPromo: videoPromoResult ?? (await getVideoPromoSettings()),
+      courierAnim: courierAnimResult ?? (await getCourierAnimSettings()),
     });
   } catch {
     return NextResponse.json({ error: "Terjadi kesalahan server." }, { status: 500 });

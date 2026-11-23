@@ -464,6 +464,14 @@ model StoreSetting {
   videoPromoSlot2Mime       String?
   videoPromoSlot3Data       String? // video slide 3 (base64)
   videoPromoSlot3Mime       String?
+  // ===== ANIMASI KURIR + TIPOGRAFI KINETIK DI BERANDA =====
+  // Diatur admin dari Profil → "Animasi Beranda". Satu kolom JSON berisi
+  // konfigurasi adegan motor kurir + spanduk teks: saklar aktif, teks
+  // spanduk, font/gaya/ketebalan, warna teks & aksen, ukuran huruf, kecepatan
+  // siklus, dan ledakan BOOM. JSON agar mudah ditambah tanpa kolom baru;
+  // dinormalisasi + divalidasi server-side (lihat store-settings.ts — nilai
+  // bawaan = tampilan sebelum ada setting).
+  courierAnim               Json?
   updatedAt                 DateTime  @updatedAt
 }
 

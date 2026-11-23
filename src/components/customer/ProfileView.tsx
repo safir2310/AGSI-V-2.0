@@ -23,6 +23,7 @@ import {
   ScanFace,
   Settings2,
   ShieldCheck,
+  Sparkles,
   Store,
   UserPlus,
 } from "lucide-react";
@@ -35,6 +36,7 @@ import { KurirsSheet } from "@/components/admin/KurirsSheet";
 import { SetoranKurirSheet } from "@/components/admin/SetoranKurirSheet";
 import { StoreSettingsSheet } from "@/components/admin/StoreSettingsSheet";
 import { BannerSettingsSheet } from "@/components/admin/BannerSettingsSheet";
+import { CourierAnimSheet } from "@/components/admin/CourierAnimSheet";
 import { QrisManagerSheet } from "@/components/admin/QrisManagerSheet";
 import { PosterGeneratorSheet } from "@/components/admin/PosterGeneratorSheet";
 import { LegalSheet } from "@/components/shared/LegalSheet";
@@ -90,6 +92,7 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const [adminsOpen, setAdminsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bannerOpen, setBannerOpen] = useState(false);
+  const [animOpen, setAnimOpen] = useState(false);
   const [qrisOpen, setQrisOpen] = useState(false);
   const [posterOpen, setPosterOpen] = useState(false);
   const [setoranOpen, setSetoranOpen] = useState(false);
@@ -169,6 +172,7 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const ewalletEnabled = useSettingsStore((s) => s.ewalletEnabled);
   const banner = useSettingsStore((s) => s.banner);
   const menuHero = useSettingsStore((s) => s.menuHero);
+  const courierAnim = useSettingsStore((s) => s.courierAnim);
   const spent = orders
     .filter((o) => o.status === "COMPLETED")
     .reduce((s, o) => s + o.total, 0);
@@ -363,6 +367,14 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
           onClick: () => setBannerOpen(true),
         },
         {
+          icon: Sparkles,
+          label: "Animasi Beranda",
+          desc: `Motor kurir & teks berjalan ${
+            courierAnim.enabled ? "aktif ✓" : "nonaktif"
+          } — gaya teks, font, warna, kecepatan`,
+          onClick: () => setAnimOpen(true),
+        },
+        {
           icon: QrCode,
           label: "Pengelola QRIS",
           desc: qrisDesc ?? "Dana masuk, status & tanggal transaksi QRIS — kelola di sini",
@@ -530,6 +542,18 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
           onClose={() => {
             setBannerOpen(false);
             // Deskripsi menu ikut segar setelah banner disimpan
+            void refreshSettings();
+          }}
+        />
+      )}
+      {/* Sheet animasi beranda — kelola adegan kurir + tipografi kinetik
+          (teks, font, gaya, warna, ukuran, kecepatan, BOOM) — admin/owner */}
+      {isAdmin && (
+        <CourierAnimSheet
+          open={animOpen}
+          onClose={() => {
+            setAnimOpen(false);
+            // Deskripsi menu ikut segar setelah animasi disimpan
             void refreshSettings();
           }}
         />

@@ -232,6 +232,88 @@ export type VideoPromoInfo = {
   slides: VideoPromoSlideInfo[];
 };
 
+/* ================= ANIMASI KURIR + TIPOGRAFI KINETIK DI BERANDA ================= */
+
+/**
+ * Adegan animasi kurir + spanduk teks di Beranda
+ * (Profil Admin → "Animasi Beranda"): saklar aktif, teks spanduk, font,
+ * gaya/ketebalan huruf, warna teks & aksen, ukuran, kecepatan siklus, BOOM.
+ * Nilai bawaan = tampilan sebelum fitur setting ada. Server juga menormalisasi
+ * (store-settings.ts) — duplikasi kecil di sini sebagai tameng payload rusak.
+ */
+export const COURIER_ANIM_FONTS = ["default", "serif", "mono", "system"] as const;
+export const COURIER_ANIM_WEIGHTS = ["bold", "extrabold", "black"] as const;
+export const COURIER_ANIM_COLORS = [
+  "orange",
+  "red",
+  "rose",
+  "amber",
+  "green",
+  "blue",
+  "violet",
+  "neutral",
+] as const;
+
+export type CourierAnimInfo = {
+  enabled: boolean;
+  /** teks spanduk — dipotong per kata, kata TERAKHIR diberi warna aksen */
+  text: string;
+  font: (typeof COURIER_ANIM_FONTS)[number];
+  weight: (typeof COURIER_ANIM_WEIGHTS)[number];
+  caps: boolean;
+  italic: boolean;
+  fontSize: number;
+  textColor: (typeof COURIER_ANIM_COLORS)[number];
+  accentColor: (typeof COURIER_ANIM_COLORS)[number];
+  /** durasi satu siklus adegan (detik, 6–12) — makin kecil makin cepat */
+  cycleSec: number;
+  boom: boolean;
+};
+
+const FALLBACK_COURIER_ANIM: CourierAnimInfo = {
+  enabled: true,
+  text: "Ayam Geprek Sambal Ijo",
+  font: "default",
+  weight: "black",
+  caps: true,
+  italic: false,
+  fontSize: 10,
+  textColor: "orange",
+  accentColor: "green",
+  cycleSec: 8,
+  boom: true,
+};
+
+function normalizeCourierAnim(raw: unknown): CourierAnimInfo {
+  const r = (raw ?? {}) as Partial<CourierAnimInfo>;
+  const text = typeof r.text === "string" ? r.text.trim().slice(0, 48) : "";
+  const num = (v: unknown, min: number, max: number, def: number) => {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
+  };
+  return {
+    enabled: r.enabled !== false,
+    text: text || FALLBACK_COURIER_ANIM.text,
+    font: (COURIER_ANIM_FONTS as readonly string[]).includes(r.font ?? "")
+      ? (r.font as CourierAnimInfo["font"])
+      : "default",
+    weight: (COURIER_ANIM_WEIGHTS as readonly string[]).includes(r.weight ?? "")
+      ? (r.weight as CourierAnimInfo["weight"])
+      : "black",
+    caps: r.caps !== false,
+    italic: r.italic === true,
+    fontSize: num(r.fontSize, 8, 12, 10),
+    textColor: (COURIER_ANIM_COLORS as readonly string[]).includes(r.textColor ?? "")
+      ? (r.textColor as CourierAnimInfo["textColor"])
+      : "orange",
+    accentColor: (COURIER_ANIM_COLORS as readonly string[]).includes(r.accentColor ?? "")
+      ? (r.accentColor as CourierAnimInfo["accentColor"])
+      : "green",
+    cycleSec: num(r.cycleSec, 6, 12, 8),
+    boom: r.boom !== false,
+  };
+}
+
 type SettingsState = {
   deliveryEnabled: boolean;
   qrisEnabled: boolean;
@@ -241,6 +323,7 @@ type SettingsState = {
   menuHero: MenuHeroInfo;
   menuPromo: MenuPromoInfo;
   videoPromo: VideoPromoInfo;
+  courierAnim: CourierAnimInfo;
   loaded: boolean;
   loading: boolean;
   load: (force?: boolean) => Promise<void>;
@@ -422,6 +505,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   menuHero: FALLBACK_MENU_HERO,
   menuPromo: FALLBACK_MENU_PROMO,
   videoPromo: FALLBACK_VIDEO_PROMO,
+  courierAnim: FALLBACK_COURIER_ANIM,
   loaded: false,
   loading: false,
   load: async (force = false) => {
@@ -441,6 +525,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           menuHero: normalizeMenuHero(data.menuHero),
           menuPromo: normalizeMenuPromo(data.menuPromo),
           videoPromo: normalizeVideoPromo(data.videoPromo),
+          courierAnim: normalizeCourierAnim(data.courierAnim),
           loaded: true,
         });
       }

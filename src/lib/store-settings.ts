@@ -74,6 +74,7 @@ type StoreSettingsMetaRow = {
   videoPromoSlot1Mime: string | null;
   videoPromoSlot2Mime: string | null;
   videoPromoSlot3Mime: string | null;
+  courierAnim: unknown;
 };
 
 /** Bentuk mentah hasil $queryRaw (boolean bisa 1/0 di SQLite, tanggal bisa string, JSON bisa string). */
@@ -109,7 +110,8 @@ export async function readStoreSettingsMetaRow(): Promise<StoreSettingsMetaRow> 
              ("videoPromoSlot1Data" IS NOT NULL) AS "videoPromoSlot1Data",
              ("videoPromoSlot2Data" IS NOT NULL) AS "videoPromoSlot2Data",
              ("videoPromoSlot3Data" IS NOT NULL) AS "videoPromoSlot3Data",
-             "videoPromoSlot1Mime", "videoPromoSlot2Mime", "videoPromoSlot3Mime"
+             "videoPromoSlot1Mime", "videoPromoSlot2Mime", "videoPromoSlot3Mime",
+             "courierAnim"
       FROM "StoreSetting" WHERE "id" = 'main' LIMIT 1`;
 
   let r = (await query())[0];
@@ -169,6 +171,7 @@ export async function readStoreSettingsMetaRow(): Promise<StoreSettingsMetaRow> 
     videoPromoSlot1Mime: r.videoPromoSlot1Mime,
     videoPromoSlot2Mime: r.videoPromoSlot2Mime,
     videoPromoSlot3Mime: r.videoPromoSlot3Mime,
+    courierAnim: asJson(r.courierAnim),
   };
 }
 
@@ -727,6 +730,130 @@ export async function writeVideoPromoSlotBytes(
   }
 }
 
+/* ================= ANIMASI KURIR + TIPOGRAFI KINETIK DI BERANDA ================= */
+
+/** Pilihan font teks spanduk animasi (stack CSS aman di semua perangkat). */
+export const COURIER_ANIM_FONTS = ["default", "serif", "mono", "system"] as const;
+export type CourierAnimFont = (typeof COURIER_ANIM_FONTS)[number];
+
+/** Pilihan ketebalan huruf spanduk. */
+export const COURIER_ANIM_WEIGHTS = ["bold", "extrabold", "black"] as const;
+export type CourierAnimWeight = (typeof COURIER_ANIM_WEIGHTS)[number];
+
+/** Palet warna teks (kunci → kelas Tailwind di CourierScene — bukan hex bebas,
+    agar kombinasi selalu kontras di atas kapsul putih & tetap on-brand). */
+export const COURIER_ANIM_COLORS = [
+  "orange",
+  "red",
+  "rose",
+  "amber",
+  "green",
+  "blue",
+  "violet",
+  "neutral",
+] as const;
+export type CourierAnimColor = (typeof COURIER_ANIM_COLORS)[number];
+
+/** Batas teks spanduk (karakter) & jumlah kata maksimal (kata ke-N jadi aksen). */
+export const COURIER_ANIM_TEXT_MAX = 48;
+export const COURIER_ANIM_WORDS_MAX = 5;
+/** Rentang ukuran huruf spanduk (px) & durasi siklus adegan (detik). */
+export const COURIER_ANIM_FONT_MIN = 8;
+export const COURIER_ANIM_FONT_MAX = 12;
+export const COURIER_ANIM_CYCLE_MIN = 6;
+export const COURIER_ANIM_CYCLE_MAX = 12;
+
+/** Konfigurasi adegan animasi kurir di Beranda (kolom JSON courierAnim). */
+export type CourierAnimConfig = {
+  /** tampilkan adegan motor kurir + spanduk di Beranda */
+  enabled: boolean;
+  /** teks spanduk — dipotong per kata, kata TERAKHIR diberi warna aksen */
+  text: string;
+  /** font teks (default = font aplikasi) */
+  font: CourierAnimFont;
+  /** ketebalan huruf */
+  weight: CourierAnimWeight;
+  /** gaya huruf: semua KAPITAL */
+  caps: boolean;
+  /** gaya huruf: miring */
+  italic: boolean;
+  /** ukuran huruf (px) */
+  fontSize: number;
+  /** warna kata biasa */
+  textColor: CourierAnimColor;
+  /** warna kata terakhir (aksen) */
+  accentColor: CourierAnimColor;
+  /** durasi satu siklus adegan (detik, 6–12) — makin kecil makin cepat */
+  cycleSec: number;
+  /** tampilkan ledakan BOOM! 🎉 + konfeti di tengah siklus */
+  boom: boolean;
+};
+
+/** Nilai bawaan — persis tampilan adegan sebelum fitur setting ada. */
+export const DEFAULT_COURIER_ANIM: CourierAnimConfig = {
+  enabled: true,
+  text: "Ayam Geprek Sambal Ijo",
+  font: "default",
+  weight: "black",
+  caps: true,
+  italic: false,
+  fontSize: 10,
+  textColor: "orange",
+  accentColor: "green",
+  cycleSec: 8,
+  boom: true,
+};
+
+/** Jepit angka ke rentang valid (fallback bila bukan angka). */
+function clampNum(v: unknown, min: number, max: number, def: number): number {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
+}
+
+/** Normalisasi konfigurasi mentah dari JSON DB / payload admin → bentuk aman. */
+export function normalizeCourierAnimConfig(raw: unknown): CourierAnimConfig {
+  const r = (raw ?? {}) as Partial<CourierAnimConfig>;
+  const text = typeof r.text === "string" ? r.text.trim().slice(0, COURIER_ANIM_TEXT_MAX) : "";
+  return {
+    enabled: r.enabled !== false,
+    text: text || DEFAULT_COURIER_ANIM.text,
+    font: (COURIER_ANIM_FONTS as readonly string[]).includes(r.font ?? "")
+      ? (r.font as CourierAnimFont)
+      : DEFAULT_COURIER_ANIM.font,
+    weight: (COURIER_ANIM_WEIGHTS as readonly string[]).includes(r.weight ?? "")
+      ? (r.weight as CourierAnimWeight)
+      : DEFAULT_COURIER_ANIM.weight,
+    caps: r.caps !== false,
+    italic: r.italic === true,
+    fontSize: clampNum(r.fontSize, COURIER_ANIM_FONT_MIN, COURIER_ANIM_FONT_MAX, DEFAULT_COURIER_ANIM.fontSize),
+    textColor: (COURIER_ANIM_COLORS as readonly string[]).includes(r.textColor ?? "")
+      ? (r.textColor as CourierAnimColor)
+      : DEFAULT_COURIER_ANIM.textColor,
+    accentColor: (COURIER_ANIM_COLORS as readonly string[]).includes(r.accentColor ?? "")
+      ? (r.accentColor as CourierAnimColor)
+      : DEFAULT_COURIER_ANIM.accentColor,
+    cycleSec: clampNum(r.cycleSec, COURIER_ANIM_CYCLE_MIN, COURIER_ANIM_CYCLE_MAX, DEFAULT_COURIER_ANIM.cycleSec),
+    boom: r.boom !== false,
+  };
+}
+
+/** Ambil setelan animasi kurir (publik — kecil, aman ikut snapshot). */
+export async function getCourierAnimSettings(): Promise<CourierAnimConfig> {
+  const row = await readStoreSettingsRow();
+  return normalizeCourierAnimConfig(row.courierAnim);
+}
+
+export type CourierAnimPatch = Partial<CourierAnimConfig>;
+
+/** Simpan sebagian setelan animasi kurir (merge atas konfigurasi tersimpan). */
+export async function updateCourierAnimSettings(patch: CourierAnimPatch): Promise<CourierAnimConfig> {
+  const existing = await readStoreSettingsRow();
+  const next = normalizeCourierAnimConfig({ ...normalizeCourierAnimConfig(existing.courierAnim), ...patch });
+  await ensureStoreRowForWrite();
+  await db.storeSetting.update({ where: { id: "main" }, data: { courierAnim: next } });
+  return next;
+}
+
 /* ================= SNAPSHOT SEMUA SETELAN — 1 QUERY ================= */
 
 /** Gabungan semua setelan publik (dipakai GET /api/settings — 1 query DB). */
@@ -737,6 +864,7 @@ export type StoreSettingsSnapshot = {
   menuHero: MenuHeroSettings;
   menuPromo: MenuPromoSettings;
   videoPromo: VideoPromoSettings;
+  courierAnim: CourierAnimConfig;
 };
 
 /**
@@ -813,5 +941,6 @@ export async function getStoreSettingsSnapshot(): Promise<StoreSettingsSnapshot>
               : row.videoPromoSlot3Mime,
       })),
     },
+    courierAnim: readCourierAnim(row.courierAnim),
   };
 }
