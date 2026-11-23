@@ -967,6 +967,6 @@ export async function getStoreSettingsSnapshot(): Promise<StoreSettingsSnapshot>
               : row.videoPromoSlot3Mime,
       })),
     },
-    courierAnim: readCourierAnim(row.courierAnim),
+    courierAnim: normalizeCourierAnimConfig(row.courierAnim),
   };
 }
