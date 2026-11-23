@@ -204,6 +204,76 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
         </div>
       </section>
 
+      {/* ===== JALANAN ANIMASI: DRIVER DI ATAS SEPEDA MOTOR BERJALAN =====
+          Inspirasi banner kurir (referensi pemilik): sepeda motor dengan
+          pengendara melaju menyentuh layar dari kanan ke kiri di atas jalan
+          aspal bermarka — dengan goyangan halus, asap knalpot, dan garis
+          kecepatan. Murni dekorasi: aria-hidden + pointer-events-none, dan
+          semua loop transform-only (hemat GPU), dimatikan saat reduced-motion. */}
+      <section
+        aria-hidden
+        className="relative mx-4 h-[4.5rem] overflow-hidden rounded-2xl border border-orange-100 bg-gradient-to-b from-orange-50/80 to-amber-50/50 shadow-sm"
+      >
+        {/* Pemandangan pinggir jalan — kurir mengantar pesanan pulang */}
+        <span className="pointer-events-none absolute left-2 top-1.5 select-none text-2xl leading-none opacity-90">
+          🏠
+        </span>
+        <span className="pointer-events-none absolute right-2 top-2 select-none text-xl leading-none opacity-70">
+          🌳
+        </span>
+        <span className="pointer-events-none absolute right-14 top-2.5 select-none text-base leading-none opacity-60">
+          🌴
+        </span>
+        {/* Permukaan jalan aspal + marka putus-putus kuning */}
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-2 h-3 bg-neutral-700/85"
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(90deg, transparent 0 16px, rgba(252,211,77,0.9) 16px 34px)",
+            backgroundSize: "auto 2px",
+            backgroundPosition: "0 55%",
+            backgroundRepeat: "repeat-x",
+          }}
+        />
+        {/* Driver + sepeda motor melaju: kanan → kiri, siklus ±9,5 dtk + jeda */}
+        <motion.div
+          className="absolute bottom-3 left-0"
+          animate={prefersReduced ? undefined : { x: ["106vw", "-26vw"] }}
+          transition={{ duration: 9.5, repeat: Infinity, repeatDelay: 2.2, ease: "linear" }}
+        >
+          <motion.div
+            className="relative"
+            animate={prefersReduced ? undefined : { y: [0, -3, 0], rotate: [0, 3, 0] }}
+            transition={{ duration: 0.55, repeat: Infinity, ease: "easeInOut" }}
+          >
+            {/* Pengendara di atas sepeda motor (emoji sistem memuat driver) */}
+            <span className="block select-none text-[52px] leading-none drop-shadow-md">🛵</span>
+            {/* Asap knalpot mengepul ke belakang */}
+            <motion.span
+              className="pointer-events-none absolute right-1 top-5 h-2 w-2 rounded-full bg-neutral-400/60"
+              animate={prefersReduced ? undefined : { x: [2, 14], scale: [0.7, 1.6], opacity: [0.55, 0] }}
+              transition={{ duration: 1.3, repeat: Infinity, ease: "easeOut" }}
+            />
+            <motion.span
+              className="pointer-events-none absolute right-2 top-7 h-1.5 w-1.5 rounded-full bg-neutral-400/50"
+              animate={prefersReduced ? undefined : { x: [2, 12], scale: [0.6, 1.5], opacity: [0.45, 0] }}
+              transition={{ duration: 1.1, repeat: Infinity, ease: "easeOut", delay: 0.45 }}
+            />
+            {/* Garis kecepatan tersibak di belakang motor */}
+            <motion.span
+              className="pointer-events-none absolute right-0 top-6 h-[3px] w-5 rounded-full bg-white/75"
+              animate={prefersReduced ? undefined : { x: [-4, 16], opacity: [0, 0.95, 0] }}
+              transition={{ duration: 0.55, repeat: Infinity, ease: "easeOut" }}
+            />
+            <motion.span
+              className="pointer-events-none absolute right-0 top-9 h-[3px] w-3.5 rounded-full bg-white/60"
+              animate={prefersReduced ? undefined : { x: [-4, 14], opacity: [0, 0.8, 0] }}
+              transition={{ duration: 0.5, repeat: Infinity, ease: "easeOut", delay: 0.25 }}
+            />
+          </motion.div>
+        </motion.div>
+      </section>
+
       {/* ===== KEUNGGULAN ===== */}
       <motion.section {...reveal(0.05)} className="grid grid-cols-3 gap-2.5 px-4">
         {HIGHLIGHTS.map((h, i) => (
