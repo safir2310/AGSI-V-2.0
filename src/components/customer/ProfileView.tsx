@@ -13,6 +13,7 @@ import {
   HandCoins,
   HelpCircle,
   Info,
+  Clapperboard,
   LogOut,
   Megaphone,
   MessageCircle,
@@ -37,6 +38,7 @@ import { SetoranKurirSheet } from "@/components/admin/SetoranKurirSheet";
 import { StoreSettingsSheet } from "@/components/admin/StoreSettingsSheet";
 import { BannerSettingsSheet } from "@/components/admin/BannerSettingsSheet";
 import { CourierAnimSheet } from "@/components/admin/CourierAnimSheet";
+import { MotionStudioSheet } from "@/components/admin/MotionStudioSheet";
 import { QrisManagerSheet } from "@/components/admin/QrisManagerSheet";
 import { PosterGeneratorSheet } from "@/components/admin/PosterGeneratorSheet";
 import { LegalSheet } from "@/components/shared/LegalSheet";
@@ -93,6 +95,7 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bannerOpen, setBannerOpen] = useState(false);
   const [animOpen, setAnimOpen] = useState(false);
+  const [motionOpen, setMotionOpen] = useState(false);
   const [qrisOpen, setQrisOpen] = useState(false);
   const [posterOpen, setPosterOpen] = useState(false);
   const [setoranOpen, setSetoranOpen] = useState(false);
@@ -173,6 +176,8 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const banner = useSettingsStore((s) => s.banner);
   const menuHero = useSettingsStore((s) => s.menuHero);
   const courierAnim = useSettingsStore((s) => s.courierAnim);
+  // Konfigurasi animasi aktif (AGSI Motion Studio) — utk deskripsi menu
+  const motionDoc = useSettingsStore((s) => s.motion);
   const spent = orders
     .filter((o) => o.status === "COMPLETED")
     .reduce((s, o) => s + o.total, 0);
@@ -375,6 +380,12 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
           onClick: () => setAnimOpen(true),
         },
         {
+          icon: Clapperboard,
+          label: "AGSI Motion Studio",
+          desc: `Pusat kendali animasi seluruh aplikasi (v${motionDoc.version}) — hero, kartu, banner, splash, transisi, preset, jadwal, riwayat versi`,
+          onClick: () => setMotionOpen(true),
+        },
+        {
           icon: QrCode,
           label: "Pengelola QRIS",
           desc: qrisDesc ?? "Dana masuk, status & tanggal transaksi QRIS — kelola di sini",
@@ -554,6 +565,18 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
           onClose={() => {
             setAnimOpen(false);
             // Deskripsi menu ikut segar setelah animasi disimpan
+            void refreshSettings();
+          }}
+        />
+      )}
+      {/* Sheet AGSI MOTION STUDIO — pusat kendali seluruh animasi (pratinjau
+          langsung, preset, jadwal, draft→publish, riwayat versi) — admin/owner */}
+      {isAdmin && (
+        <MotionStudioSheet
+          open={motionOpen}
+          onClose={() => {
+            setMotionOpen(false);
+            // Deskripsi menu ikut segar setelah konfigurasi dipublikasikan
             void refreshSettings();
           }}
         />

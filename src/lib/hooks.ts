@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { apiFetch } from "@/lib/api";
+import { motionPublicOf, normalizeMotionPublic, defaultMotionDoc, type MotionPublic } from "@/lib/motion-config";
 import type { OrderData, Product, VoucherAdminInfo, VoucherInfo } from "@/lib/types";
 
 /* ================= PRODUK (cache global) ================= */
@@ -334,6 +335,8 @@ type SettingsState = {
   menuPromo: MenuPromoInfo;
   videoPromo: VideoPromoInfo;
   courierAnim: CourierAnimInfo;
+  /** AGSI Motion Studio — konfigurasi animasi AKTIF (published) */
+  motion: MotionPublic;
   loaded: boolean;
   loading: boolean;
   load: (force?: boolean) => Promise<void>;
@@ -516,6 +519,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   menuPromo: FALLBACK_MENU_PROMO,
   videoPromo: FALLBACK_VIDEO_PROMO,
   courierAnim: FALLBACK_COURIER_ANIM,
+  motion: motionPublicOf(defaultMotionDoc()),
   loaded: false,
   loading: false,
   load: async (force = false) => {
@@ -536,6 +540,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           menuPromo: normalizeMenuPromo(data.menuPromo),
           videoPromo: normalizeVideoPromo(data.videoPromo),
           courierAnim: normalizeCourierAnim(data.courierAnim),
+          motion: normalizeMotionPublic(data.motion),
           loaded: true,
         });
       }

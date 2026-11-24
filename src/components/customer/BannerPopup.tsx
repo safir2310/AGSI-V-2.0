@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
 
 import { useSettingsStore, type BannerInfo } from "@/lib/hooks";
+import { boxAnim, useBindSpeed, useMotionTarget } from "@/components/motion/MotionRuntime";
 import type { AppView } from "@/lib/store";
 
 type BannerPopupProps = {
@@ -43,6 +44,9 @@ export function BannerPopup({ go }: BannerPopupProps) {
   const prefersReduced = useReducedMotion();
   const banner = useSettingsStore((s) => s.banner);
   const settingsLoaded = useSettingsStore((s) => s.loaded);
+  // AGSI Motion Studio: cara popup muncul dikendalikan target "bannerPopup"
+  const popupTarget = useMotionTarget("bannerPopup");
+  useBindSpeed();
 
   const [open, setOpen] = useState(false);
   const [imgBroken, setImgBroken] = useState(false);
@@ -101,10 +105,22 @@ export function BannerPopup({ go }: BannerPopupProps) {
           }}
         >
           <motion.div
-            initial={prefersReduced ? false : { scale: 0.82, y: 34, opacity: 0 }}
-            animate={{ scale: 1, y: 0, opacity: 1 }}
+            initial={
+              prefersReduced
+                ? false
+                : popupTarget
+                  ? boxAnim(popupTarget, 0).initial
+                  : { scale: 0.82, y: 34, opacity: 0 }
+            }
+            animate={
+              popupTarget ? boxAnim(popupTarget, 0).animate : { scale: 1, y: 0, opacity: 1 }
+            }
             exit={prefersReduced ? undefined : { scale: 0.9, y: 20, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 320, damping: 24 }}
+            transition={
+              popupTarget
+                ? boxAnim(popupTarget, 0).transition
+                : { type: "spring", stiffness: 320, damping: 24 }
+            }
             className="relative flex w-full max-w-[min(80vw,19rem)] flex-col items-center"
           >
             {/* Tombol tutup — lingkaran putih ✕ di tepi kanan-atas kartu (di luar kartu, seperti referensi) */}

@@ -20,6 +20,7 @@ import { ProductThumb } from "@/components/shared/ProductThumb";
 import { StoreSheet } from "@/components/shared/StoreSheet";
 import { BannerPopup } from "@/components/customer/BannerPopup";
 import { CourierScene } from "@/components/customer/CourierScene";
+import { MotionText, MotionBox, boxAnim, boxLoopAnim, useBindSpeed, useMotionTarget } from "@/components/motion/MotionRuntime";
 import { refreshVouchers, useProductsStore, useSettingsStore, useVouchersStore } from "@/lib/hooks";
 import { useCartStore, useNoticeStore, type AppView } from "@/lib/store";
 import { copyText } from "@/lib/clipboard";
@@ -65,6 +66,12 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
   const promo = useSettingsStore((s) => s.promo);
   // Konfigurasi adegan animasi kurir (Profil Admin → Animasi Beranda)
   const courierAnim = useSettingsStore((s) => s.courierAnim);
+  // ===== AGSI MOTION STUDIO ===== target animasi Beranda (hero, judul
+  // section, kartu produk, poster promo) — dikelola admin dari Profil Admin
+  // → "AGSI Motion Studio"; tanpa konfigurasi → semua render polos.
+  const posterTarget = useMotionTarget("promoStrip");
+  const productCardsTarget = useMotionTarget("productCards");
+  useBindSpeed();
   useEffect(() => {
     void useSettingsStore.getState().load();
   }, []);
@@ -163,7 +170,7 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
               Selamat datang di
             </p>
             <h1 className="mt-0.5 text-2xl font-black uppercase leading-tight text-white drop-shadow-sm">
-              Ayam Geprek
+              <MotionText targetKey="heroTitle">Ayam Geprek</MotionText>
               <span className="mt-1 block text-xl tracking-normal text-orange-50">
                 Sambal <span className="rounded-lg bg-white/95 px-2 py-0.5 text-orange-700">Ijo</span>
               </span>
@@ -244,7 +251,9 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
         <motion.section {...reveal(0.08)} className="px-4">
           <div className="mb-3 flex items-end justify-between">
             <div>
-              <h2 className="text-lg font-black text-neutral-900">Voucher Buat Kamu 🎟️</h2>
+              <h2 className="text-lg font-black text-neutral-900">
+                <MotionText targetKey="sectionTitles">Voucher Buat Kamu 🎟️</MotionText>
+              </h2>
               <p className="text-xs text-neutral-400">Tukar kodenya di keranjang — sekali pakai</p>
             </div>
           </div>
@@ -342,7 +351,9 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
       <motion.section {...reveal(0.12)} className="px-4">
         <div className="mb-3 flex items-end justify-between">
           <div>
-            <h2 className="text-lg font-black text-neutral-900">Paling Dicari 🔥</h2>
+            <h2 className="text-lg font-black text-neutral-900">
+              <MotionText targetKey="sectionTitles">Paling Dicari 🔥</MotionText>
+            </h2>
             <p className="text-xs text-neutral-400">Favorit para pecinta pedas</p>
           </div>
           <button
@@ -354,34 +365,45 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          {popular.map((p, i) => (
-            <motion.button
-              key={p.id}
-              type="button"
-              onClick={() => go("menu")}
-              initial={prefersReduced ? false : { opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.14 + i * 0.05, duration: 0.35 }}
-              whileHover={prefersReduced ? undefined : { y: -4 }}
-              whileTap={{ scale: 0.96 }}
-              className="card-lift group relative overflow-hidden rounded-2xl border border-orange-100 bg-white p-3 text-left shadow-sm"
-            >
-              <ProductThumb
-                product={p}
-                className="mb-2 aspect-square w-full text-5xl"
-                imgClassName="aspect-square transition-transform duration-300 group-hover:scale-110"
-                emojiClassName="transition-transform duration-300 group-hover:scale-110"
-              />
-              <SpicyDots level={p.spicy} />
-              <p className="mt-0.5 line-clamp-1 text-sm font-bold text-neutral-800">{p.name}</p>
-              <div className="mt-1 flex items-center justify-between">
-                <span className="text-sm font-black text-orange-600">{formatIDR(p.price)}</span>
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-600 text-white shadow-md transition group-hover:scale-110">
-                  +
-                </span>
-              </div>
-            </motion.button>
-          ))}
+          {popular.map((p, i) => {
+            // AGSI Motion Studio: entrance kartu produk mengikuti target
+            // "productCards" (efek, stagger, easing) — fallback = perilaku lama
+            const a = productCardsTarget
+              ? boxAnim(productCardsTarget, i)
+              : {
+                  initial: prefersReduced ? false : { opacity: 0, y: 16 },
+                  animate: { opacity: 1, y: 0 },
+                  transition: { delay: 0.14 + i * 0.05, duration: 0.35 },
+                };
+            return (
+              <motion.button
+                key={p.id}
+                type="button"
+                onClick={() => go("menu")}
+                initial={a.initial}
+                animate={a.animate}
+                transition={a.transition}
+                whileHover={prefersReduced ? undefined : { y: -4 }}
+                whileTap={{ scale: 0.96 }}
+                className="card-lift group relative overflow-hidden rounded-2xl border border-orange-100 bg-white p-3 text-left shadow-sm"
+              >
+                <ProductThumb
+                  product={p}
+                  className="mb-2 aspect-square w-full text-5xl"
+                  imgClassName="aspect-square transition-transform duration-300 group-hover:scale-110"
+                  emojiClassName="transition-transform duration-300 group-hover:scale-110"
+                />
+                <SpicyDots level={p.spicy} />
+                <p className="mt-0.5 line-clamp-1 text-sm font-bold text-neutral-800">{p.name}</p>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-sm font-black text-orange-600">{formatIDR(p.price)}</span>
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-600 text-white shadow-md transition group-hover:scale-110">
+                    +
+                  </span>
+                </div>
+              </motion.button>
+            );
+          })}
           {popular.length === 0 && (
             <div className="col-span-2 rounded-2xl border border-dashed border-orange-200 bg-orange-50/50 p-6 text-center text-sm text-neutral-400">
               Memuat menu favorit…
@@ -397,6 +419,11 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
             onClick={() => go("menu")}
             className="scene-3d press-effect relative block w-full text-left"
           >
+            <MotionBox
+              targetKey="promoStrip"
+              shimmerClassName="bg-gradient-to-r from-transparent via-white/30 to-transparent"
+              className="w-full"
+            >
             <div className="tilt-3d relative w-full overflow-hidden rounded-3xl bg-gradient-to-br from-orange-700 via-orange-500 to-amber-400 px-5 pb-8 pt-6 shadow-[0_26px_48px_-14px_rgba(194,65,12,0.65)]">
               {/* Glow kedalaman — bola cahaya di kedua sisi */}
               <div className="pointer-events-none absolute -left-10 -top-14 h-40 w-40 rounded-full bg-white/30 blur-2xl" />
@@ -448,6 +475,7 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
               {/* Alas bayangan 3D — kesan poster berdiri di atas permukaan */}
               <div className="pointer-events-none absolute inset-x-8 -bottom-3 h-7 rounded-full bg-orange-950/45 blur-lg" />
             </div>
+            </MotionBox>
           </button>
         </motion.section>
       )}

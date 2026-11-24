@@ -71,6 +71,18 @@ async function chatRevision(user: RtUser): Promise<{ rev: string; unread: number
   return { rev: `${unread}@${own?.updatedAt.getTime() ?? 0}`, unread };
 }
 
+/** Revisi pengaturan (AGSI Motion Studio publish/restore/reset dkk): waktu
+ *  ubah baris StoreSetting — 1 query skalar ringan, hanya tiap 4 tick
+ *  (±6 dtk) agar murah; event hanya dikirim saat versi benar-benar naik
+ *  (tanpa polling tambahan di sisi klien). */
+async function settingsRevision(): Promise<string> {
+  const row = await db.storeSetting.findUnique({
+    where: { id: "main" },
+    select: { updatedAt: true },
+  });
+  return row?.updatedAt.getTime().toString() ?? "";
+}
+
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) {
@@ -104,6 +116,7 @@ export async function GET() {
       const startedAt = Date.now();
       let prevOrders = "";
       let prevChat = "";
+      let prevSettings = "";
       let ticks = 0;
 
       // Satu putaran snapshot: bandingkan revisi → kirim event bila berubah.
@@ -128,6 +141,17 @@ export async function GET() {
         if (initial || (chat.rev !== "" && chat.rev !== prevChat)) {
           prevChat = chat.rev;
           send("chat", { unread: chat.unread, t: Date.now() });
+        }
+        // Pengaturan (motion studio) — ukur tiap 4 tick, kirim HANYA bila
+        // berubah selama koneksi (snapshot awal tidak memicu reload ganda).
+        if (!initial && ticks % 4 === 0) {
+          try {
+            const s = await settingsRevision();
+            if (s && prevSettings && s !== prevSettings) send("settings", { t: Date.now() });
+            if (s) prevSettings = s;
+          } catch {
+            // idem
+          }
         }
       };
 

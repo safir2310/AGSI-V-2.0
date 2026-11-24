@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
+import { defaultMotionDoc, type MotionPublic } from "@/lib/motion-config";
 import {
   COURIER_ANIM_COLORS,
   COURIER_ANIM_FONTS,
@@ -14,6 +15,7 @@ import {
   MENU_PROMO_BANNER_THEMES,
   getBannerSettings,
   getCourierAnimSettings,
+  getMotionDoc,
   getMenuHeroSettings,
   getMenuPromoSettings,
   getPromoStripSettings,
@@ -27,6 +29,8 @@ import {
   updatePromoStripSettings,
   updateStoreSettings,
   updateVideoPromoSettings,
+  motionPublicOf,
+  updateMotionSettings,
   VIDEO_PROMO_MAX_SLIDES,
   type BannerPatch,
   type CourierAnimPatch,
@@ -67,6 +71,13 @@ export async function GET() {
     // respons selalu fallback: bannerEnabled=false & semua hasImage=false →
     // banner/promo tersimpan tidak pernah muncul).
     const snap = await getStoreSettingsSnapshot();
+    // Dokumen penuh Motion Studio (draft + preset + riwayat + jadwal) HANYA
+    // untuk admin/owner — pengunjung cukup ringkasan publik `motion`.
+    let motionStudio: unknown = undefined;
+    const viewer = await getCurrentUser();
+    if (viewer && isAdminRole(viewer.role)) {
+      motionStudio = await getMotionDoc();
+    }
     return NextResponse.json({
       ...snap.settings,
       banner: {
@@ -110,6 +121,10 @@ export async function GET() {
       // Adegan animasi kurir + tipografi kinetik Beranda (konfigurasi kecil,
       // aman ikut snapshot publik — tanpa bytes media)
       courierAnim: snap.courierAnim,
+      // AGSI Motion Studio — ringkasan publik (jadwal dievaluasi server)
+      motion: snap.motion,
+      // Dokumen penuh utk studio (hanya ada di respons utk Admin/Owner)
+      motionStudio,
     });
   } catch {
     return NextResponse.json(
@@ -165,6 +180,8 @@ export async function GET() {
         },
         // Adegan animasi kurir + tipografi kinetik Beranda (konfigurasi bawaan)
         courierAnim: { ...DEFAULT_COURIER_ANIM },
+        // AGSI Motion Studio (konfigurasi bawaan)
+        motion: motionPublicOf(defaultMotionDoc()),
       },
       { status: 200 }
     );
@@ -182,6 +199,9 @@ export async function GET() {
  *               (menuPromoBanners: [{ slot: 1|2, enabled?, badge?, title?, text?, emoji?, theme?, imageData?, imageRemove? }])
  * Body anim   : { courierAnim?: { enabled?, text?, font?, weight?, caps?, italic?, fontSize?, textColor?, accentColor?, cycleSec?, boom? } } —
  *               adegan animasi kurir + tipografi kinetik di Beranda
+ * Body motion : { motion?: { kind: "draft"|"publish"|"restore"|"reset", global?, targets?, version? } } —
+ *               AGSI Motion Studio: simpan DRAFT, PUBLIKASIKAN (versi+riwayat),
+ *               RESTORE versi riwayat, atau RESET ke bawaan
  */
 export async function PUT(req: NextRequest) {
   const user = await getCurrentUser();
@@ -633,6 +653,50 @@ export async function PUT(req: NextRequest) {
       courierAnimResult = await updateCourierAnimSettings(cap);
     }
 
+    // ===== AGSI MOTION STUDIO (satu jalur tulis: draft/publish/restore/reset) =====
+    // Validasi akses SUDAH di atas (isAdminRole di server — status admin dari
+    // client tidak pernah dipercaya). Semua konfigurasi lolos normalizeMotionDoc
+    // di updateMotionSettings: hanya kunci efek dari katalog yang dikenal.
+    let motionResult: MotionPublic | null = null;
+    if ("motion" in body) {
+      const m = (body.motion ?? {}) as {
+        kind?: string;
+        global?: unknown;
+        targets?: unknown;
+        version?: unknown;
+        schedule?: unknown;
+      };
+      const by = user.name || user.email || "admin";
+      if (m.kind === "draft") {
+        if (typeof m.global !== "object" || typeof m.targets !== "object") {
+          return NextResponse.json({ error: "Konfigurasi draft motion tidak valid." }, { status: 400 });
+        }
+        await updateMotionSettings({ kind: "draft", global: m.global, targets: m.targets }, by);
+        motionResult = motionPublicOf(await getMotionDoc());
+      } else if (m.kind === "publish") {
+        motionResult = motionPublicOf(await updateMotionSettings({ kind: "publish" }, by));
+      } else if (m.kind === "restore") {
+        const v = Number(m.version);
+        if (!Number.isFinite(v)) {
+          return NextResponse.json({ error: "Versi restore tidak valid." }, { status: 400 });
+        }
+        const doc = await getMotionDoc();
+        if (!doc.history.some((h) => h.version === v)) {
+          return NextResponse.json({ error: "Versi tidak ditemukan dalam riwayat." }, { status: 400 });
+        }
+        motionResult = motionPublicOf(await updateMotionSettings({ kind: "restore", version: v }, by));
+      } else if (m.kind === "reset") {
+        motionResult = motionPublicOf(await updateMotionSettings({ kind: "reset" }, by));
+      } else if (m.kind === "schedule") {
+        if (typeof m.schedule !== "object" || m.schedule === null) {
+          return NextResponse.json({ error: "Konfigurasi jadwal motion tidak valid." }, { status: 400 });
+        }
+        motionResult = motionPublicOf(await updateMotionSettings({ kind: "schedule", schedule: m.schedule }, by));
+      } else {
+        return NextResponse.json({ error: "Aksi motion tidak dikenal." }, { status: 400 });
+      }
+    }
+
     if (
       Object.keys(patch).length === 0 &&
       !bannerResult &&
@@ -640,7 +704,8 @@ export async function PUT(req: NextRequest) {
       !menuHeroResult &&
       !menuPromoResult &&
       !videoPromoResult &&
-      !courierAnimResult
+      !courierAnimResult &&
+      !motionResult
     ) {
       return NextResponse.json(
         { error: "Tidak ada pengaturan yang diubah." },
@@ -671,6 +736,7 @@ export async function PUT(req: NextRequest) {
       menuPromo: menuPromoResult ?? (await getMenuPromoSettings()),
       videoPromo: videoPromoResult ?? (await getVideoPromoSettings()),
       courierAnim: courierAnimResult ?? (await getCourierAnimSettings()),
+      motion: motionResult ?? motionPublicOf(await getMotionDoc()),
     });
   } catch {
     return NextResponse.json({ error: "Terjadi kesalahan server." }, { status: 500 });

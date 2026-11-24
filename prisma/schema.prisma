@@ -472,6 +472,16 @@ model StoreSetting {
   // dinormalisasi + divalidasi server-side (lihat store-settings.ts — nilai
   // bawaan = tampilan sebelum ada setting).
   courierAnim               Json?
+  // ===== AGSI MOTION STUDIO — PUSAT KENDALI ANIMASI =====
+  // Satu kolom JSON berisi seluruh konfigurasi Motion Studio: dokumen aktif
+  // (global gates per perangkat + 9 target animasi: hero, judul section,
+  // kartu produk, poster promo, popup banner, logo header, splash, transisi
+  // halaman, badge keranjang), preset library admin, riwayat versi (publish/
+  // restore/reset), jadwal animasi, dan DRAFT yang belum dipublikasikan.
+  // Dinormalisasi & tervalidasi server-side (store-settings.ts + motion-
+  // config.ts — hanya kunci efek dari katalog yang dikenal, tanpa kode
+  // animasi mentah). Dilihat juga prisma/sql/016-motion-studio.sql.
+  motion                    Json?
   updatedAt                 DateTime  @updatedAt
 }
 

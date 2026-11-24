@@ -11,6 +11,22 @@
  */
 import { db } from "@/lib/db";
 import type { StoreSetting } from "@prisma/client";
+import {
+  applySchedule,
+  defaultMotionDoc,
+  motionPublicOf,
+  normalizeMotionDoc,
+  normalizeSchedule,
+  summarizeTargetChanges,
+  type MotionDoc,
+  type MotionGlobal,
+  type MotionPublic,
+  type MotionTargetKey,
+  MOTION_TARGET_KEYS,
+} from "@/lib/motion-config";
+
+export { motionPublicOf, normalizeMotionPublic } from "@/lib/motion-config";
+export type { MotionPublic } from "@/lib/motion-config";
 
 /**
  * Baca baris pengaturan toko TANPA efek tulisan (findUnique murni).
@@ -27,6 +43,7 @@ import type { StoreSetting } from "@prisma/client";
  */
 export async function readStoreSettingsRow(): Promise<StoreSetting> {
   await ensureCourierAnimColumn();
+  await ensureMotionColumn();
   const row = await db.storeSetting.findUnique({ where: { id: "main" } });
   if (row) return row;
   // Baris belum ada (instalasi baru) → buat sekali. Balapan antar request
@@ -76,6 +93,7 @@ type StoreSettingsMetaRow = {
   videoPromoSlot2Mime: string | null;
   videoPromoSlot3Mime: string | null;
   courierAnim: unknown;
+  motion: unknown;
 };
 
 /** Bentuk mentah hasil $queryRaw (boolean bisa 1/0 di SQLite, tanggal bisa string, JSON bisa string). */
@@ -113,7 +131,7 @@ export async function readStoreSettingsMetaRow(): Promise<StoreSettingsMetaRow> 
              ("videoPromoSlot2Data" IS NOT NULL) AS "videoPromoSlot2Data",
              ("videoPromoSlot3Data" IS NOT NULL) AS "videoPromoSlot3Data",
              "videoPromoSlot1Mime", "videoPromoSlot2Mime", "videoPromoSlot3Mime",
-             "courierAnim"
+             "courierAnim", "motion"
       FROM "StoreSetting" WHERE "id" = 'main' LIMIT 1`;
 
   let r = (await query())[0];
@@ -174,6 +192,7 @@ export async function readStoreSettingsMetaRow(): Promise<StoreSettingsMetaRow> 
     videoPromoSlot2Mime: r.videoPromoSlot2Mime,
     videoPromoSlot3Mime: r.videoPromoSlot3Mime,
     courierAnim: asJson(r.courierAnim),
+    motion: asJson(r.motion),
   };
 }
 
@@ -207,6 +226,26 @@ async function ensureCourierAnimColumn(): Promise<void> {
   } catch (e) {
     console.warn(
       "[store-settings] penerapan kolom courierAnim lewat runtime gagal (abaikan bila memang sudah ada):",
+      e instanceof Error ? e.message : e
+    );
+  }
+}
+
+/* [JARING PENGAMAN MOTION STUDIO] Kolom "motion" (AGSI Motion Studio) bisa
+   belum ada di DB runtime bila patch SQL build tidak sampai ke database yang
+   sama — pola persis jaring pengaman courierAnim di atas: ADD COLUMN IF NOT
+   EXISTS murni aditif & idempotent, sekali per proses, tanpa menyentuh data. */
+let motionColumnEnsured = false;
+async function ensureMotionColumn(): Promise<void> {
+  if (motionColumnEnsured) return;
+  motionColumnEnsured = true;
+  try {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "StoreSetting" ADD COLUMN IF NOT EXISTS "motion" JSONB`
+    );
+  } catch (e) {
+    console.warn(
+      "[store-settings] penerapan kolom motion lewat runtime gagal (abaikan bila memang sudah ada):",
       e instanceof Error ? e.message : e
     );
   }
@@ -897,6 +936,134 @@ export async function updateCourierAnimSettings(patch: CourierAnimPatch): Promis
   return next;
 }
 
+/* ================= AGSI MOTION STUDIO — PUSAT KENDALI ANIMASI ================= */
+
+/** Dokumen motion lengkap (aktif + draft + preset + riwayat + jadwal). */
+export async function getMotionDoc(): Promise<MotionDoc> {
+  const row = await readStoreSettingsRow();
+  return normalizeMotionDoc(row.motion);
+}
+
+export type MotionWriteKind = "draft" | "publish" | "restore" | "reset" | "schedule";
+
+export type MotionWritePayload =
+  | { kind: "draft"; global: unknown; targets: unknown }
+  | { kind: "publish" } // publish DRAFT tersimpan (validasi + versi naik + riwayat)
+  | { kind: "restore"; version: number }
+  | { kind: "reset" }
+  | { kind: "schedule"; schedule: unknown };
+
+/**
+ * Tulis dokumen motion (satu jalur tulis — tak ada jalur kedua yang bisa
+ * saling bertentangan). Semua konfigurasi lolos normalizeMotionDoc SEBELUM
+ * disimpan (tanpa kode animasi mentah; hanya kunci katalog yang dikenal).
+ *
+ *  - draft   : simpan DRAFT (pengunjung TIDAK terpengaruh sama sekali)
+ *  - publish : draft tervalidasi → jadi konfigurasi AKTIF, version+1,
+ *              entri riwayat baru → snapshot publik + SSE settings event
+ *              menyebarkan ke semua perangkat tanpa polling tambahan
+ *  - restore : kembalikan konfigurasi dari entri riwayat (versi baru lagi)
+ *  - reset   : kembali ke bawaan AGSI Signature
+ */
+export async function updateMotionSettings(payload: MotionWritePayload, adminName: string): Promise<MotionDoc> {
+  const doc = await getMotionDoc();
+  const by = (adminName || "admin").slice(0, 80);
+  let next: MotionDoc = { ...doc };
+
+  if (payload.kind === "draft") {
+    const d = normalizeMotionDoc({ global: payload.global, targets: payload.targets });
+    next.draft = {
+      global: d.global,
+      targets: d.targets,
+      updatedAt: new Date().toISOString(),
+      by,
+    };
+  } else if (payload.kind === "publish") {
+    const src = doc.draft ?? { global: doc.global, targets: doc.targets };
+    const d = normalizeMotionDoc({ global: src.global, targets: src.targets, version: doc.version });
+    const summary = summarizeTargetChanges(doc.targets, d.targets);
+    next.global = d.global;
+    next.targets = d.targets;
+    next.draft = null;
+    next.version = doc.version + 1;
+    next.updatedAt = new Date().toISOString();
+    next.updatedBy = by;
+    next.history = [
+      {
+        version: next.version,
+        at: next.updatedAt,
+        by,
+        action: "publish" as const,
+        summary,
+        config: { global: d.global, targets: d.targets },
+      },
+      ...doc.history,
+    ].slice(0, 15);
+  } else if (payload.kind === "restore") {
+    const entry = doc.history.find((h) => h.version === Math.round(Number(payload.version)));
+    if (!entry) throw new Error("Versi tidak ditemukan dalam riwayat.");
+    next.global = entry.config.global;
+    next.targets = entry.config.targets;
+    next.version = doc.version + 1;
+    next.updatedAt = new Date().toISOString();
+    next.updatedBy = by;
+    next.history = [
+      {
+        version: next.version,
+        at: next.updatedAt,
+        by,
+        action: "restore" as const,
+        summary: `restore v${entry.version} — ${summarizeTargetChanges(doc.targets, entry.config.targets)}`,
+        config: { global: entry.config.global, targets: entry.config.targets },
+      },
+      ...doc.history,
+    ].slice(0, 15);
+  } else if (payload.kind === "schedule") {
+    next.schedule = normalizeSchedule(payload.schedule);
+    next.version = doc.version + 1;
+    next.updatedAt = new Date().toISOString();
+    next.updatedBy = by;
+    next.history = [
+      {
+        version: next.version,
+        at: next.updatedAt,
+        by,
+        action: "schedule" as const,
+        summary: next.schedule.enabled
+          ? `jadwal aktif — preset ${next.schedule.presetId ?? "tanpa"} (${next.schedule.startDate ?? "…"} s.d. ${next.schedule.endDate ?? "…"}, jam ${next.schedule.timeFrom ?? "00:00"}–${next.schedule.timeTo ?? "23:59"})`
+          : "jadwal dimatikan",
+        config: { global: doc.global, targets: doc.targets },
+      },
+      ...doc.history,
+    ].slice(0, 15);
+  } else {
+    const def = defaultMotionDoc();
+    next.global = def.global;
+    next.targets = def.targets;
+    next.version = doc.version + 1;
+    next.updatedAt = new Date().toISOString();
+    next.updatedBy = by;
+    next.history = [
+      {
+        version: next.version,
+        at: next.updatedAt,
+        by,
+        action: "reset" as const,
+        summary: "reset ke bawaan AGSI Signature",
+        config: { global: def.global, targets: def.targets },
+      },
+      ...doc.history,
+    ].slice(0, 15);
+  }
+
+  await ensureStoreRowForWrite();
+  await db.storeSetting.update({
+    where: { id: "main" },
+    data: { motion: next as unknown as object },
+  });
+  return next;
+}
+
 /* ================= SNAPSHOT SEMUA SETELAN — 1 QUERY ================= */
 
 /** Gabungan semua setelan publik (dipakai GET /api/settings — 1 query DB). */
@@ -908,6 +1075,7 @@ export type StoreSettingsSnapshot = {
   menuPromo: MenuPromoSettings;
   videoPromo: VideoPromoSettings;
   courierAnim: CourierAnimConfig;
+  motion: MotionPublic;
 };
 
 /**
@@ -985,5 +1153,7 @@ export async function getStoreSettingsSnapshot(): Promise<StoreSettingsSnapshot>
       })),
     },
     courierAnim: normalizeCourierAnimConfig(row.courierAnim),
+    // AGSI Motion Studio — ringkasan publik (jadwal dievaluasi server)
+    motion: motionPublicOf(normalizeMotionDoc(row.motion)),
   };
 }

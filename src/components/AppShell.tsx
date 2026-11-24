@@ -15,6 +15,8 @@ import { NotifSuite } from "@/components/shared/NotifSuite";
 import { PushBridge } from "@/components/shared/PushBridge";
 import { ErrorReporter } from "@/components/shared/ErrorReporter";
 import { SyncBridge } from "@/components/shared/SyncBridge";
+import { MotionText } from "@/components/motion/MotionRuntime";
+import { pageTransitionAnim, useMotionTarget, boxLoopAnim, useBindSpeed } from "@/components/motion/MotionRuntime";
 import { initAudioUnlock } from "@/lib/sound";
 import { AuthView } from "@/components/auth/AuthView";
 import { HomeView } from "@/components/customer/HomeView";
@@ -34,6 +36,7 @@ import { useAppStore, useCartStore, useNoticeStore, useUiStore, type AppView } f
 import { apiFetch, clearAuthToken, SESSION_EXPIRED_EVENT } from "@/lib/api";
 import { hasValidConsent } from "@/lib/data-policy";
 import { hasValidTerms } from "@/lib/app-terms";
+import { useSettingsStore } from "@/lib/hooks";
 import type { AppUser } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Coins } from "lucide-react";
@@ -62,6 +65,19 @@ export function AppShell() {
   const chatTargetUserId = useUiStore((s) => s.chatTargetUserId);
   const closeChat = useUiStore((s) => s.closeChat);
   const splashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ===== AGSI MOTION STUDIO ===== transisi halaman + splash + logo header
+  // dikendalikan konfigurasi aktif (Profil Admin → "AGSI Motion Studio").
+  // Tanpa konfigurasi target (none/disabled) → perilaku lama dipertahankan.
+  const motionDoc = useSettingsStore((s) => s.motion);
+  const pageTransition = useMotionTarget("pageTransition");
+  const headerLogo = useMotionTarget("headerLogo");
+  const headerLogoEffect = headerLogo ? boxLoopAnim(headerLogo) : null;
+  useBindSpeed();
+  const splashTarget = motionDoc.targets.splash;
+  const splashMs = Math.min(
+    3400,
+    Math.max(1800, 1400 + (splashTarget?.duration ?? 0.6) * 1000)
+  );
 
   // 🔗 DEEP LINK NOTIFIKASI (v1.3.10): aplikasi Android menyuntikkan event
   // "agsi-nav" setelah tap notifikasi (MainActivity.onPageFinished) → buka
@@ -141,13 +157,14 @@ export function AppShell() {
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, [go, showNotice]);
 
-  // ===== Splash pembuka (sekali per muat aplikasi) =====
+  // ===== Splash pembuka (sekali per muat aplikasi) — durasi mengikuti
+  // konfigurasi Motion Studio target "splash" (±1,8–3,4 dtk) =====
   useEffect(() => {
-    splashTimer.current = setTimeout(() => setShowSplash(false), 2400);
+    splashTimer.current = setTimeout(() => setShowSplash(false), splashMs);
     return () => {
       if (splashTimer.current) clearTimeout(splashTimer.current);
     };
-  }, []);
+  }, [splashMs]);
 
   const handleLoginSuccess = useCallback(
     (u: AppUser) => {
@@ -272,9 +289,15 @@ export function AppShell() {
         </div>
       )}
 
-      {/* ===== SPLASH PEMBUKA ===== */}
+      {/* ===== SPLASH PEMBUKA (varian animasi logo dari Motion Studio) ===== */}
       <AnimatePresence>
-        {showSplash && <SplashScreen key="splash" onDone={() => setShowSplash(false)} />}
+        {showSplash && (
+          <SplashScreen
+            key="splash"
+            onDone={() => setShowSplash(false)}
+            effect={splashTarget?.effect ?? "pop"}
+          />
+        )}
       </AnimatePresence>
 
       {/* ===== BANNER PEMBARUAN APLIKASI (hanya di aplikasi Android versi lama) =====
@@ -287,7 +310,13 @@ export function AppShell() {
           {/* Bar atas aplikasi dengan logo maskot ayam koki */}
           <div className="mx-auto flex h-14 max-w-xl items-center justify-between px-4">
             <div className="flex items-center gap-2.5">
-              <ChickenBadge size={36} />
+              <motion.div
+                className="flex items-center"
+                animate={headerLogo?.loop && headerLogoEffect ? headerLogoEffect.animate : undefined}
+                transition={headerLogo?.loop && headerLogoEffect ? headerLogoEffect.transition : undefined}
+              >
+                <ChickenBadge size={36} />
+              </motion.div>
               <div className="leading-tight">
                 <p className="text-sm font-black uppercase tracking-wide text-neutral-900">
                   Ayam Geprek
@@ -323,22 +352,40 @@ export function AppShell() {
         </header>
       )}
 
-      {/* ===== KONTEN DENGAN TRANSISI FADE + SLIDE ===== */}
+      {/* ===== KONTEN DENGAN TRANSISI HALAMAN (gaya dari Motion Studio;
+              tanpa konfigurasi → fade+slide lama yang sudah teruji) ===== */}
       <main
         className={cn(
           isFullS ? "" : "relative z-10 pb-nav-offset mx-auto max-w-xl"
         )}
       >
         <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={effectiveView + (user ? user.id : "guest")}
-            initial={prefersReduced ? false : { opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={prefersReduced ? undefined : { opacity: 0, y: -12 }}
-            transition={{ duration: 0.26, ease: "easeOut" }}
-          >
-            {renderView()}
-          </motion.div>
+          {(() => {
+            const anim = pageTransition ? pageTransitionAnim(pageTransition) : null;
+            return (
+              <motion.div
+                key={effectiveView + (user ? user.id : "guest")}
+                initial={
+                  prefersReduced
+                    ? false
+                    : anim
+                      ? anim.initial
+                      : { opacity: 0, y: 16 }
+                }
+                animate={anim ? anim.animate : { opacity: 1, y: 0 }}
+                exit={
+                  prefersReduced
+                    ? undefined
+                    : anim
+                      ? anim.exit
+                      : { opacity: 0, y: -12 }
+                }
+                transition={anim ? anim.transition : { duration: 0.26, ease: "easeOut" }}
+              >
+                {renderView()}
+              </motion.div>
+            );
+          })()}
         </AnimatePresence>
       </main>
 
