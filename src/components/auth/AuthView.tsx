@@ -226,6 +226,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
           message: `Akun ${sentTo} terverifikasi lewat aplikasi authenticator — masukkan kode 6 digit dari aplikasimu di langkah berikutnya. Tidak ada kode email yang dikirim.`,
         });
       } else if (data.viaPush) {
+      if (data.viaPush) {
         showNotice({
           type: "success",
           title: "Kode OTP via Notifikasi 📱",

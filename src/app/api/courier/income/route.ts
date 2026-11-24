@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { HIDDEN_UNPAID_APP_QRIS_WHERE } from "@/lib/order-expiry";
+import { HIDDEN_UNPAID_DIGITAL_WHERE } from "@/lib/order-expiry";
 import { wibDayBounds } from "@/lib/courier-income";
 
 /**
@@ -34,7 +34,7 @@ export async function GET() {
     courierUserId: user.id,
     type: "DELIVERY" as const,
     status: "COMPLETED" as const,
-    NOT: HIDDEN_UNPAID_APP_QRIS_WHERE,
+    NOT: HIDDEN_UNPAID_DIGITAL_WHERE,
   };
 
   const [todayAgg, yesterdayAgg, history] = await Promise.all([

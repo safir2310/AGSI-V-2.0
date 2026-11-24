@@ -11,6 +11,22 @@
  */
 import { db } from "@/lib/db";
 import type { StoreSetting } from "@prisma/client";
+import {
+  applySchedule,
+  defaultMotionDoc,
+  motionPublicOf,
+  normalizeMotionDoc,
+  normalizeSchedule,
+  summarizeTargetChanges,
+  type MotionDoc,
+  type MotionGlobal,
+  type MotionPublic,
+  type MotionTargetKey,
+  MOTION_TARGET_KEYS,
+} from "@/lib/motion-config";
+
+export { motionPublicOf, normalizeMotionPublic } from "@/lib/motion-config";
+export type { MotionPublic } from "@/lib/motion-config";
 
 /**
  * Baca baris pengaturan toko TANPA efek tulisan (findUnique murni).
@@ -26,6 +42,8 @@ import type { StoreSetting } from "@prisma/client";
  * pembuatan baris hanya terjadi di jalur tulis atau bila benar-benar belum ada.
  */
 export async function readStoreSettingsRow(): Promise<StoreSetting> {
+  await ensureCourierAnimColumn();
+  await ensureMotionColumn();
   const row = await db.storeSetting.findUnique({ where: { id: "main" } });
   if (row) return row;
   // Baris belum ada (instalasi baru) → buat sekali. Balapan antar request
@@ -74,6 +92,8 @@ type StoreSettingsMetaRow = {
   videoPromoSlot1Mime: string | null;
   videoPromoSlot2Mime: string | null;
   videoPromoSlot3Mime: string | null;
+  courierAnim: unknown;
+  motion: unknown;
 };
 
 /** Bentuk mentah hasil $queryRaw (boolean bisa 1/0 di SQLite, tanggal bisa string, JSON bisa string). */
@@ -93,6 +113,7 @@ type RawMetaRow = {
  * Dulu findUnique seluruh baris mengirim ±9 MB per request /api/settings.
  */
 export async function readStoreSettingsMetaRow(): Promise<StoreSettingsMetaRow> {
+  await ensureCourierAnimColumn();
   const query = () =>
     db.$queryRaw<RawMetaRow[]>`
       SELECT "deliveryEnabled", "qrisEnabled", "ewalletEnabled",
@@ -109,7 +130,8 @@ export async function readStoreSettingsMetaRow(): Promise<StoreSettingsMetaRow> 
              ("videoPromoSlot1Data" IS NOT NULL) AS "videoPromoSlot1Data",
              ("videoPromoSlot2Data" IS NOT NULL) AS "videoPromoSlot2Data",
              ("videoPromoSlot3Data" IS NOT NULL) AS "videoPromoSlot3Data",
-             "videoPromoSlot1Mime", "videoPromoSlot2Mime", "videoPromoSlot3Mime"
+             "videoPromoSlot1Mime", "videoPromoSlot2Mime", "videoPromoSlot3Mime",
+             "courierAnim", "motion"
       FROM "StoreSetting" WHERE "id" = 'main' LIMIT 1`;
 
   let r = (await query())[0];
@@ -169,6 +191,8 @@ export async function readStoreSettingsMetaRow(): Promise<StoreSettingsMetaRow> 
     videoPromoSlot1Mime: r.videoPromoSlot1Mime,
     videoPromoSlot2Mime: r.videoPromoSlot2Mime,
     videoPromoSlot3Mime: r.videoPromoSlot3Mime,
+    courierAnim: asJson(r.courierAnim),
+    motion: asJson(r.motion),
   };
 }
 
@@ -180,6 +204,50 @@ async function ensureStoreRowForWrite(): Promise<void> {
     await db.storeSetting.create({ data: { id: "main" } });
   } catch {
     // Baris dibuat request lain di saat bersamaan — aman lanjut ke update.
+  }
+}
+
+/* [JARING PENGAMAN] Kolom "courierAnim" bisa belum ada di DB yang dihubungi
+   RUNTIME bila patch SQL build tidak sampai ke database yang sama (mis.
+   DIRECT_DATABASE_URL menunjuk DB berbeda dari DATABASE_URL — kasus nyata
+   v1.3.35: 015-courier-anim.sql "berhasil" di DB build, runtime tetap tanpa
+   kolom → /api/settings jatuh ke fallback dan banner/promo tersimpan tidak
+   tampil). Buat kolomnya SEKALI per proses lewat koneksi runtime yang pasti
+   benar — ADD COLUMN IF NOT EXISTS murni aditif & idempotent (sama dengan
+   prisma/sql/015-courier-anim.sql), tanpa menyentuh data apa pun. */
+let courierAnimColumnEnsured = false;
+async function ensureCourierAnimColumn(): Promise<void> {
+  if (courierAnimColumnEnsured) return;
+  courierAnimColumnEnsured = true;
+  try {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "StoreSetting" ADD COLUMN IF NOT EXISTS "courierAnim" JSONB`
+    );
+  } catch (e) {
+    console.warn(
+      "[store-settings] penerapan kolom courierAnim lewat runtime gagal (abaikan bila memang sudah ada):",
+      e instanceof Error ? e.message : e
+    );
+  }
+}
+
+/* [JARING PENGAMAN MOTION STUDIO] Kolom "motion" (AGSI Motion Studio) bisa
+   belum ada di DB runtime bila patch SQL build tidak sampai ke database yang
+   sama — pola persis jaring pengaman courierAnim di atas: ADD COLUMN IF NOT
+   EXISTS murni aditif & idempotent, sekali per proses, tanpa menyentuh data. */
+let motionColumnEnsured = false;
+async function ensureMotionColumn(): Promise<void> {
+  if (motionColumnEnsured) return;
+  motionColumnEnsured = true;
+  try {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "StoreSetting" ADD COLUMN IF NOT EXISTS "motion" JSONB`
+    );
+  } catch (e) {
+    console.warn(
+      "[store-settings] penerapan kolom motion lewat runtime gagal (abaikan bila memang sudah ada):",
+      e instanceof Error ? e.message : e
+    );
   }
 }
 
@@ -727,6 +795,275 @@ export async function writeVideoPromoSlotBytes(
   }
 }
 
+/* ================= ANIMASI KURIR + TIPOGRAFI KINETIK DI BERANDA ================= */
+
+/** Pilihan font teks spanduk animasi (stack CSS aman di semua perangkat). */
+export const COURIER_ANIM_FONTS = ["default", "serif", "mono", "system"] as const;
+export type CourierAnimFont = (typeof COURIER_ANIM_FONTS)[number];
+
+/** Pilihan ketebalan huruf spanduk. */
+export const COURIER_ANIM_WEIGHTS = ["bold", "extrabold", "black"] as const;
+export type CourierAnimWeight = (typeof COURIER_ANIM_WEIGHTS)[number];
+
+/** Palet warna teks (kunci → kelas Tailwind di CourierScene — bukan hex bebas,
+    agar kombinasi selalu kontras di atas kapsul putih & tetap on-brand). */
+export const COURIER_ANIM_COLORS = [
+  "orange",
+  "red",
+  "rose",
+  "amber",
+  "green",
+  "blue",
+  "violet",
+  "neutral",
+] as const;
+export type CourierAnimColor = (typeof COURIER_ANIM_COLORS)[number];
+
+/** Preset gaya animasi spanduk 3D (pilihan admin di "Animasi Beranda").
+    klasik = wipe teks semula; sisanya varian transformasi 3D (perspektif CSS). */
+export const COURIER_ANIM_STYLES = [
+  "klasik",
+  "flip3d",
+  "carousel3d",
+  "zoom3d",
+  "swing3d",
+] as const;
+export type CourierAnimStyle = (typeof COURIER_ANIM_STYLES)[number];
+
+/** Batas teks spanduk (karakter) & jumlah kata maksimal (kata ke-N jadi aksen). */
+export const COURIER_ANIM_TEXT_MAX = 48;
+export const COURIER_ANIM_WORDS_MAX = 5;
+/** Rentang ukuran huruf spanduk (px) & durasi siklus adegan (detik). */
+export const COURIER_ANIM_FONT_MIN = 8;
+export const COURIER_ANIM_FONT_MAX = 12;
+export const COURIER_ANIM_CYCLE_MIN = 6;
+export const COURIER_ANIM_CYCLE_MAX = 12;
+
+/** Konfigurasi adegan animasi kurir di Beranda (kolom JSON courierAnim). */
+export type CourierAnimConfig = {
+  /** tampilkan adegan motor kurir + spanduk di Beranda */
+  enabled: boolean;
+  /** teks spanduk — dipotong per kata, kata TERAKHIR diberi warna aksen */
+  text: string;
+  /** font teks (default = font aplikasi) */
+  font: CourierAnimFont;
+  /** ketebalan huruf */
+  weight: CourierAnimWeight;
+  /** gaya huruf: semua KAPITAL */
+  caps: boolean;
+  /** gaya huruf: miring */
+  italic: boolean;
+  /** ukuran huruf (px) */
+  fontSize: number;
+  /** warna kata biasa */
+  textColor: CourierAnimColor;
+  /** warna kata terakhir (aksen) */
+  accentColor: CourierAnimColor;
+  /** preset gaya animasi spanduk (klasik = wipe; sisanya varian 3D) */
+  animStyle: CourierAnimStyle;
+  /** durasi satu siklus adegan (detik, 6–12) — makin kecil makin cepat */
+  cycleSec: number;
+  /** tampilkan ledakan BOOM! 🎉 + konfeti di tengah siklus */
+  boom: boolean;
+};
+
+/** Nilai bawaan — persis tampilan adegan sebelum fitur setting ada. */
+export const DEFAULT_COURIER_ANIM: CourierAnimConfig = {
+  enabled: true,
+  text: "Ayam Geprek Sambal Ijo",
+  font: "default",
+  weight: "black",
+  caps: true,
+  italic: false,
+  fontSize: 10,
+  textColor: "orange",
+  accentColor: "green",
+  animStyle: "klasik",
+  cycleSec: 8,
+  boom: true,
+};
+
+/** Jepit angka ke rentang valid (fallback bila bukan angka). */
+function clampNum(v: unknown, min: number, max: number, def: number): number {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
+}
+
+/** Normalisasi konfigurasi mentah dari JSON DB / payload admin → bentuk aman. */
+export function normalizeCourierAnimConfig(raw: unknown): CourierAnimConfig {
+  const r = (raw ?? {}) as Partial<CourierAnimConfig>;
+  const text = typeof r.text === "string" ? r.text.trim().slice(0, COURIER_ANIM_TEXT_MAX) : "";
+  return {
+    enabled: r.enabled !== false,
+    text: text || DEFAULT_COURIER_ANIM.text,
+    font: (COURIER_ANIM_FONTS as readonly string[]).includes(r.font ?? "")
+      ? (r.font as CourierAnimFont)
+      : DEFAULT_COURIER_ANIM.font,
+    weight: (COURIER_ANIM_WEIGHTS as readonly string[]).includes(r.weight ?? "")
+      ? (r.weight as CourierAnimWeight)
+      : DEFAULT_COURIER_ANIM.weight,
+    caps: r.caps !== false,
+    italic: r.italic === true,
+    fontSize: clampNum(r.fontSize, COURIER_ANIM_FONT_MIN, COURIER_ANIM_FONT_MAX, DEFAULT_COURIER_ANIM.fontSize),
+    textColor: (COURIER_ANIM_COLORS as readonly string[]).includes(r.textColor ?? "")
+      ? (r.textColor as CourierAnimColor)
+      : DEFAULT_COURIER_ANIM.textColor,
+    accentColor: (COURIER_ANIM_COLORS as readonly string[]).includes(r.accentColor ?? "")
+      ? (r.accentColor as CourierAnimColor)
+      : DEFAULT_COURIER_ANIM.accentColor,
+    animStyle: (COURIER_ANIM_STYLES as readonly string[]).includes(r.animStyle ?? "")
+      ? (r.animStyle as CourierAnimStyle)
+      : DEFAULT_COURIER_ANIM.animStyle,
+    cycleSec: clampNum(r.cycleSec, COURIER_ANIM_CYCLE_MIN, COURIER_ANIM_CYCLE_MAX, DEFAULT_COURIER_ANIM.cycleSec),
+    boom: r.boom !== false,
+  };
+}
+
+/** Ambil setelan animasi kurir (publik — kecil, aman ikut snapshot). */
+export async function getCourierAnimSettings(): Promise<CourierAnimConfig> {
+  const row = await readStoreSettingsRow();
+  return normalizeCourierAnimConfig(row.courierAnim);
+}
+
+export type CourierAnimPatch = Partial<CourierAnimConfig>;
+
+/** Simpan sebagian setelan animasi kurir (merge atas konfigurasi tersimpan). */
+export async function updateCourierAnimSettings(patch: CourierAnimPatch): Promise<CourierAnimConfig> {
+  const existing = await readStoreSettingsRow();
+  const next = normalizeCourierAnimConfig({ ...normalizeCourierAnimConfig(existing.courierAnim), ...patch });
+  await ensureStoreRowForWrite();
+  await db.storeSetting.update({ where: { id: "main" }, data: { courierAnim: next } });
+  return next;
+}
+
+/* ================= AGSI MOTION STUDIO — PUSAT KENDALI ANIMASI ================= */
+
+/** Dokumen motion lengkap (aktif + draft + preset + riwayat + jadwal). */
+export async function getMotionDoc(): Promise<MotionDoc> {
+  const row = await readStoreSettingsRow();
+  return normalizeMotionDoc(row.motion);
+}
+
+export type MotionWriteKind = "draft" | "publish" | "restore" | "reset" | "schedule";
+
+export type MotionWritePayload =
+  | { kind: "draft"; global: unknown; targets: unknown }
+  | { kind: "publish" } // publish DRAFT tersimpan (validasi + versi naik + riwayat)
+  | { kind: "restore"; version: number }
+  | { kind: "reset" }
+  | { kind: "schedule"; schedule: unknown };
+
+/**
+ * Tulis dokumen motion (satu jalur tulis — tak ada jalur kedua yang bisa
+ * saling bertentangan). Semua konfigurasi lolos normalizeMotionDoc SEBELUM
+ * disimpan (tanpa kode animasi mentah; hanya kunci katalog yang dikenal).
+ *
+ *  - draft   : simpan DRAFT (pengunjung TIDAK terpengaruh sama sekali)
+ *  - publish : draft tervalidasi → jadi konfigurasi AKTIF, version+1,
+ *              entri riwayat baru → snapshot publik + SSE settings event
+ *              menyebarkan ke semua perangkat tanpa polling tambahan
+ *  - restore : kembalikan konfigurasi dari entri riwayat (versi baru lagi)
+ *  - reset   : kembali ke bawaan AGSI Signature
+ */
+export async function updateMotionSettings(payload: MotionWritePayload, adminName: string): Promise<MotionDoc> {
+  const doc = await getMotionDoc();
+  const by = (adminName || "admin").slice(0, 80);
+  let next: MotionDoc = { ...doc };
+
+  if (payload.kind === "draft") {
+    const d = normalizeMotionDoc({ global: payload.global, targets: payload.targets });
+    next.draft = {
+      global: d.global,
+      targets: d.targets,
+      updatedAt: new Date().toISOString(),
+      by,
+    };
+  } else if (payload.kind === "publish") {
+    const src = doc.draft ?? { global: doc.global, targets: doc.targets };
+    const d = normalizeMotionDoc({ global: src.global, targets: src.targets, version: doc.version });
+    const summary = summarizeTargetChanges(doc.targets, d.targets);
+    next.global = d.global;
+    next.targets = d.targets;
+    next.draft = null;
+    next.version = doc.version + 1;
+    next.updatedAt = new Date().toISOString();
+    next.updatedBy = by;
+    next.history = [
+      {
+        version: next.version,
+        at: next.updatedAt,
+        by,
+        action: "publish" as const,
+        summary,
+        config: { global: d.global, targets: d.targets },
+      },
+      ...doc.history,
+    ].slice(0, 15);
+  } else if (payload.kind === "restore") {
+    const entry = doc.history.find((h) => h.version === Math.round(Number(payload.version)));
+    if (!entry) throw new Error("Versi tidak ditemukan dalam riwayat.");
+    next.global = entry.config.global;
+    next.targets = entry.config.targets;
+    next.version = doc.version + 1;
+    next.updatedAt = new Date().toISOString();
+    next.updatedBy = by;
+    next.history = [
+      {
+        version: next.version,
+        at: next.updatedAt,
+        by,
+        action: "restore" as const,
+        summary: `restore v${entry.version} — ${summarizeTargetChanges(doc.targets, entry.config.targets)}`,
+        config: { global: entry.config.global, targets: entry.config.targets },
+      },
+      ...doc.history,
+    ].slice(0, 15);
+  } else if (payload.kind === "schedule") {
+    next.schedule = normalizeSchedule(payload.schedule);
+    next.version = doc.version + 1;
+    next.updatedAt = new Date().toISOString();
+    next.updatedBy = by;
+    next.history = [
+      {
+        version: next.version,
+        at: next.updatedAt,
+        by,
+        action: "schedule" as const,
+        summary: next.schedule.enabled
+          ? `jadwal aktif — preset ${next.schedule.presetId ?? "tanpa"} (${next.schedule.startDate ?? "…"} s.d. ${next.schedule.endDate ?? "…"}, jam ${next.schedule.timeFrom ?? "00:00"}–${next.schedule.timeTo ?? "23:59"})`
+          : "jadwal dimatikan",
+        config: { global: doc.global, targets: doc.targets },
+      },
+      ...doc.history,
+    ].slice(0, 15);
+  } else {
+    const def = defaultMotionDoc();
+    next.global = def.global;
+    next.targets = def.targets;
+    next.version = doc.version + 1;
+    next.updatedAt = new Date().toISOString();
+    next.updatedBy = by;
+    next.history = [
+      {
+        version: next.version,
+        at: next.updatedAt,
+        by,
+        action: "reset" as const,
+        summary: "reset ke bawaan AGSI Signature",
+        config: { global: def.global, targets: def.targets },
+      },
+      ...doc.history,
+    ].slice(0, 15);
+  }
+
+  await ensureStoreRowForWrite();
+  await db.storeSetting.update({
+    where: { id: "main" },
+    data: { motion: next as unknown as object },
+  });
+  return next;
+}
+
 /* ================= SNAPSHOT SEMUA SETELAN — 1 QUERY ================= */
 
 /** Gabungan semua setelan publik (dipakai GET /api/settings — 1 query DB). */
@@ -737,6 +1074,8 @@ export type StoreSettingsSnapshot = {
   menuHero: MenuHeroSettings;
   menuPromo: MenuPromoSettings;
   videoPromo: VideoPromoSettings;
+  courierAnim: CourierAnimConfig;
+  motion: MotionPublic;
 };
 
 /**
@@ -813,5 +1152,8 @@ export async function getStoreSettingsSnapshot(): Promise<StoreSettingsSnapshot>
               : row.videoPromoSlot3Mime,
       })),
     },
+    courierAnim: normalizeCourierAnimConfig(row.courierAnim),
+    // AGSI Motion Studio — ringkasan publik (jadwal dievaluasi server)
+    motion: motionPublicOf(normalizeMotionDoc(row.motion)),
   };
 }

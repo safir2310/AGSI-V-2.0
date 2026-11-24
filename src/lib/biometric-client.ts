@@ -309,15 +309,22 @@ type AppBiometricBridge = {
   openBiometricEnroll?: () => boolean;
 };
 
-/** Ambil jembatan biometrik native — hanya ada di aplikasi Android v1.1.0+ */
+/** Ambil jembatan biometrik native — hanya ada di aplikasi Android v1.1.0+.
+ *  v1.3.35 — probing dibungkus try: objek jembatan yang usang (pasca WebView
+ *  dibuat ulang) bisa membuat AKSES PROPERTI-nya pun melempar pengecualian. */
 function appBiometricBridge(): AppBiometricBridge | null {
   if (typeof window === "undefined") return null;
-  const b = (window as unknown as { AgsiNative?: unknown }).AgsiNative;
-  if (!b || typeof b !== "object") return null;
-  const bridge = b as AppBiometricBridge;
-  // Guard versi: aplikasi lama (sebelum 1.1.0) tidak punya metode biometrik
-  if (typeof bridge.isBiometricAvailable !== "function") return null;
-  return bridge;
+  try {
+    const b = (window as unknown as { AgsiNative?: unknown }).AgsiNative;
+    if (!b || typeof b !== "object") return null;
+    const bridge = b as AppBiometricBridge;
+    // Guard versi: aplikasi lama (sebelum 1.1.0) tidak punya metode biometrik
+    if (typeof bridge.isBiometricAvailable !== "function") return null;
+    return bridge;
+  } catch {
+    // jembatan usang/tidak siap → anggap tidak ada
+    return null;
+  }
 }
 
 export type AppBiometricStatus = {
@@ -341,29 +348,32 @@ export function appBiometricStatus(): AppBiometricStatus {
   return { inApp: true, available, enabled };
 }
 
-/** Aktifkan biometrik di aplikasi — dialog verifikasi native, hasil via callback */
+/** Aktifkan biometrik di aplikasi — dialog verifikasi native, hasil via callback.
+ *  v1.3.35 — panggilan jembatan dibungkus try penuh + SATU percobaan ulang
+ *  dengan jembatan yang dibaca ulang: bila objek interface usang melempar
+ *  (penyebab error "jembatan native tidak tersedia"), kesempatan kedua ini
+ *  menyelamatkan alur tanpa perlu buka-tutup aplikasi. */
 export function enableAppBiometric(): Promise<{ ok: boolean; message: string }> {
-  const bridge = appBiometricBridge();
-  const nativeEnable = bridge?.enableBiometric;
-  if (!nativeEnable) {
-    return Promise.resolve({
-      ok: false,
-      message: "Perbarui aplikasi AGSI ke versi terbaru untuk memakai fitur ini.",
-    });
-  }
   return new Promise((resolve) => {
     const cbId = `cb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const w = window as unknown as {
       __agsiNativeResult?: (payload: { id: string; ok: boolean; message: string }) => void;
     };
     const prev = w.__agsiNativeResult;
+    let settled = false;
+    const settle = (result: { ok: boolean; message: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      w.__agsiNativeResult = prev;
+      resolve(result);
+    };
     // Pengaman: jangan gantung selamanya bila aplikasi tidak membalas.
     // 20 detik cukup — bila dialog verifikasi native benar-benar muncul,
     // ia muncul seketika; diam lebih lama = bug aplikasi lama (v1.2.1-) di
     // mana BiometricPrompt gagal tampil tanpa memanggil balik.
     const timeout = setTimeout(() => {
-      w.__agsiNativeResult = prev;
-      resolve({
+      settle({
         ok: false,
         message:
           "Dialog verifikasi Face ID / sidik jari tidak muncul. Pastikan kamu memakai aplikasi AGSI versi terbaru (1.2.2+), lalu buka ulang aplikasi dan coba lagi.",
@@ -374,22 +384,31 @@ export function enableAppBiometric(): Promise<{ ok: boolean; message: string }> 
         prev?.(payload);
         return;
       }
-      clearTimeout(timeout);
-      w.__agsiNativeResult = prev;
-      resolve({ ok: !!payload.ok, message: payload.message ?? "" });
+      settle({ ok: !!payload.ok, message: payload.message ?? "" });
     };
-    try {
-      nativeEnable(cbId);
-    } catch {
-      // v1.3.21 — bridge mati (interface tak terpasang ulang pasca WebView
-      // dibuat ulang) → selesaikan sebagai gagal, bukan exception tak
-      // tertangkap keluar konstruktor Promise.
-      clearTimeout(timeout);
-      w.__agsiNativeResult = prev;
-      resolve({
-        ok: false,
-        message: "Jembatan native tidak tersedia. Buka ulang aplikasi AGSI lalu coba lagi.",
-      });
+    // Panggil jembatan native — akses metode maupun pemanggilannya dibungkus
+    // try: bila jembatan usang melempar, ulangi SEKALI dengan jembatan yang
+    // dibaca ulang sebelum menyerah dengan pesan yang jelas.
+    const call = (bridge: AppBiometricBridge | null): boolean => {
+      try {
+        const nativeEnable = bridge?.enableBiometric;
+        if (typeof nativeEnable !== "function") return false;
+        nativeEnable.call(bridge, cbId);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (!call(appBiometricBridge())) {
+      setTimeout(() => {
+        if (!call(appBiometricBridge())) {
+          settle({
+            ok: false,
+            message:
+              "Jembatan biometrik aplikasi belum siap. Tutup penuh aplikasi AGSI (swipe keluar dari daftar aplikasi), buka lagi, lalu coba aktifkan Face ID / sidik jari sekali lagi.",
+          });
+        }
+      }, 400);
     }
   });
 }
