@@ -41,6 +41,11 @@ type QrisInfo = {
   imageUrl: string | null;
   /** Jalur DOKU Checkout: URL halaman pembayaran DOKU (status tetap dipantau) */
   paymentUrl: string | null;
+  /** Checkout ganda DOKU: true = paymentUrl adalah halaman QRIS DOKU ASLI
+   *  (kanal QRIS saja) — dirender sebagai kartu QR (iframe), bukan QR tautan */
+  qrPage: boolean;
+  /** URL halaman checkout "semua metode" (DOKU Wallet, VA, dll.) — tombol */
+  webUrl: string | null;
   mode: "GATEWAY" | "LOCAL";
   autoVerify: boolean;
   /** gateway QRIS bawaan (sandbox) aktif — tombol simulasi dana ditampilkan */
@@ -180,6 +185,8 @@ export function QrisPaySheet({
         imageUrl: (data.imageUrl as string) ?? null,
         paymentUrl:
           typeof data.paymentUrl === "string" ? data.paymentUrl : null,
+        qrPage: data.qrPage === true,
+        webUrl: typeof data.webUrl === "string" ? data.webUrl : null,
         mode: data.mode === "GATEWAY" ? "GATEWAY" : "LOCAL",
         autoVerify: !!data.autoVerify,
         sandbox: data.sandbox === true,
@@ -220,11 +227,15 @@ export function QrisPaySheet({
   // pelanggan bisa memindai dari HP-nya sendiri.
   useEffect(() => {
     if (variant !== "customer") return;
+    // Checkout ganda: halaman QRIS DOKU asli sudah tampil di kartu QR —
+    // jangan menutupnya dengan halaman "semua metode" di atasnya. Auto-buka
+    // hanya bila kartu QR berisi QR tautan (kanal QRIS akun tidak aktif).
+    if (info?.qrPage) return;
     if (!info?.paymentUrl || phase !== "scan") return;
     if (dokuAutoOpened.current) return;
     dokuAutoOpened.current = true;
     setDokuView(true);
-  }, [variant, info?.paymentUrl, phase]);
+  }, [variant, info?.qrPage, info?.paymentUrl, phase]);
 
   // DOKU mengirim postMessage {func:"closeJokul"} ke jendela induk saat
   // pengguna menutup halaman bayarnya (tombol X di halaman DOKU). Tanggapi:
@@ -380,7 +391,7 @@ export function QrisPaySheet({
         className="fixed inset-0 z-[95] flex items-end justify-center bg-neutral-900/70 backdrop-blur-sm sm:items-center sm:p-4"
         role="dialog"
         aria-modal="true"
-        aria-label={order.method === "EWALLET" ? "Pembayaran E-Wallet" : "Pembayaran QRIS"}
+        aria-label="Pembayaran Online (DOKU)"
       >
         <motion.div
           initial={prefersReduced ? false : { y: 48, scale: 0.97 }}
@@ -397,7 +408,7 @@ export function QrisPaySheet({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-black tracking-wide">
-                  {order.method === "EWALLET" ? "Pembayaran E-Wallet" : "Pembayaran QRIS"}
+                  Pembayaran Online (DOKU)
                 </p>
                 <p className="truncate text-[11px] font-semibold text-orange-100">
                   {order.code} • {isPos ? "Kasir" : "Aplikasi"}
@@ -558,6 +569,17 @@ export function QrisPaySheet({
                         DOKU
                       </span>
                     </motion.div>
+                  ) : info?.qrPage && info?.paymentUrl ? (
+                    /* Checkout ganda DOKU: kartu QR = halaman QRIS DOKU ASLI
+                       (kanal QRIS saja) — QR-nya QRIS EMVCo DOKU yang sebenarnya,
+                       dirender DOKU sendiri; pindai pakai e-wallet/m-Banking. */
+                    <iframe
+                      src={info.paymentUrl}
+                      title={`QRIS DOKU ${order.code}`}
+                      className="h-[420px] w-full rounded-xl border-0 bg-white"
+                      allow="payment *; clipboard-write"
+                      referrerPolicy="strict-origin-when-cross-origin"
+                    />
                   ) : info?.imageUrl ? (
                     <img
                       src={info.imageUrl}
@@ -595,15 +617,16 @@ export function QrisPaySheet({
                 </p>
                 {info?.paymentUrl ? (
                   <p className="mt-1 text-center text-[11px] leading-relaxed text-neutral-500">
-                    {order.method === "EWALLET" ? (
+                    {info?.qrPage ? (
                       <>
-                        Tekan tombol di bawah — <strong className="font-bold text-neutral-700">halaman pembayaran DOKU terbuka langsung di dalam aplikasi ini</strong>{" "}
-                        (tanpa pindah aplikasi/tab lain), lalu pilih e-wallet favoritmu. Kode QR di atas dipakai bila membayar dari HP lain.
+                        <strong className="font-bold text-neutral-700">QR QRIS DOKU asli tampil di kartu di atas</strong>{" "}
+                        — pindai pakai <strong className="font-bold text-neutral-700">GoPay, DANA, OVO, ShopeePay, LinkAja, atau m-Banking apa pun</strong>. Untuk DOKU Wallet, Virtual Account &amp; metode lain, tekan tombol di bawah.
                       </>
                     ) : (
                       <>
-                        Tekan tombol di bawah — <strong className="font-bold text-neutral-700">pembayaran QRIS e-wallet DOKU terbuka langsung di dalam aplikasi ini</strong>{" "}
-                        (tanpa pindah aplikasi/tab lain), lalu pindai kode QRIS-nya pakai <strong className="font-bold text-neutral-700">GoPay, DANA, OVO, ShopeePay, LinkAja, atau m-Banking apa pun</strong>. Kode QR di atas dipakai bila membayar dari HP lain.
+                        Tekan tombol di bawah — <strong className="font-bold text-neutral-700">halaman pembayaran DOKU terbuka langsung di dalam aplikasi ini</strong>{" "}
+                        (tanpa pindah aplikasi/tab lain) — lalu pilih metode favoritmu:{" "}
+                        <strong className="font-bold text-neutral-700">QRIS (GoPay, DANA, OVO, ShopeePay, LinkAja, m-Banking apa pun), DOKU Wallet, Virtual Account, &amp; kanal aktif lainnya</strong>. Kode QR di atas dipakai bila membayar dari HP lain.
                       </>
                     )}
                   </p>
@@ -622,8 +645,8 @@ export function QrisPaySheet({
                     Jujur satu baris tanpa detail galat teknis. */}
                 {info?.paymentUrl && info.fallbackReason && info.provider?.startsWith("doku") && (
                   <p className="mt-1.5 rounded-xl bg-amber-50 px-3 py-2 text-center text-[10px] font-semibold leading-snug text-amber-700 ring-1 ring-amber-200">
-                    Kanal QRIS toko sedang tidak aktif — pilih kanal pembayaran
-                    yang tersedia (e-wallet/dompet digital aktif toko) di halaman DOKU.
+                    Beberapa kanal toko sedang tidak aktif — pilih salah satu
+                    kanal pembayaran yang tersedia di halaman DOKU.
                   </p>
                 )}
 
@@ -658,11 +681,9 @@ export function QrisPaySheet({
                       ) : info?.provider?.startsWith("doku") ? (
                         <p className="mt-1 text-[10px] font-bold text-emerald-600">
                           Penyedia: DOKU ({info.provider === "doku" ? "Produksi" : "Sandbox"}) —{" "}
-                          {order.method === "EWALLET"
-                            ? "pilih e-wallet di halaman DOKU (DOKU Wallet, DANA, OVO, ShopeePay — sesuai kanal aktif akun)"
-                            : info.paymentUrl
-                              ? "QRIS e-wallet DOKU langsung terbuka — pelanggan pindai pakai e-wallet/m-Banking apa pun; status dicek otomatis"
-                              : "scan pakai DANA / GoPay / OVO / ShopeePay / m-Banking mana pun"}
+                          pelanggan pilih metode di halaman DOKU: QRIS, DOKU Wallet,
+                          DANA, OVO, ShopeePay, LinkAja, Virtual Account &amp; kanal
+                          aktif lainnya; status dicek otomatis
                         </p>
                       ) : info?.provider?.startsWith("dana") ? (
                         <p className="mt-1 text-[10px] font-bold text-emerald-600">
@@ -802,12 +823,16 @@ export function QrisPaySheet({
                   >
                     <span className="flex items-center gap-2">
                       <Wallet className="h-4 w-4" />
-                      {order.method === "EWALLET"
-                        ? "Bayar dengan E-Wallet (DOKU)"
-                        : "Bayar QRIS E-Wallet (DOKU)"}
+                      {info?.qrPage
+                        ? "Semua Metode Lain (DOKU)"
+                        : order.method === "EWALLET"
+                          ? "Bayar dengan E-Wallet (DOKU)"
+                          : "Bayar QRIS E-Wallet (DOKU)"}
                     </span>
                     <span className="text-[9px] font-bold tracking-wide text-red-100">
-                      terbuka di dalam aplikasi — tanpa pindah halaman lain
+                      {info?.qrPage
+                        ? "DOKU Wallet, Virtual Account, e-wallet & kanal aktif lain"
+                        : "terbuka di dalam aplikasi — tanpa pindah halaman lain"}
                     </span>
                   </button>
                 )}
@@ -925,7 +950,7 @@ export function QrisPaySheet({
           {/* Halaman bayar DOKU — dirender penuh di dalam aplikasi */}
           <div className="relative flex-1 bg-white">
             <iframe
-              src={info.paymentUrl}
+              src={info?.webUrl ?? info?.paymentUrl}
               title="Halaman Pembayaran DOKU"
               className="absolute inset-0 h-full w-full border-0"
               allow="payment *; clipboard-write"
