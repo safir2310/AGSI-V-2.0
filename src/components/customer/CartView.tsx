@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import {
   Bike,
   ChevronDown,
+  Clock,
   Loader2,
   MapPin,
   Minus,
@@ -59,8 +60,10 @@ const ORDER_TYPES = [
 
 const PAYMENTS = [
   { id: "CASH", label: "Tunai", emoji: "💵" },
-  { id: "QRIS", label: "QRIS", emoji: "📱" },
-  { id: "EWALLET", label: "E-Wallet", emoji: "👛" },
+  // UPDATE (2026-11-26): QRIS & E-Wallet digabung SATU opsi — halaman bayar
+  // DOKU menampilkan SEMUA metode aktif (QRIS, DOKU Wallet, DANA, OVO,
+  // ShopeePay, LinkAja, Virtual Account, dll), pelanggan pilih sendiri.
+  { id: "QRIS", label: "Online (DOKU)", emoji: "📱" },
 ] as const;
 
 export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void }) {
@@ -112,23 +115,18 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
       setGps(null);
       setMapsLinkInput("");
     }
-    if (!qrisEnabled || !ewalletEnabled) {
-      setForm((f) =>
-        (f.payment === "QRIS" && !qrisEnabled) || (f.payment === "EWALLET" && !ewalletEnabled)
-          ? { ...f, payment: "CASH" }
-          : f
-      );
+    if (!qrisEnabled && !ewalletEnabled) {
+      // Pembayaran online dimatikan penuh (kedua saklar) → kembali ke tunai
+      setForm((f) => (f.payment !== "CASH" ? { ...f, payment: "CASH" } : f));
     }
   }, [deliveryEnabled, qrisEnabled, ewalletEnabled]);
 
   /** Opsi jenis pesanan & pembayaran yang tampil — mengikuti saklar admin.
-   *  QRIS & E-Wallet saklarnya TERPISAH sejak v1.3.4 (ewalletEnabled). */
+   *  UPDATE (2026-11-26): opsi "Online (DOKU)" aktif bila SALAH SATU saklar
+   *  pembayaran digital dinyalakan (QRIS atau E-Wallet). */
   const availableTypes = ORDER_TYPES.filter((t) => t.id !== "DELIVERY" || deliveryEnabled);
   const availablePayments = PAYMENTS.filter(
-    (p) =>
-      p.id === "CASH" ||
-      (p.id === "QRIS" && qrisEnabled) ||
-      (p.id === "EWALLET" && ewalletEnabled)
+    (p) => p.id === "CASH" || (p.id === "QRIS" && (qrisEnabled || ewalletEnabled))
   );
 
   /** Area pengantaran terpilih + ongkir — Rp1.000/km, kelipatan jarak
@@ -137,6 +135,51 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
     form.type === "DELIVERY" && form.areaId ? findDeliveryArea(form.areaId) : undefined;
   const deliveryFee =
     form.type === "DELIVERY" && deliveryArea ? (feeForArea(deliveryArea.id) ?? 0) : 0;
+
+  /** ===== JADWAL JAM PENGAMBILAN (Bungkus / Ambil — permintaan pemilik) =====
+   *  null = ambil sekarang (perilaku lama); { day, time } = slot dipilih
+   *  (hari ini / besok, grid 30 menit pukul 08:00–21:00). Berbasis waktu
+   *  perangkat — seluruh pengguna AGSI berada di WIB (Aceh). */
+  const [pickup, setPickup] = useState<{ day: "today" | "tomorrow"; time: string } | null>(null);
+
+  const pickupSlots = useMemo(() => {
+    const slots: string[] = [];
+    for (let h = 8; h <= 21; h++) {
+      for (const m of [0, 30]) {
+        slots.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+      }
+    }
+    return slots;
+  }, []);
+
+  /** Slot sudah lewat? (hanya relevan utk hari ini — jam perangkat; besok
+   *  selalu terbuka). ≤ waktu sekarang dianggap lewat. */
+  const slotPassed = (day: "today" | "tomorrow", time: string) => {
+    if (day === "tomorrow") return false;
+    const [h, m] = time.split(":").map(Number);
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return d.getTime() <= Date.now();
+  };
+
+  const pickupDayOpen = (day: "today" | "tomorrow") =>
+    pickupSlots.some((s) => !slotPassed(day, s));
+
+  /** Masuk mode jadwal: mulai dari hari ini, bila semua slotnya lewat → besok */
+  const startScheduling = () => {
+    const day = pickupDayOpen("today") ? "today" : "tomorrow";
+    setPickup({ day, time: pickupSlots.find((s) => !slotPassed(day, s)) ?? pickupSlots[0] });
+  };
+
+  /** ISO jadwal utk dikirim ke API (WIB perangkat → UTC otomatis) */
+  const pickupIso = useMemo(() => {
+    if (!pickup) return null;
+    const [h, m] = pickup.time.split(":").map(Number);
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    if (pickup.day === "tomorrow") d.setDate(d.getDate() + 1);
+    return d.toISOString();
+  }, [pickup]);
 
   /** Ambil pin GPS lokasi rumah sekarang (presisi — dipakai kurir via Google Maps).
    *  Di aplikasi Android WebView geolokasi bisa ditolak → pelanggan tetap bisa
@@ -300,6 +343,14 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
       });
       return;
     }
+    if (form.type === "TAKEAWAY" && pickup && slotPassed(pickup.day, pickup.time)) {
+      showNotice({
+        type: "error",
+        title: "Jam Pengambilan Sudah Lewat",
+        message: `Slot ${pickup.time} sudah terlewat — pilih jam pengambilan yang lain ya.`,
+      });
+      return;
+    }
     if (form.type === "DELIVERY" && !form.areaId) {
       showNotice({
         type: "error",
@@ -318,10 +369,14 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
       form.type === "DELIVERY" && deliveryArea
         ? `, antar ke Gampong ${deliveryArea.gampong} (ongkir ${formatIDR(deliveryFee)})`
         : "";
+    const pickupText =
+      form.type === "TAKEAWAY" && pickup
+        ? `, jadwal ambil ${pickup.day === "tomorrow" ? "besok" : "hari ini"} ${pickup.time}`
+        : "";
     showNotice({
       type: "confirm",
       title: "Konfirmasi Pesanan",
-      message: `Atas nama ${form.name.trim()} — ${cart.totalItems()} item, pembayaran ${paymentLabel}${voucherText}${deliveryText}, total bayar ${formatIDR(
+      message: `Atas nama ${form.name.trim()} — ${cart.totalItems()} item, pembayaran ${paymentLabel}${voucherText}${deliveryText}${pickupText}, total bayar ${formatIDR(
         total
       )}. Pesanan langsung masuk dapur dan TIDAK DAPAT dibatalkan. Lanjutkan pesanan?`,
       actions: [
@@ -346,6 +401,7 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
           deliveryAreaId: form.type === "DELIVERY" ? form.areaId : undefined,
           deliveryLat: form.type === "DELIVERY" && gps ? gps.lat : undefined,
           deliveryLng: form.type === "DELIVERY" && gps ? gps.lng : undefined,
+          pickupAt: form.type === "TAKEAWAY" && pickupIso ? pickupIso : undefined,
           phone: form.phone,
           note: form.note || undefined,
           paymentMethod: form.payment,
@@ -370,6 +426,7 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
       setAppliedVoucher(null);
       setVoucherInput("");
       setVoucherError(null);
+      setPickup(null);
       refreshOrders("mine");
       refreshVouchers();
       const created = data.order;
@@ -399,6 +456,10 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
         title: "Pesanan Berhasil! 🎉",
         message: `Pesanan ${created.code} sudah masuk dapur${
           hadVoucher ? ` — voucher ${created.voucherCode} terpakai` : ""
+        }${
+          pickup && form.type === "TAKEAWAY"
+            ? ` — jadwal ambil ${pickup.day === "tomorrow" ? "besok" : "hari ini"} ${pickup.time}`
+            : ""
         }. Total bayar ${formatIDR(finalTotal)}. Ayam geprekmu segera dimasak!`,
         actions: [
           {
@@ -561,7 +622,11 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
             <button
               key={t.id}
               type="button"
-              onClick={() => setForm({ ...form, type: t.id })}
+              onClick={() => {
+                setForm({ ...form, type: t.id });
+                // Pindah dari Bungkus → bersihkan jadwal pengambilan
+                if (t.id !== "TAKEAWAY") setPickup(null);
+              }}
               className={cn(
                 "press-effect flex flex-col items-center gap-1 rounded-xl border p-2.5 text-[10px] font-bold transition-all",
                 form.type === t.id
@@ -590,6 +655,96 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
               value={form.tableNo}
               onChange={(e) => setForm({ ...form, tableNo: e.target.value })}
             />
+          </div>
+        )}
+        {form.type === "TAKEAWAY" && (
+          /* ===== JADWAL JAM PENGAMBILAN (permintaan pemilik) — bungkus bisa
+             diambil langsung atau dijadwalkan: hari ini / besok, slot 30
+             menit pukul 08:00–21:30; slot yang sudah lewat dinonaktifkan. */
+          <div className="space-y-2 rounded-xl border border-orange-100 bg-orange-50/60 p-3">
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-orange-600" />
+              <span className="text-xs font-black text-neutral-800">Jadwal Pengambilan</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPickup(null)}
+                className={cn(
+                  "press-effect rounded-lg border p-2 text-[11px] font-bold transition-all",
+                  pickup === null
+                    ? "border-orange-500 bg-white text-orange-700 ring-2 ring-orange-200"
+                    : "border-orange-200 bg-white/70 text-neutral-500"
+                )}
+              >
+                🔥 Ambil Sekarang
+              </button>
+              <button
+                type="button"
+                onClick={startScheduling}
+                className={cn(
+                  "press-effect rounded-lg border p-2 text-[11px] font-bold transition-all",
+                  pickup !== null
+                    ? "border-orange-500 bg-white text-orange-700 ring-2 ring-orange-200"
+                    : "border-orange-200 bg-white/70 text-neutral-500"
+                )}
+              >
+                🕒 Jadwalkan Jam
+              </button>
+            </div>
+            {pickup && (
+              <div className="space-y-1.5">
+                <div className="grid grid-cols-2 gap-2">
+                  {(["today", "tomorrow"] as const).map((day) => (
+                    <button
+                      key={day}
+                      type="button"
+                      disabled={!pickupDayOpen(day)}
+                      onClick={() =>
+                        setPickup({
+                          day,
+                          time: pickupSlots.find((s) => !slotPassed(day, s)) ?? pickupSlots[0],
+                        })
+                      }
+                      className={cn(
+                        "press-effect rounded-lg border p-1.5 text-[11px] font-bold transition-all disabled:opacity-40",
+                        pickup.day === day
+                          ? "border-orange-500 bg-white text-orange-700 ring-2 ring-orange-200"
+                          : "border-orange-200 bg-white/70 text-neutral-500"
+                      )}
+                    >
+                      {day === "today" ? "Hari Ini" : "Besok"}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {pickupSlots.map((s) => {
+                    const passed = slotPassed(pickup.day, s);
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        disabled={passed}
+                        onClick={() => setPickup({ ...pickup, time: s })}
+                        className={cn(
+                          "press-effect rounded-lg border py-1.5 text-center text-[10px] font-black transition-all",
+                          pickup.time === s
+                            ? "border-orange-500 bg-orange-600 text-white"
+                            : passed
+                              ? "border-neutral-100 bg-neutral-50 text-neutral-300"
+                              : "border-orange-200 bg-white text-neutral-600 hover:border-orange-300"
+                        )}
+                      >
+                        {s}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] font-semibold leading-snug text-orange-700">
+                  Datang ke toko pada jam yang dipilih — pesananmu disiapkan menjelang jadwalnya.
+                </p>
+              </div>
+            )}
           </div>
         )}
         {form.type === "DELIVERY" && (
@@ -718,10 +873,10 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
           />
         </div>
 
-        {/* Metode bayar — QRIS hilang bila dimatikan admin */}
+        {/* Metode bayar — opsi online hilang bila kedua saklar dimatikan admin */}
         <div className="space-y-1.5">
           <Label>Metode Pembayaran</Label>
-          <div className={cn("grid gap-2", availablePayments.length === 2 ? "grid-cols-2" : availablePayments.length === 3 ? "grid-cols-3" : "grid-cols-1")}>
+          <div className={cn("grid gap-2", availablePayments.length === 2 ? "grid-cols-2" : "grid-cols-1")}>
             {availablePayments.map((p) => (
               <button
                 key={p.id}
@@ -738,13 +893,17 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
               </button>
             ))}
           </div>
-          {(!qrisEnabled || !ewalletEnabled) && (
+          {form.payment === "QRIS" && (
+            <p className="text-[11px] font-semibold leading-snug text-neutral-500">
+              Halaman DOKU menampilkan semua metode: QRIS (GoPay, DANA, OVO,
+              ShopeePay, LinkAja, m-Banking), DOKU Wallet, Virtual Account &amp;
+              kanal aktif lainnya — lunas otomatis terverifikasi.
+            </p>
+          )}
+          {!qrisEnabled && !ewalletEnabled && (
             <p className="text-[11px] font-semibold leading-snug text-amber-600">
-              {!qrisEnabled && !ewalletEnabled
-                ? "📱 Pembayaran digital (QRIS / E-Wallet) sedang tidak tersedia — silakan bayar tunai."
-                : !qrisEnabled
-                  ? "📱 Pembayaran QRIS sedang tidak tersedia — silakan bayar tunai atau E-Wallet."
-                  : "👛 Pembayaran E-Wallet sedang tidak tersedia — silakan bayar tunai atau QRIS."}
+              📱 Pembayaran online (QRIS &amp; E-Wallet via DOKU) sedang tidak
+              tersedia — silakan bayar tunai.
             </p>
           )}
         </div>
@@ -938,10 +1097,8 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
             <>
               {appliedVoucher && voucherDiscount > 0 && <Ticket className="h-4 w-4" />}
               {form.payment === "QRIS"
-                ? "Pesan & Bayar QRIS"
-                : form.payment === "EWALLET"
-                  ? "Pesan & Bayar E-Wallet"
-                  : "Pesan Sekarang"}{" "}
+                ? "Pesan & Bayar Online (DOKU)"
+                : "Pesan Sekarang"}{" "}
               — {formatIDR(total)}
             </>
           )}

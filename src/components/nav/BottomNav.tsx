@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCartStore, type AppView } from "@/lib/store";
+import { useChanged, useMotionTarget, badgeAnim, useBindSpeed } from "@/components/motion/MotionRuntime";
 
 type NavItem = {
   id: AppView;
@@ -187,9 +188,9 @@ export function BottomNav({ variant, active, onSelect, pendingCount = 0 }: Botto
                         strokeWidth={isActive ? 2.4 : 2}
                       />
                       {badge > 0 && (
-                        <span className="absolute -right-2.5 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-600 px-1 text-[10px] font-bold leading-none text-white shadow-md ring-2 ring-white/70">
+                        <BadgeBubble targetKey={item.id === "cart" ? "cartBadge" : null} value={badge}>
                           {badge > 99 ? "99+" : badge}
-                        </span>
+                        </BadgeBubble>
                       )}
                     </motion.span>
                     <span
@@ -218,5 +219,32 @@ export function BottomNav({ variant, active, onSelect, pendingCount = 0 }: Botto
         </div>
       </motion.div>
     </nav>
+  );
+}
+
+/** Badge beranimasi (AGSI Motion Studio target "cartBadge"): pop/bounce/wiggle
+    saat jumlah bertambah, pulse berulang, atau polos bila tak dikonfigurasi.
+    Fallback = badge statis persis perilaku lama. */
+function BadgeBubble({
+  targetKey,
+  value,
+  children,
+}: {
+  targetKey: "cartBadge" | null;
+  value: number;
+  children: React.ReactNode;
+}) {
+  const t = useMotionTarget(targetKey ?? "cartBadge");
+  useBindSpeed();
+  const tick = useChanged(value);
+  const anim = t ? badgeAnim(t, tick) : null;
+  const cls =
+    "absolute -right-2.5 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-600 px-1 text-[10px] font-bold leading-none text-white shadow-md ring-2 ring-white/70";
+  if (!anim) return <span className={cls}>{children}</span>;
+  const { key, animate, transition } = anim;
+  return (
+    <motion.span key={key ?? undefined} className={cls} animate={animate} transition={transition}>
+      {children}
+    </motion.span>
   );
 }

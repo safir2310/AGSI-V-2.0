@@ -35,8 +35,7 @@ export type BannerSettingsSheetProps = {
   onClose: () => void;
 };
 
-const MAX_TITLE = 60;
-const MAX_TEXT = 160;
+// (popup banner kini gambar saja — batas judul/pesan tidak diperlukan lagi)
 const MAX_STRIP_BADGE = 24;
 const MAX_STRIP_TITLE = 80;
 const MAX_STRIP_TEXT = 120;
@@ -181,11 +180,13 @@ async function apiFetchTimeout(input: string, init: RequestInit, timeoutMs = 120
 /** Bandingkan dua payload (urutan kunci konsisten) — true = sama. */
 const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Isi request PUT bagian banner popup (tanpa gambar). */
-const bannerPayloadOf = (s: { enabled: boolean; title: string; text: string }) => ({
+/** Isi request PUT bagian banner popup (tanpa gambar).
+ *  Popup kini GAMBAR SAJA 1:1 — judul/pesan dihapus dari popup, jadi selalu
+ *  dikirim null agar sisa teks lama di database ikut bersih. */
+const bannerPayloadOf = (s: { enabled: boolean }) => ({
   bannerEnabled: s.enabled,
-  bannerTitle: s.title.trim() || null,
-  bannerText: s.text.trim() || null,
+  bannerTitle: null,
+  bannerText: null,
 });
 
 /** Isi request PUT bagian strip promo. */
@@ -251,7 +252,7 @@ const saveSnapshotFromStore = (): SaveSnapshot => {
   const st = useSettingsStore.getState();
   const storeBanners = st.menuPromo.banners ?? EMPTY_PROMO_BANNERS;
   return {
-    banner: bannerPayloadOf({ enabled: st.banner.bannerEnabled, title: st.banner.bannerTitle ?? "", text: st.banner.bannerText ?? "" }),
+    banner: bannerPayloadOf({ enabled: st.banner.bannerEnabled }),
     strip: stripPayloadOf({ enabled: st.promo.promoStripEnabled, badge: st.promo.promoStripBadge, title: st.promo.promoStripTitle, text: st.promo.promoStripText }),
     hero: heroPayloadOf({ enabled: st.menuHero.menuHeroEnabled, badge: st.menuHero.menuHeroBadge, title: st.menuHero.menuHeroTitle, text: st.menuHero.menuHeroText }),
     menuPromo: menuPromoPayloadOf({
@@ -316,8 +317,6 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [enabled, setEnabled] = useState(false);
-  const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
   // ===== Strip "Promo Hari Ini" (baris oranye di Beranda) =====
   const [promoEnabled, setPromoEnabled] = useState(true);
   const [promoBadge, setPromoBadge] = useState("");
@@ -381,8 +380,6 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       await refreshSettings();
       const b = useSettingsStore.getState().banner;
       setEnabled(b.bannerEnabled);
-      setTitle(b.bannerTitle ?? "");
-      setText(b.bannerText ?? "");
       setServerHasImage(b.bannerHasImage);
       setServerVersion(b.bannerVersion);
       setImageData(undefined);
@@ -615,11 +612,12 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
 
   const save = async () => {
     if (saving) return;
-    if (enabled && previewSrc === null && !title.trim()) {
+    // popup kini GAMBAR SAJA — tanpa gambar, tidak ada yang bisa ditampilkan
+    if (enabled && previewSrc === null) {
       showNotice({
         type: "error",
         title: "Banner Belum Siap",
-        message: "Unggah gambar banner atau isi judul dulu — popup butuh minimal satu konten.",
+        message: "Unggah gambar banner dulu — popup beranda kini menampilkan gambar saja.",
       });
       return;
     }
@@ -686,8 +684,8 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       // kecil = selesai cepat.
       const base = initialRef.current ?? saveSnapshotFromStore();
 
-      // Bagian 1 — popup banner Beranda (teks + gambar)
-      const bannerTeks = bannerPayloadOf({ enabled, title, text });
+      // Bagian 1 — popup banner Beranda (gambar saja + saklar)
+      const bannerTeks = bannerPayloadOf({ enabled });
       if (imageData !== undefined || !sameJson(bannerTeks, base.banner)) {
         const bannerStep: Record<string, unknown> = { ...bannerTeks, bannerTouch: true };
         if (imageData !== undefined) {
@@ -848,7 +846,8 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
     }
   };
 
-  const hasAnyContent = previewSrc !== null || !!title.trim();
+  // popup gambar saja — konten = ada gambar (dipilih/baru dari server)
+  const hasAnyContent = previewSrc !== null;
   const active = enabled && hasAnyContent;
 
   // Portal ke <body> agar modal tidak terjebak stacking context `main` (z-10)
@@ -925,7 +924,8 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-black text-neutral-800">Popup Banner</p>
                         <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-500">
-                          Tampilkan popup promo saat pelanggan membuka halaman Beranda.
+                          Tampilkan popup promo saat pelanggan membuka halaman Beranda. Gambar tampil
+                          penuh kotak 1:1 (persegi) — disarankan foto promo rasio 1:1, mis. 1080×1080.
                         </p>
                         <span
                           className={cn(
@@ -953,21 +953,11 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                   </p>
                   <div className="overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm">
                     {previewSrc ? (
-                      <img src={previewSrc} alt="Pratinjau banner" className="aspect-video w-full object-cover" />
+                      <img src={previewSrc} alt="Pratinjau banner" className="aspect-square w-full object-cover" />
                     ) : (
-                      <div className="flex aspect-video w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-orange-50 to-orange-100/60 text-neutral-400">
+                      <div className="flex aspect-square w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-orange-50 to-orange-100/60 text-neutral-400">
                         <ImageIcon className="h-7 w-7" />
                         <span className="text-[11px] font-semibold">Belum ada gambar banner</span>
-                      </div>
-                    )}
-                    {(title.trim() || text.trim()) && (
-                      <div className="border-t border-orange-50 px-4 py-3 text-center">
-                        {title.trim() && (
-                          <p className="text-sm font-black text-neutral-900">{title.trim()}</p>
-                        )}
-                        {text.trim() && (
-                          <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-500">{text.trim()}</p>
-                        )}
                       </div>
                     )}
                   </div>
@@ -989,7 +979,7 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                     </div>
                   ) : previewSrc ? (
                     <div className="relative overflow-hidden rounded-2xl border border-orange-200">
-                      <img src={previewSrc} alt="Gambar banner terpilih" className="aspect-video w-full object-cover" />
+                      <img src={previewSrc} alt="Gambar banner terpilih" className="aspect-square w-full object-cover" />
                       <div className="absolute bottom-2 right-2 flex gap-2">
                         <button
                           onClick={() => fileInputRef.current?.click()}
@@ -1017,40 +1007,10 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                       <ImagePlus className="h-7 w-7" />
                       <span className="text-xs font-extrabold">Ketuk untuk unggah gambar</span>
                       <span className="text-[10px] font-semibold text-neutral-400">
-                        JPG / PNG / WEBP — disarankan rasio lebar ±16:9
+                        JPG / PNG / WEBP — disarankan persegi 1:1, mis. 1080×1080
                       </span>
                     </button>
                   )}
-
-                  {/* ===== JUDUL & PESAN ===== */}
-                  <p className="mb-2 mt-4 text-[11px] font-black uppercase tracking-widest text-neutral-400">
-                    Judul &amp; pesan (opsional)
-                  </p>
-                  <div className="space-y-2.5">
-                    <div>
-                      <input
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value.slice(0, MAX_TITLE))}
-                        placeholder="cth: Promo Geprek Hemat Jumat!"
-                        className="w-full rounded-xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-800 outline-none transition placeholder:font-normal placeholder:text-neutral-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                      />
-                      <p className="mt-1 text-right text-[10px] font-semibold text-neutral-300">
-                        {title.length}/{MAX_TITLE}
-                      </p>
-                    </div>
-                    <div>
-                      <textarea
-                        value={text}
-                        onChange={(e) => setText(e.target.value.slice(0, MAX_TEXT))}
-                        placeholder="cth: Beli 2 gratis 1 es teh — hanya hari ini di AGSI!"
-                        rows={2}
-                        className="w-full resize-none rounded-xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-medium text-neutral-800 outline-none transition placeholder:font-normal placeholder:text-neutral-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                      />
-                      <p className="mt-1 text-right text-[10px] font-semibold text-neutral-300">
-                        {text.length}/{MAX_TEXT}
-                      </p>
-                    </div>
-                  </div>
 
                   {/* ===== STRIP PROMO HARI INI (Beranda) ===== */}
                   <div className="mt-6 flex items-center gap-2">

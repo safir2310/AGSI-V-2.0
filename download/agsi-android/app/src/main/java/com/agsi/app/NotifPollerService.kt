@@ -39,11 +39,14 @@ import java.util.concurrent.Executors
  *                                tidak dobel dengan push FCM)
  *
  * Cara kerja:
- *  - v1.3.9: layanan BIASA TANPA notifikasi (permintaan pemilik — kartu
- *    layanan "AGSI aktif" yang dulu disembunyikan 0-piksel kini dihapus
- *    total). start() hanya dari aplikasi yang sedang di depan; polling
- *    jangka panjang dilindungi izin pengecualian baterai yang diminta
- *    LANGSUNG dari MainActivity saat aplikasi dibuka.
+ *  - v1.3.33 — KARTU "AGSI AKTIF" DIHAPUS KEMBALI (permintaan pemilik:
+ *    APK ini dibangun TANPA kredensial Firebase — kartu permanen hanya
+ *    membuat aplikasi terlihat ramai). Layanan kembali service BIASA TANPA
+ *    notifikasi (semacam v1.3.9): start() dari aplikasi yang sedang di
+ *    depan + BootReceiver sejak HP menyala (jendela allowlist sementara),
+ *    START_STICKY + pengecualian baterai menjaga keberlangsungan. Saat
+ *    FCM aktif di server & token perangkat tersedia, layanan menghentikan
+ *    diri sendiri — push FCM mekanisme utama, tidak ada polling sia-sia.
  *  - Hanya memantau saat aplikasi DI LATAR BELAKANG; saat aplikasi tampil di
  *    depan, popup + suara di halaman web (NotifWatchers) yang bekerja —
  *    siklus pertama setelah kembali ke latar belakang dipakai sebagai
@@ -55,8 +58,8 @@ import java.util.concurrent.Executors
  *  - Sesi login habis (401) → polling melambat (backoff 5 menit) sampai
  *    pengguna membuka aplikasi & login lagi.
  *
- * Bisa dimatikan dari Profil → Notifikasi Push → "Notifikasi Latar Belakang"
- * (jembatan AgsiNative.setNotifPolling).
+ * Bisa dimatikan dari Profil → Notifikasi Push → "Berjalan di Latar
+ * Belakang" (jembatan AgsiNative.setNotifPolling).
  */
 class NotifPollerService : Service() {
 
@@ -94,28 +97,19 @@ class NotifPollerService : Service() {
             if (on) start(ctx) else stop(ctx)
         }
 
+        /** Mulai layanan bila saklar aktif — v1.3.33 TANPA kartu notifikasi. */
         fun startIfEnabled(ctx: Context) {
             if (!isEnabled(ctx)) return
-            val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            // Push FCM kini mekanisme UTAMA. Bila pemeriksaan terakhir
-            // menyatakan FCM aktif di server DAN perangkat punya token FCM,
-            // layanan pemantau tidak perlu jalan (tanpa notifikasi layanan,
-            // tanpa polling) — hemat baterai. Cek ulang tiap 6 jam agar bila
-            // FCM di server dimatikan, pemantau bangun lagi sendiri.
-            val fcmActive = prefs.getBoolean(KEY_FCM_ACTIVE, false)
-            if (fcmActive && PushRegistrar.cachedToken(ctx).isNotBlank()) {
-                val last = prefs.getLong(KEY_FCM_CHECKED_AT, 0L)
-                if (System.currentTimeMillis() - last < 6 * 60 * 60_000L) return
-            }
             start(ctx)
         }
 
         fun start(ctx: Context) {
             try {
-                // v1.3.9: layanan BIASA tanpa notifikasi — startForegroundService
-                // (wajib menampilkan notifikasi layanan) tidak dipakai lagi.
-                // start() hanya dipanggil dari aplikasi yang berada di depan
-                // (MainActivity), jadi startService biasa sah di semua versi.
+                // v1.3.33 — service BIASA tanpa notifikasi (kartu dihapus —
+                // permintaan pemilik: APK tanpa kredensial Firebase terlihat
+                // bersih). start() hanya dipanggil dari aplikasi yang berada
+                // di depan (MainActivity) dan dari BootReceiver (jendela
+                // allowlist sementara setelah BOOT_COMPLETED).
                 ctx.startService(Intent(ctx, NotifPollerService::class.java))
             } catch (e: Exception) {
                 Log.w(TAG, "Gagal memulai layanan notifikasi", e)
@@ -155,8 +149,9 @@ class NotifPollerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        // v1.3.9: TANPA notifikasi layanan & TANPA startForeground — kartu
-        // "AGSI aktif" tidak pernah dibuat lagi. Izin berjalan di latar
+        // v1.3.33 — TANPA notifikasi layanan & TANPA startForeground: kartu
+        // "AGSI aktif" tidak dibuat lagi (permintaan pemilik — aplikasi tanpa
+        // kredensial Firebase terlihat bersih). Izin berjalan di latar
         // belakang (pengecualian baterai) diminta langsung dari MainActivity.
         stopped = false
         wasForeground = true
@@ -200,11 +195,12 @@ class NotifPollerService : Service() {
 
         val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-        // ---- FCM aktif di server? → push FCM yang bekerja; kalau perangkat
-        // punya token, layanan pemantau HENTIKAN DIRI (tidak ada notifikasi
-        // ganda, tanpa notifikasi "layanan berjalan", hemat baterai). Bila
-        // FCM aktif di server tapi perangkat TIDAK punya token (GMS hilang),
-        // pemantau tetap jalan sebagai penyelamat notifikasi.
+        // ---- FCM aktif di server? → push FCM yang bekerja; bila perangkat
+        // punya token, layanan pemantau HENTIKAN DIRI (hemat baterai — sejak
+        // v1.3.33 tidak ada kartu notifikasi, polling juga tidak diperlukan).
+        // Bila FCM aktif tapi TANPA token (APK tanpa kredensial Firebase /
+        // GMS hilang), pemantau tetap jalan sebagai penyelamat notifikasi;
+        // notifikasi lokal dipadamkan lewat gate fcmActive selama FCM aktif.
         if (pollCount % FCM_CHECK_EVERY == 1) {
             val (_, cfg) = getJson("/api/push/config", cookie)
             val active = cfg?.optBoolean("configured", false) == true
@@ -443,7 +439,9 @@ class NotifPollerService : Service() {
             title = ev.title,
             body = ev.body,
             url = ev.url,
-            channel = ev.channel,
+            // v1.3.30 — channel mengikuti pilihan suara Profil (NotifSound);
+            // ev.channel hanya bawaan — pilihan pengguna selalu menang.
+            channel = NotifSound.channelFor(this, ev.kind),
             unreadCount = ev.unreadCount,
             chatQuickReply = ev.kind == "chat",
         )
