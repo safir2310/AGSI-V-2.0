@@ -19,9 +19,8 @@ import { SpicyDots } from "@/components/shared/StatusBadge";
 import { ProductThumb } from "@/components/shared/ProductThumb";
 import { StoreSheet } from "@/components/shared/StoreSheet";
 import { BannerPopup } from "@/components/customer/BannerPopup";
-import { PromoKineticStrip } from "@/components/customer/PromoKineticStrip";
 import { CourierScene } from "@/components/customer/CourierScene";
-import { MotionText, boxAnim, boxLoopAnim, useBindSpeed, useMotionTarget } from "@/components/motion/MotionRuntime";
+import { MotionText, boxAnim, useBindSpeed, useMotionTarget } from "@/components/motion/MotionRuntime";
 import { refreshVouchers, useProductsStore, useSettingsStore, useVouchersStore } from "@/lib/hooks";
 import { useCartStore, useNoticeStore, type AppView } from "@/lib/store";
 import { copyText } from "@/lib/clipboard";
@@ -70,7 +69,6 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
   // ===== AGSI MOTION STUDIO ===== target animasi Beranda (hero, judul
   // section, kartu produk, poster promo) — dikelola admin dari Profil Admin
   // → "AGSI Motion Studio"; tanpa konfigurasi → semua render polos.
-  const posterTarget = useMotionTarget("promoStrip");
   const productCardsTarget = useMotionTarget("productCards");
   useBindSpeed();
   useEffect(() => {
@@ -412,22 +410,6 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
           )}
         </div>
       </motion.section>
-
-      {/* ===== PANGGUNG PROMO KINETIC — MODE BARU "Promo Hari Ini" =====
-           Strip lama (poster 3D oranye) DIHAPUS, diganti mode baru penuh
-           motion animations (bingkai cahaya berputar, judul masuk
-           kata-per-kata, papan LED berjalan, partikel, emoji mengambang).
-           Konten tetap diatur admin dari Profil → Banner & Promo. */}
-      {promo.promoStripEnabled && (promo.promoStripBadge.trim() || promo.promoStripTitle.trim() || promo.promoStripText.trim()) && (
-        <motion.section {...reveal(0.2)} className="px-4">
-          <PromoKineticStrip
-            badge={promo.promoStripBadge.trim()}
-            title={promo.promoStripTitle.trim()}
-            text={promo.promoStripText.trim()}
-            go={go}
-          />
-        </motion.section>
-      )}
 
       {/* ===== POPUP PILIHAN TOKO (dibuka dari alamat di hero) ===== */}
       <StoreSheet open={storeOpen} onClose={() => setStoreOpen(false)} />

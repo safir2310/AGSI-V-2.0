@@ -91,3 +91,7 @@ public/agsi-app.apk
 .android-sdk-tmp/
 .gradle-home/
 scripts/.rkey
+
+# berkas kredensial Resend — lokal saja, JANGAN di-commit
+scripts/.rkey*
+scripts/.resend-account.json

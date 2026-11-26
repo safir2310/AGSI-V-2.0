@@ -13,7 +13,6 @@ import {
   PanelTop,
   Plus,
   Save,
-  Tag,
   Ticket,
   Trash2,
   TriangleAlert,
@@ -35,10 +34,6 @@ export type BannerSettingsSheetProps = {
   onClose: () => void;
 };
 
-// (popup banner kini gambar saja — batas judul/pesan tidak diperlukan lagi)
-const MAX_STRIP_BADGE = 24;
-const MAX_STRIP_TITLE = 80;
-const MAX_STRIP_TEXT = 120;
 const MAX_HERO_BADGE = 24;
 const MAX_HERO_TITLE = 80;
 const MAX_HERO_TEXT = 120;
@@ -189,14 +184,6 @@ const bannerPayloadOf = (s: { enabled: boolean }) => ({
   bannerText: null,
 });
 
-/** Isi request PUT bagian strip promo. */
-const stripPayloadOf = (s: { enabled: boolean; badge: string; title: string; text: string }) => ({
-  promoStripEnabled: s.enabled,
-  promoStripBadge: s.badge.trim(),
-  promoStripTitle: s.title.trim(),
-  promoStripText: s.text.trim(),
-});
-
 /** Isi request PUT bagian hero Menu (tanpa gambar). */
 const heroPayloadOf = (s: { enabled: boolean; badge: string; title: string; text: string }) => ({
   menuHeroEnabled: s.enabled,
@@ -241,7 +228,6 @@ const videoPayloadOf = (s: {
 
 type SaveSnapshot = {
   banner: unknown;
-  strip: unknown;
   hero: unknown;
   menuPromo: unknown;
   video: unknown;
@@ -253,7 +239,6 @@ const saveSnapshotFromStore = (): SaveSnapshot => {
   const storeBanners = st.menuPromo.banners ?? EMPTY_PROMO_BANNERS;
   return {
     banner: bannerPayloadOf({ enabled: st.banner.bannerEnabled }),
-    strip: stripPayloadOf({ enabled: st.promo.promoStripEnabled, badge: st.promo.promoStripBadge, title: st.promo.promoStripTitle, text: st.promo.promoStripText }),
     hero: heroPayloadOf({ enabled: st.menuHero.menuHeroEnabled, badge: st.menuHero.menuHeroBadge, title: st.menuHero.menuHeroTitle, text: st.menuHero.menuHeroText }),
     menuPromo: menuPromoPayloadOf({
       vpEnabled: st.menuPromo.menuPromoVouchersEnabled,
@@ -297,13 +282,11 @@ async function processImageFile(file: File | undefined): Promise<string | null> 
  * Isi:
  *  1. Popup banner Beranda — saklar AKTIF/NONAKTIF, upload gambar (otomatis
  *     dikompres), judul & pesan singkat.
- *  2. Strip "Promo Hari Ini" di Beranda — 3 baris teks (kini dirender
- *     PANGGUNG PROMO KINETIC: mode baru penuh motion animations).
- *  3. Hero banner halaman Menu — saklar, gambar latar, badge, judul, teks.
- *  4. 2 Banner Promo Menu (slot 1 & 2) — dua slide carousel yang berganti
+ *  2. Hero banner halaman Menu — saklar, gambar latar, badge, judul, teks.
+ *  3. 2 Banner Promo Menu (slot 1 & 2) — dua slide carousel yang berganti
  *     otomatis: saklar, gambar latar, emoji, tema warna & 3 baris teks per banner.
- *  5. Slide voucher di carousel Menu — saklar + jumlah maksimal (1–5).
- *  6. AGSI Smart Video Promo Banner (dasar halaman Menu) — carousel video MP4:
+ *  4. Slide voucher di carousel Menu — saklar + jumlah maksimal (1–5).
+ *  5. AGSI Smart Video Promo Banner (dasar halaman Menu) — carousel video MP4:
  *     upload/ganti/hapus video per slide (bertahap/chunked), caption, tautan
  *     produk/promo, saklar aktif.
  *
@@ -318,11 +301,6 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [enabled, setEnabled] = useState(false);
-  // ===== Strip "Promo Hari Ini" (baris oranye di Beranda) =====
-  const [promoEnabled, setPromoEnabled] = useState(true);
-  const [promoBadge, setPromoBadge] = useState("");
-  const [promoTitle, setPromoTitle] = useState("");
-  const [promoText, setPromoText] = useState("");
   // ===== Hero banner halaman Menu =====
   const [heroEnabled, setHeroEnabled] = useState(true);
   const [heroBadge, setHeroBadge] = useState("");
@@ -384,12 +362,6 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       setServerHasImage(b.bannerHasImage);
       setServerVersion(b.bannerVersion);
       setImageData(undefined);
-      // Strip promo — nilai tersimpan atau default bawaan
-      const p = useSettingsStore.getState().promo;
-      setPromoEnabled(p.promoStripEnabled);
-      setPromoBadge(p.promoStripBadge);
-      setPromoTitle(p.promoStripTitle);
-      setPromoText(p.promoStripText);
       // Hero banner menu — nilai tersimpan atau default bawaan
       const h = useSettingsStore.getState().menuHero;
       setHeroEnabled(h.menuHeroEnabled);
@@ -622,14 +594,6 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       });
       return;
     }
-    if (promoEnabled && !promoBadge.trim() && !promoTitle.trim() && !promoText.trim()) {
-      showNotice({
-        type: "error",
-        title: "Strip Promo Belum Siap",
-        message: "Isi minimal satu baris strip promo, atau matikan saklar Strip Promonya.",
-      });
-      return;
-    }
     if (
       heroEnabled &&
       heroPreviewSrc === null &&
@@ -696,13 +660,7 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
         steps.push({ label: "banner popup", body: bannerStep });
       }
 
-      // Bagian 2 — strip promo hari ini (teks saja, sangat kecil)
-      const stripTeks = stripPayloadOf({ enabled: promoEnabled, badge: promoBadge, title: promoTitle, text: promoText });
-      if (!sameJson(stripTeks, base.strip)) {
-        steps.push({ label: "strip promo", body: stripTeks });
-      }
-
-      // Bagian 3 — hero banner Menu (teks + gambar)
+      // Bagian 2 — hero banner Menu (teks + gambar)
       const heroTeks = heroPayloadOf({ enabled: heroEnabled, badge: heroBadge, title: heroTitle, text: heroText });
       if (heroImageData !== undefined || !sameJson(heroTeks, base.hero)) {
         const heroStep: Record<string, unknown> = { ...heroTeks, menuHeroTouch: true };
@@ -713,7 +671,7 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
         steps.push({ label: "hero Menu", body: heroStep });
       }
 
-      // Bagian 4 — carousel Menu: voucher + 2 banner promo (teks + gambar dua
+      // Bagian 3 — carousel Menu: voucher + 2 banner promo (teks + gambar dua
       // slot SEKALIGUS — bagian menuPromo hanya boleh ditulis satu request)
       const mpTeks = menuPromoPayloadOf({ vpEnabled, vpMax, banners: bannerDrafts });
       const mpGambarBerubah = bannerDrafts.some((d) => d.imageData !== undefined);
@@ -734,7 +692,7 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
         });
       }
 
-      // Bagian 5 — AGSI Smart Video Promo Banner: metadata slide saja (bytes
+      // Bagian 4 — AGSI Smart Video Promo Banner: metadata slide saja (bytes
       // video sudah terunggah bertahap saat dipilih, via /api/settings/video-promo)
       const videoTeks = videoPayloadOf({ enabled: vidEnabled, slides: vidSlides });
       if (!sameJson(videoTeks, base.video)) {
@@ -1012,119 +970,6 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                       </span>
                     </button>
                   )}
-
-                  {/* ===== STRIP PROMO HARI INI (Beranda) ===== */}
-                  <div className="mt-6 flex items-center gap-2">
-                    <div className="h-px flex-1 bg-neutral-200" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
-                      Promo Hari Ini — Mode Animasi
-                    </span>
-                    <div className="h-px flex-1 bg-neutral-200" />
-                  </div>
-                  <div
-                    className={cn(
-                      "mt-3 rounded-2xl border p-4 transition-colors",
-                      promoEnabled ? "border-orange-200 bg-orange-50/60" : "border-neutral-200 bg-neutral-50"
-                    )}
-                  >
-                    <div className="flex items-start gap-3">
-                      <span
-                        className={cn(
-                          "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
-                          promoEnabled ? "bg-orange-600 text-white" : "bg-neutral-200 text-neutral-400"
-                        )}
-                      >
-                        <Tag className="h-5.5 w-5.5" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-black text-neutral-800">Panggung Promo Kinetic (mode baru)</p>
-                        <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-500">
-                          Kartu animasi di Beranda (di bawah Paling Dicari): bingkai cahaya berputar,
-                          judul masuk kata-per-kata, baris penjelas berjalan seperti papan LED.
-                          Kosongkan baris mana pun untuk menyembunyikannya.
-                        </p>
-                      </div>
-                      <Switch
-                        checked={promoEnabled}
-                        onCheckedChange={setPromoEnabled}
-                        aria-label={`${promoEnabled ? "Nonaktifkan" : "Aktifkan"} strip promo hari ini`}
-                        className="mt-0.5 h-6 w-11 data-[state=checked]:bg-orange-600 data-[state=unchecked]:bg-neutral-300"
-                      />
-                    </div>
-
-                    {/* Pratinjau panggung kinetic (gaya statis dari mode animasi) */}
-                    <div className="relative mt-3 overflow-hidden rounded-xl bg-gradient-to-br from-orange-950 via-red-950 to-neutral-950 p-3.5 text-left shadow">
-                      <div className="pointer-events-none absolute -right-3 -top-5 text-[54px] opacity-25">🌶️</div>
-                      {promoBadge.trim() && (
-                        <p className="inline-flex items-center gap-1.5 rounded-full bg-amber-300 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest text-orange-950">
-                          <span className="relative flex h-1.5 w-1.5">
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-600 opacity-75" />
-                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-orange-700" />
-                          </span>
-                          {promoBadge.trim()}
-                        </p>
-                      )}
-                      {promoTitle.trim() && (
-                        <p className="mt-1.5 text-sm font-extrabold text-white">
-                          {promoTitle.trim().split(/\s+/).map((w, i) => (
-                            <span key={i} className={i % 3 === 1 ? "text-amber-300" : i % 3 === 2 ? "text-orange-200" : ""}>
-                              {w}{" "}
-                            </span>
-                          ))}
-                        </p>
-                      )}
-                      {promoText.trim() && (
-                        <p className="mt-1.5 inline-flex max-w-full items-center overflow-hidden rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-bold text-amber-200/90 ring-1 ring-white/15">
-                          <span className="truncate">‹ berjalan › {promoText.trim()}</span>
-                        </p>
-                      )}
-                      {!promoBadge.trim() && !promoTitle.trim() && !promoText.trim() && (
-                        <p className="text-[10px] font-semibold text-orange-100">
-                          Semua baris kosong — kartu tidak akan tampil.
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Input 3 baris */}
-                    <div className="mt-3 space-y-2.5">
-                      <div>
-                        <input
-                          value={promoBadge}
-                          onChange={(e) => setPromoBadge(e.target.value.slice(0, MAX_STRIP_BADGE))}
-                          placeholder="cth: Promo Hari Ini"
-                          disabled={!promoEnabled}
-                          className="w-full rounded-xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-800 outline-none transition placeholder:font-normal placeholder:text-neutral-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
-                        />
-                        <p className="mt-1 text-right text-[10px] font-semibold text-neutral-300">
-                          Label kecil · {promoBadge.length}/{MAX_STRIP_BADGE}
-                        </p>
-                      </div>
-                      <div>
-                        <input
-                          value={promoTitle}
-                          onChange={(e) => setPromoTitle(e.target.value.slice(0, MAX_STRIP_TITLE))}
-                          placeholder="cth: Paket Komplit mulai Rp 27.000"
-                          disabled={!promoEnabled}
-                          className="w-full rounded-xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-800 outline-none transition placeholder:font-normal placeholder:text-neutral-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
-                        />
-                        <p className="mt-1 text-right text-[10px] font-semibold text-neutral-300">
-                          Judul utama · {promoTitle.length}/{MAX_STRIP_TITLE}
-                        </p>
-                      </div>
-                      <div>
-                        <input
-                          value={promoText}
-                          onChange={(e) => setPromoText(e.target.value.slice(0, MAX_STRIP_TEXT))}
-                          placeholder="cth: Geprek + nasi + es teh manis jumbo"
-                          disabled={!promoEnabled}
-                          className="w-full rounded-xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-800 outline-none transition placeholder:font-normal placeholder:text-neutral-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
-                        />
-                        <p className="mt-1 text-right text-[10px] font-semibold text-neutral-300">
-                          Baris penjelas · {promoText.length}/{MAX_STRIP_TEXT}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
 
                   {/* ===== HERO BANNER HALAMAN MENU ===== */}
                   <div className="mt-6 flex items-center gap-2">
