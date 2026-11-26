@@ -1080,8 +1080,13 @@ export async function createQrisDokuPayment(opts: {
   amount: number;
   reference: string;
   /** "EWALLET": halaman bayar difilter kanal e-wallet.
-   *  "QRIS": langsung ke pembayaran QRIS e-wallet DOKU (kanal "QRIS"). */
-  channelMode?: "EWALLET" | "QRIS";
+   *  "QRIS": langsung ke pembayaran QRIS e-wallet DOKU (kanal "QRIS").
+   *  "ALL": TANPA filter kanal — halaman bayar DOKU menampilkan SEMUA kanal
+   *  aktif akun merchant (QRIS, DOKU Wallet, DANA, OVO, ShopeePay, LinkAja,
+   *  Virtual Account, & kanal aktif lainnya); pelanggan memilih sendiri.
+   *  Permintaan pemilik (update 2026-11-26): pembayaran QRIS & E-Wallet
+   *  memakai SEMUA metode DOKU. */
+  channelMode?: "EWALLET" | "QRIS" | "ALL";
   /** ID pesanan aplikasi — callback_url DOKU diarahkan ke /pay/<id> (in-app) */
   callbackRef?: string;
 }): Promise<GatewayTransaction> {

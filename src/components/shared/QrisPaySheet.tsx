@@ -380,7 +380,7 @@ export function QrisPaySheet({
         className="fixed inset-0 z-[95] flex items-end justify-center bg-neutral-900/70 backdrop-blur-sm sm:items-center sm:p-4"
         role="dialog"
         aria-modal="true"
-        aria-label={order.method === "EWALLET" ? "Pembayaran E-Wallet" : "Pembayaran QRIS"}
+        aria-label="Pembayaran Online (DOKU)"
       >
         <motion.div
           initial={prefersReduced ? false : { y: 48, scale: 0.97 }}
@@ -397,7 +397,7 @@ export function QrisPaySheet({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-black tracking-wide">
-                  {order.method === "EWALLET" ? "Pembayaran E-Wallet" : "Pembayaran QRIS"}
+                  Pembayaran Online (DOKU)
                 </p>
                 <p className="truncate text-[11px] font-semibold text-orange-100">
                   {order.code} • {isPos ? "Kasir" : "Aplikasi"}
@@ -595,17 +595,9 @@ export function QrisPaySheet({
                 </p>
                 {info?.paymentUrl ? (
                   <p className="mt-1 text-center text-[11px] leading-relaxed text-neutral-500">
-                    {order.method === "EWALLET" ? (
-                      <>
-                        Tekan tombol di bawah — <strong className="font-bold text-neutral-700">halaman pembayaran DOKU terbuka langsung di dalam aplikasi ini</strong>{" "}
-                        (tanpa pindah aplikasi/tab lain), lalu pilih e-wallet favoritmu. Kode QR di atas dipakai bila membayar dari HP lain.
-                      </>
-                    ) : (
-                      <>
-                        Tekan tombol di bawah — <strong className="font-bold text-neutral-700">pembayaran QRIS e-wallet DOKU terbuka langsung di dalam aplikasi ini</strong>{" "}
-                        (tanpa pindah aplikasi/tab lain), lalu pindai kode QRIS-nya pakai <strong className="font-bold text-neutral-700">GoPay, DANA, OVO, ShopeePay, LinkAja, atau m-Banking apa pun</strong>. Kode QR di atas dipakai bila membayar dari HP lain.
-                      </>
-                    )}
+                    Tekan tombol di bawah — <strong className="font-bold text-neutral-700">halaman pembayaran DOKU terbuka langsung di dalam aplikasi ini</strong>{" "}
+                    (tanpa pindah aplikasi/tab lain) — lalu pilih metode favoritmu:{" "}
+                    <strong className="font-bold text-neutral-700">QRIS (GoPay, DANA, OVO, ShopeePay, LinkAja, m-Banking apa pun), DOKU Wallet, Virtual Account, &amp; kanal aktif lainnya</strong>. Kode QR di atas dipakai bila membayar dari HP lain.
                   </p>
                 ) : (
                   <p className="mt-1 text-center text-[11px] leading-relaxed text-neutral-500">
@@ -622,8 +614,8 @@ export function QrisPaySheet({
                     Jujur satu baris tanpa detail galat teknis. */}
                 {info?.paymentUrl && info.fallbackReason && info.provider?.startsWith("doku") && (
                   <p className="mt-1.5 rounded-xl bg-amber-50 px-3 py-2 text-center text-[10px] font-semibold leading-snug text-amber-700 ring-1 ring-amber-200">
-                    Kanal QRIS toko sedang tidak aktif — pilih kanal pembayaran
-                    yang tersedia (e-wallet/dompet digital aktif toko) di halaman DOKU.
+                    Beberapa kanal toko sedang tidak aktif — pilih salah satu
+                    kanal pembayaran yang tersedia di halaman DOKU.
                   </p>
                 )}
 
@@ -658,11 +650,9 @@ export function QrisPaySheet({
                       ) : info?.provider?.startsWith("doku") ? (
                         <p className="mt-1 text-[10px] font-bold text-emerald-600">
                           Penyedia: DOKU ({info.provider === "doku" ? "Produksi" : "Sandbox"}) —{" "}
-                          {order.method === "EWALLET"
-                            ? "pilih e-wallet di halaman DOKU (DOKU Wallet, DANA, OVO, ShopeePay — sesuai kanal aktif akun)"
-                            : info.paymentUrl
-                              ? "QRIS e-wallet DOKU langsung terbuka — pelanggan pindai pakai e-wallet/m-Banking apa pun; status dicek otomatis"
-                              : "scan pakai DANA / GoPay / OVO / ShopeePay / m-Banking mana pun"}
+                          pelanggan pilih metode di halaman DOKU: QRIS, DOKU Wallet,
+                          DANA, OVO, ShopeePay, LinkAja, Virtual Account &amp; kanal
+                          aktif lainnya; status dicek otomatis
                         </p>
                       ) : info?.provider?.startsWith("dana") ? (
                         <p className="mt-1 text-[10px] font-bold text-emerald-600">

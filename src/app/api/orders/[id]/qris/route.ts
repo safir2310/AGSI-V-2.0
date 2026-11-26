@@ -165,21 +165,20 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   // ==== 2) Buat transaksi baru di penyedia gateway ====
-  // Pesanan QRIS: pelanggan LANGSUNG diarahkan ke pembayaran QRIS E-WALLET
-  // DOKU — halaman bayar difilter ke SATU kanal "QRIS" (docs DOKU: satu kanal
-  // = langsung diarahkan ke pembayaran itu). Pelanggan pindai QRIS-nya pakai
-  // aplikasi e-wallet/m-Banking apa pun. Bila kanal QRIS akun DOKU belum
-  // aktif, adapter otomatis mencoba ulang tanpa filter (semua kanal aktif).
-  // Pesanan E-Wallet: halaman bayar DOKU difilter ke kanal e-wallet
-  // (DOKU Wallet, DANA, OVO, ShopeePay, LinkAja + VA DOKU cadangan —
-  // sesuai kanal yang aktif di akun DOKU merchant).
-  // callbackRef = id pesanan: redirect browser setelah bayar diarahkan ke
-  // halaman IN-APP /pay/<orderId> — tetap dalam satu aplikasi.
+  // UPDATE (permintaan pemilik, 2026-11-26): pesanan QRIS maupun E-Wallet
+  // kini memakai channelMode "ALL" — halaman bayar DOKU TANPA filter kanal,
+  // jadi pelanggan melihat & memilih SEMUA metode pembayaran aktif akun DOKU:
+  // QRIS (pindai pakai GoPay/DANA/OVO/ShopeePay/LinkAja/m-Banking), DOKU
+  // Wallet, DANA, OVO, ShopeePay, LinkAja, Virtual Account, dan kanal aktif
+  // lainnya. Verifikasi otomatis (polling Check Status + webhook) tetap sama
+  // untuk semua kanal — pelunasan hanya oleh sistem saat dana benar-benar
+  // masuk. callbackRef = id pesanan: redirect browser setelah bayar diarahkan
+  // ke halaman IN-APP /pay/<orderId> — tetap dalam satu aplikasi.
   try {
     const trx = await createQrisGatewayPayment({
       amount: order.total,
       reference: order.code,
-      channelMode: order.paymentMethod === "EWALLET" ? "EWALLET" : "QRIS",
+      channelMode: "ALL",
       callbackRef: order.id,
     });
     // Jalur DOKU Checkout tidak mengembalikan QR string — URL halaman bayar

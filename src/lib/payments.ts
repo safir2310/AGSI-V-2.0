@@ -2,15 +2,13 @@
  * Metode pembayaran aplikasi — SATU sumber kebenaran.
  *
  * CASH    : tunai di kasir / bayar saat ambil.
- * QRIS    : pembayaran digital gateway via QRIS E-WALLET DOKU — halaman
- *           bayar DOKU difilter ke SATU kanal "QRIS" sehingga pelanggan
- *           LANGSUNG diarahkan ke pembayaran QRIS (pindai pakai GoPay,
- *           DANA, OVO, ShopeePay, LinkAja, m-Banking apa pun). Bila kanal
- *           QRIS akun DOKU belum aktif, adapter otomatis mencoba ulang
- *           tanpa filter (semua kanal aktif penyedia).
- * EWALLET : pembayaran digital gateway dengan halaman bayar DOKU yang
- *           DIFILTER ke kanal e-wallet (DOKU Wallet, DANA, OVO, ShopeePay,
- *           LinkAja — sesuai kanal yang diaktifkan DOKU untuk merchant).
+ * QRIS    : pembayaran digital via DOKU — UPDATE (permintaan pemilik,
+ *           2026-11-26): halaman bayar DOKU TANPA filter kanal, jadi pelanggan
+ *           memilih dari SEMUA metode aktif akun DOKU: QRIS (pindai pakai
+ *           GoPay, DANA, OVO, ShopeePay, LinkAja, m-Banking apa pun), DOKU
+ *           Wallet, e-wallet, Virtual Account, & kanal aktif lainnya.
+ * EWALLET : nilai LAMA (pesanan historis) — kini berjalan lewat halaman yang
+ *           sama: semua metode DOKU tanpa filter kanal.
  *
  * QRIS dan EWALLET sama-sama pembayaran DIGITAL gateway: dibuat lewat
  * penyedia yang sama, diverifikasi otomatis (polling + webhook), dan
