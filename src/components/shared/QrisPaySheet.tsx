@@ -571,12 +571,14 @@ export function QrisPaySheet({
                     </motion.div>
                   ) : info?.qrPage && info?.paymentUrl ? (
                     /* Checkout ganda DOKU: kartu QR = halaman QRIS DOKU ASLI
-                       (kanal QRIS saja) — QR-nya QRIS EMVCo DOKU yang sebenarnya,
-                       dirender DOKU sendiri; pindai pakai e-wallet/m-Banking. */
+                       (kanal QRIS saja) — QR-nya QRIS EMVCo DOKU yang sebenarnya
+                       (berisi NMID toko), dirender DOKU sendiri; pindai pakai
+                       e-wallet/m-Banking. Tinggi 880px = QR penuh tanpa scroll
+                       (ukuran halaman DOKU terukur: QR di y±625-855 @ lebar 390). */
                     <iframe
                       src={info.paymentUrl}
                       title={`QRIS DOKU ${order.code}`}
-                      className="h-[420px] w-full rounded-xl border-0 bg-white"
+                      className="h-[880px] w-full rounded-xl border-0 bg-white"
                       allow="payment *; clipboard-write"
                       referrerPolicy="strict-origin-when-cross-origin"
                     />
