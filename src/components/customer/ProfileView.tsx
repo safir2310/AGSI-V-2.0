@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   BadgeCheck,
+  Bell,
   Bike,
   ChevronRight,
   ClipboardList,
@@ -12,6 +13,8 @@ import {
   HandCoins,
   HelpCircle,
   Info,
+  KeyRound,
+  Clapperboard,
   LogOut,
   Megaphone,
   MessageCircle,
@@ -22,22 +25,28 @@ import {
   ScanFace,
   Settings2,
   ShieldCheck,
+  Sparkles,
   Store,
   UserPlus,
 } from "lucide-react";
 import { EditProfileSheet } from "@/components/shared/EditProfileSheet";
 import { BiometricSheet } from "@/components/shared/BiometricSheet";
+import { TotpSheet } from "@/components/shared/TotpSheet";
+import { PushSettingsSheet } from "@/components/shared/PushSettingsSheet";
 import { AdminsSheet } from "@/components/admin/AdminsSheet";
 import { CashiersSheet } from "@/components/admin/CashiersSheet";
 import { KurirsSheet } from "@/components/admin/KurirsSheet";
 import { SetoranKurirSheet } from "@/components/admin/SetoranKurirSheet";
 import { StoreSettingsSheet } from "@/components/admin/StoreSettingsSheet";
 import { BannerSettingsSheet } from "@/components/admin/BannerSettingsSheet";
+import { CourierAnimSheet } from "@/components/admin/CourierAnimSheet";
+import { MotionStudioSheet } from "@/components/admin/MotionStudioSheet";
 import { QrisManagerSheet } from "@/components/admin/QrisManagerSheet";
 import { PosterGeneratorSheet } from "@/components/admin/PosterGeneratorSheet";
 import { LegalSheet } from "@/components/shared/LegalSheet";
 import { CourierTrackingSheet } from "@/components/customer/CourierTrackingSheet";
 import { listBiometricCredentials } from "@/lib/biometric-client";
+import { currentNotificationSound, readPushStatus } from "@/lib/push-client";
 import { apiFetch } from "@/lib/api";
 import { useNoticeStore, useUiStore, type AppView } from "@/lib/store";
 import { refreshSettings, useOrdersStore, useSettingsStore } from "@/lib/hooks";
@@ -64,6 +73,17 @@ type MenuItem = {
   badge?: number;
 };
 
+/** Label pendek pilihan suara notifikasi (sinkron NotifSound.kt / APK 1.3.30+) */
+const SOUND_LABELS: Record<string, string> = {
+  chime: "AGSI Chime",
+  ding: "Ding",
+  bell: "Bel",
+  marimba: "Marimba",
+  pop: "Pop",
+  system: "Sistem HP",
+  silent: "Senyap",
+};
+
 export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewProps) {
   const prefersReduced = useReducedMotion();
   const showNotice = useNoticeStore((s) => s.show);
@@ -71,11 +91,14 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const openChat = useUiStore((s) => s.openChat);
   const chatUnreadTick = useUiStore((s) => s.chatUnreadTick);
   const [editOpen, setEditOpen] = useState(false);
+  const [totpOpen, setTotpOpen] = useState(false);
   const [cashiersOpen, setCashiersOpen] = useState(false);
   const [kurirsOpen, setKurirsOpen] = useState(false);
   const [adminsOpen, setAdminsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bannerOpen, setBannerOpen] = useState(false);
+  const [animOpen, setAnimOpen] = useState(false);
+  const [motionOpen, setMotionOpen] = useState(false);
   const [qrisOpen, setQrisOpen] = useState(false);
   const [posterOpen, setPosterOpen] = useState(false);
   const [setoranOpen, setSetoranOpen] = useState(false);
@@ -86,6 +109,40 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const [courierOpen, setCourierOpen] = useState(false);
   const [bioCount, setBioCount] = useState(0);
   const [chatUnread, setChatUnread] = useState(0);
+  // ===== Pengaturan notifikasi DI HALAMAN PROFIL (v1.3.31 — permintaan
+  // pemilik): sheet "Notifikasi Push" kini benar-benar tersambung lewat
+  // menu di bawah — sebelumnya sheet sudah dibuat TAPI tidak pernah
+  // dirender di mana pun. Deskripsi menu = status LANGSUNG perangkat
+  // (aplikasi native / web, suara terpilih), disegar saat profil dibuka &
+  // setiap kali sheet ditutup. v1.3.33: kartu "AGSI aktif" dihapus —
+  // deskripsi tidak lagi menyebut kartu status bar.
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifDesc, setNotifDesc] = useState(
+    "Suara, izin & pemantau latar belakang — atur di sini",
+  );
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const st = await readPushStatus();
+        if (!alive) return;
+        if (st.native) {
+          const key = currentNotificationSound();
+          const label = SOUND_LABELS[key ?? ""] ?? "AGSI Chime";
+          setNotifDesc(`Aktif ✓ — suara ${label} · pemantau berjalan di latar belakang`);
+        } else if (st.permission === "granted") {
+          setNotifDesc("Aktif ✓ — notifikasi browser/web push menyala");
+        } else {
+          setNotifDesc("Belum aktif — nyalakan supaya pesanan masuk tak terlewat");
+        }
+      } catch {
+        // diam — deskripsi default tetap tampil
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [notifOpen]);
   const isAdmin = user.role === "ADMIN" || user.role === "OWNER";
 
   // Badge menu "Setoran Kurir" (admin): jumlah kurir yang masih memegang
@@ -121,6 +178,9 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
   const ewalletEnabled = useSettingsStore((s) => s.ewalletEnabled);
   const banner = useSettingsStore((s) => s.banner);
   const menuHero = useSettingsStore((s) => s.menuHero);
+  const courierAnim = useSettingsStore((s) => s.courierAnim);
+  // Konfigurasi animasi aktif (AGSI Motion Studio) — utk deskripsi menu
+  const motionDoc = useSettingsStore((s) => s.motion);
   const spent = orders
     .filter((o) => o.status === "COMPLETED")
     .reduce((s, o) => s + o.total, 0);
@@ -249,6 +309,13 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
     onClick: () => setBioOpen(true),
   };
 
+  const totpMenu: MenuItem = {
+    icon: KeyRound,
+    label: "Authenticator (TOTP)",
+    desc: "Lupa password diverifikasi lewat aplikasi authenticator (kode 6 digit, tanpa email) — aktifkan/kelola di sini",
+    onClick: () => setTotpOpen(true),
+  };
+
   const courierMenu: MenuItem = {
     icon: Bike,
     label: "Lacak Kurir AGSI",
@@ -275,6 +342,12 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
     ? [
         { icon: PenLine, label: "Edit Profil", desc: "Ubah nama, no. HP, & password", onClick: () => setEditOpen(true) },
         { icon: MessageCircle, label: "Chat Pelanggan (CS)", desc: chatUnread > 0 ? `${chatUnread} pesan pelanggan belum dibalas` : "Layani pertanyaan pelanggan lewat chat", onClick: openChat, badge: chatUnread },
+        {
+          icon: Bell,
+          label: "Pengaturan Notifikasi",
+          desc: notifDesc,
+          onClick: () => setNotifOpen(true),
+        },
         { icon: UserPlus, label: "Kelola Kasir", desc: "Tambah & atur akun kasir POS", onClick: () => setCashiersOpen(true) },
         { icon: Bike, label: "Kelola Kurir", desc: "Akun kurir antaran — tugas & lokasi rumah pelanggan", onClick: () => setKurirsOpen(true) },
         {
@@ -309,12 +382,27 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
           onClick: () => setBannerOpen(true),
         },
         {
+          icon: Sparkles,
+          label: "Animasi Beranda",
+          desc: `Motor kurir & teks berjalan ${
+            courierAnim.enabled ? "aktif ✓" : "nonaktif"
+          } — gaya teks, font, warna, kecepatan`,
+          onClick: () => setAnimOpen(true),
+        },
+        {
+          icon: Clapperboard,
+          label: "AGSI Motion Studio",
+          desc: `Pusat kendali animasi seluruh aplikasi (v${motionDoc.version}) — hero, kartu, banner, splash, transisi, preset, jadwal, riwayat versi`,
+          onClick: () => setMotionOpen(true),
+        },
+        {
           icon: QrCode,
           label: "Pengelola QRIS",
           desc: qrisDesc ?? "Dana masuk, status & tanggal transaksi QRIS — kelola di sini",
           onClick: () => setQrisOpen(true),
         },
         bioMenu,
+        totpMenu,
         policyMenu,
         { icon: Monitor, label: "Buka Mode POS Kasir", desc: "Tampilan desktop/tablet untuk transaksi", onClick: () => go("pos") },
         { icon: ClipboardList, label: "Kelola Pesanan", desc: "Pantau & proses pesanan masuk", onClick: () => go("orders") },
@@ -325,9 +413,16 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
     : [
         { icon: PenLine, label: "Edit Profil", desc: "Ubah nama, no. HP, & password", onClick: () => setEditOpen(true) },
         { icon: MessageCircle, label: "Chat CS AGSI", desc: chatUnread > 0 ? `${chatUnread} balasan baru dari CS` : "Tanya stok, pesanan, & poin member", onClick: openChat, badge: chatUnread },
+        {
+          icon: Bell,
+          label: "Pengaturan Notifikasi",
+          desc: notifDesc,
+          onClick: () => setNotifOpen(true),
+        },
         { icon: ClipboardList, label: "Riwayat Pesanan", desc: `${orders.length} pesanan telah dibuat`, onClick: () => go("orders") },
         courierMenu,
         bioMenu,
+        totpMenu,
         policyMenu,
         helpMenu,
         aboutMenu,
@@ -474,6 +569,30 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
           }}
         />
       )}
+      {/* Sheet animasi beranda — kelola adegan kurir + tipografi kinetik
+          (teks, font, gaya, warna, ukuran, kecepatan, BOOM) — admin/owner */}
+      {isAdmin && (
+        <CourierAnimSheet
+          open={animOpen}
+          onClose={() => {
+            setAnimOpen(false);
+            // Deskripsi menu ikut segar setelah animasi disimpan
+            void refreshSettings();
+          }}
+        />
+      )}
+      {/* Sheet AGSI MOTION STUDIO — pusat kendali seluruh animasi (pratinjau
+          langsung, preset, jadwal, draft→publish, riwayat versi) — admin/owner */}
+      {isAdmin && (
+        <MotionStudioSheet
+          open={motionOpen}
+          onClose={() => {
+            setMotionOpen(false);
+            // Deskripsi menu ikut segar setelah konfigurasi dipublikasikan
+            void refreshSettings();
+          }}
+        />
+      )}
       {/* Sheet pengelola QRIS — dana masuk, status & tanggal transaksi (admin/owner) */}
       {isAdmin && <QrisManagerSheet open={qrisOpen} onClose={() => setQrisOpen(false)} />}
       {/* Sheet generator poster/banner promosi/spanduk (admin/owner) */}
@@ -487,6 +606,18 @@ export function ProfileView({ user, go, onLogout, onUserUpdate }: ProfileViewPro
 
       {/* Sheet login biometrik WebAuthn — semua role */}
       <BiometricSheet open={bioOpen} onClose={() => setBioOpen(false)} user={user} />
+
+      {/* Sheet authenticator (TOTP) — semua role: "lupa password" akun yang
+          mengaktifkannya diverifikasi lewat kode aplikasi authenticator,
+          bukan OTP email (lihat /api/auth/forgot-password) */}
+      <TotpSheet open={totpOpen} onClose={() => setTotpOpen(false)} user={user} />
+
+      {/* Sheet Pengaturan Notifikasi — SEMUA role (v1.3.31 kini benar-benar
+          tersambung dari halaman Profil): status push, suara notifikasi
+          (7 pilihan + pratinjau), izin baterai/autostart (aplikasi Android),
+          dan aktivasi web push. Sebelumnya sheet ini TIDAK PERNAH dirender
+          di mana pun — pengaturan tidak bisa dibuka dari UI. */}
+      <PushSettingsSheet open={notifOpen} onClose={() => setNotifOpen(false)} user={user} />
     </div>
   );
 }

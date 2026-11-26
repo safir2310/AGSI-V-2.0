@@ -73,6 +73,11 @@ server.log
 # berkas rahasia lokal — JANGAN pernah di-commit (cegah snapshot otomatis)
 download/vercel-env-copy-paste.txt
 
+# token & kredensial pemeliharaan (diambil dari Vercel/Turso saat operasi)
+scripts/.vtoken
+scripts/.turso-token
+scripts/.dburl-*
+
 # file upload user — berisi kredensial service account, JANGAN pernah di-commit
 upload/
 tool-results
@@ -85,3 +90,4 @@ public/agsi-app.apk
 .android-sdk/
 .android-sdk-tmp/
 .gradle-home/
+scripts/.rkey
