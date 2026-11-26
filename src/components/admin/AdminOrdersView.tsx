@@ -9,6 +9,8 @@ import {
   CheckCheck,
   ChefHat,
   ClipboardList,
+  Camera,
+  Clock,
   Loader2,
   MessageCircle,
   Phone,
@@ -24,10 +26,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { PaymentBadge, SourceBadge, StatusBadge } from "@/components/shared/StatusBadge";
 import { ReceiptSheet } from "@/components/shared/ReceiptSheet";
+import { PhotoProofModal } from "@/components/shared/PhotoProofModal";
 import { useOrdersStore } from "@/lib/hooks";
 import { useNoticeStore, useUiStore } from "@/lib/store";
 import { apiFetch } from "@/lib/api";
-import { formatDateTime, formatIDR, ORDER_STATUS_FLOW, ORDER_STATUS_LABEL, type CourierInfo, type OrderData } from "@/lib/types";
+import { formatDateTime, formatIDR, formatPickup, ORDER_STATUS_FLOW, ORDER_STATUS_LABEL, type CourierInfo, type OrderData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const STATUS_FILTERS = [
@@ -45,6 +48,8 @@ export function AdminOrdersView() {
   const [filter, setFilter] = useState<string>("ALL");
   const [updating, setUpdating] = useState<string | null>(null);
   const [receiptOrder, setReceiptOrder] = useState<OrderData | null>(null);
+  // BUKTI FOTO PENGIRIMAN (permintaan pemilik): foto dari kurir dilihat admin
+  const [proofOrder, setProofOrder] = useState<OrderData | null>(null);
   /** Dialog "Serahkan ke Kurir" — pesanan antar yang siap diantar */
   const [courierOrder, setCourierOrder] = useState<OrderData | null>(null);
   const [courierName, setCourierName] = useState("");
@@ -373,6 +378,13 @@ export function AdminOrdersView() {
                       <span className="flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-1">
                         {typeIcon(o.type)} {o.type === "DINE_IN" ? "Di tempat" : o.type === "TAKEAWAY" ? "Bungkus" : "Diantar"}
                       </span>
+                      {/* JADWAL JAM PENGAMBILAN (Bungkus — permintaan pemilik):
+                          dapur tahu kapan pelanggan datang mengambil */}
+                      {formatPickup(o.pickupAt) && (
+                        <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-amber-700 ring-1 ring-amber-200">
+                          <Clock className="h-3 w-3" /> Ambil {formatPickup(o.pickupAt)}
+                        </span>
+                      )}
                       <span className="rounded-full bg-neutral-100 px-2 py-1">
                         {o.paymentMethod === "CASH" ? "💵 Tunai" : o.paymentMethod === "EWALLET" ? "👛 E-Wallet" : "📱 QRIS"}
                       </span>
@@ -393,6 +405,17 @@ export function AdminOrdersView() {
                       >
                         <Printer className="h-4 w-4" />
                       </button>
+                      {/* Bukti foto pengiriman dari kurir (pesanan antar) */}
+                      {o.type === "DELIVERY" && o.deliveryPhotoAt && (
+                        <button
+                          onClick={() => setProofOrder(o)}
+                          aria-label={`Lihat bukti foto pengiriman ${o.code}`}
+                          title="Lihat bukti foto pengiriman"
+                          className="press-effect flex h-9 w-9 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-600 shadow-sm transition hover:bg-emerald-100"
+                        >
+                          <Camera className="h-4 w-4" />
+                        </button>
+                      )}
                       {/* Chat pelanggan pemilik pesanan (disembunyikan utk pesanan POS tanpa akun member) */}
                       {o.userId && (
                         <button
@@ -514,6 +537,7 @@ export function AdminOrdersView() {
 
       {/* ===== SHEET CETAK STRUK ===== */}
       <ReceiptSheet open={!!receiptOrder} order={receiptOrder} onClose={() => setReceiptOrder(null)} />
+      <PhotoProofModal order={proofOrder} onClose={() => setProofOrder(null)} />
 
       {/* ===== DIALOG SERAHKAN KE KURIR (pesanan antar) ===== */}
       <AnimatePresence>

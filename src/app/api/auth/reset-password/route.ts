@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { validatePassword } from "@/lib/password-policy";
 import { db } from "@/lib/db";
 import { deleteUserSessions, hashPassword, verifyPassword } from "@/lib/auth";
+import { decryptTotpSecret, verifyTotpCode } from "@/lib/totp";
 
 /**
  * POST /api/auth/reset-password
- * Langkah 2 alur lupa password: user memasukkan email + kode OTP 6 digit
- * yang dikirim ke emailnya + password baru. Jika cocok, password diganti
- * dan SEMUA sesi lama dihapus supaya dipaksa masuk ulang dengan password baru.
+ * Langkah 2 alur lupa password: user memasukkan email + kode + password baru.
+ * Kode diverifikasi sesuai jalur record (mode):
+ *  - "email" → kode OTP 6 digit yang dikirim ke email/push (perilaku lama);
+ *  - "totp"  → kode 6 digit dari aplikasi authenticator (RFC 6238, ±30 dtk) —
+ *    TIDAK ada kode yang dikirim; secret dicek dari User.totpSecretEnc.
+ * Jika cocok, password diganti dan SEMUA sesi lama dihapus supaya dipaksa
+ * masuk ulang dengan password baru.
  */
 const MAX_ATTEMPTS = 5;
 
@@ -59,7 +64,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!verifyPassword(codeStr, reset.codeHash)) {
+    // Verifikasi sesuai jalur record: authenticator (TOTP) atau OTP email/push
+    if (reset.mode === "totp") {
+      if (!user.totpSecretEnc || !user.totpEnabledAt) {
+        // Authenticator dimatikan setelah langkah 1 — buang record agar langkah
+        // berikutnya di langkah 1 jatuh ke jalur email
+        await db.passwordReset.deleteMany({ where: { id: reset.id } });
+        return NextResponse.json(
+          { error: "Authenticator tidak lagi aktif di akun ini. Ulangi dari langkah pertama ya." },
+          { status: 400 }
+        );
+      }
+      const secret = decryptTotpSecret(user.totpSecretEnc);
+      const check = secret ? verifyTotpCode(secret, codeStr) : { ok: false };
+      if (!check.ok) {
+        await db.passwordReset.update({
+          where: { id: reset.id },
+          data: { attempts: { increment: 1 } },
+        });
+        return NextResponse.json(
+          {
+            error: `Kode authenticator tidak cocok. Ambil kode terbaru dari aplikasimu (berganti tiap 30 detik) & pastikan jam perangkat akurat. Sisa percobaan: ${MAX_ATTEMPTS - reset.attempts - 1}.`,
+          },
+          { status: 400 }
+        );
+      }
+    } else if (!verifyPassword(codeStr, reset.codeHash)) {
       await db.passwordReset.update({
         where: { id: reset.id },
         data: { attempts: { increment: 1 } },

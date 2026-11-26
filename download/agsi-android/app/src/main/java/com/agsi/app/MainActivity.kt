@@ -70,6 +70,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -217,7 +218,7 @@ class MainActivity : AppCompatActivity() {
                 return@registerForActivityResult
             }
             try {
-                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                contentResolver.openOutputStream(uri)?.use { writeWithProgress(it, bytes, name) }
                     ?: throw IOException("Tidak bisa membuka output stream")
                 Toast.makeText(this, getString(R.string.file_saved, name), Toast.LENGTH_LONG).show()
                 // v1.3.28 — kartu unduhan selesai (tap → buka file hasil SAF)
@@ -250,21 +251,13 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // ⏰ Bangunkan layar saat HP tidur/terkunci: notifikasi penting (full
-        // -screen intent dari PushService/NotifPollerService) menampilkan
-        // aplikasi LANGSUNG di atas layar kunci — dapur tidak melewatkan
-        // pesanan walau HP tergeletak layar mati (permintaan pemilik v1.3.3).
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-            )
-        }
-
+        // v1.3.36 (permintaan pemilik): layar terkunci → NOTIFIKASI SAJA,
+        // aplikasi tidak dibuka. Flag setShowWhenLocked/setTurnScreenOn dari
+        // v1.3.3 (aplikasi tampil di atas layar kunci via full-screen intent)
+        // dihapus — notifikasi tetap masuk kartu layar kunci + suara + getar
+        // (AgsiNotifications), ketukan kartu membuka aplikasi SETELAH buka
+        // kunci (alur baku Android).
+        //
         // v1.3.25 — layar TIDAK terkunci sendiri selama aplikasi di depan:
         // kasir melayani pesanan tidak disela kunci layar otomatis di tengah
         // pencatatan (permintaan pemilik: "aplikasi tetap terbuka"). Tombol
@@ -767,11 +760,21 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    /** v1.3.35 — tanda alur verifikasi biometrik sedang berjalan. Dua
+     *  BiometricPrompt bersamaan (ketukan ganda pada tombol aktifkan) membuat
+     *  yang kedua melempar IllegalStateException di sebagian perangkat —
+     *  kini ditahan dan dilaporkan sebagai gagal yang jelas. */
+    private var biometricFlowActive = false
+
     /**
      * Alur aktivasi biometrik (dipakai dialog tawaran & Profil → Login
      * Biometrik via jembatan AgsiNative). Verifikasi dulu, baru disimpan.
      */
     fun showBiometricEnableFlow(onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+        if (biometricFlowActive) {
+            onFailure("verifikasi sedang berjalan")
+            return
+        }
         when (AppLock.availability(this)) {
             AppLock.Availability.OK -> Unit
             AppLock.Availability.NOT_ENROLLED -> {
@@ -785,12 +788,14 @@ class MainActivity : AppCompatActivity() {
                 return
             }
         }
+        biometricFlowActive = true
         AppLock.authenticate(
             this,
             title = getString(R.string.biometric_enable_prompt_title),
             subtitle = getString(R.string.biometric_enable_prompt_subtitle),
             negativeText = getString(R.string.biometric_enable_prompt_negative),
         ) { ok, code ->
+            biometricFlowActive = false
             if (ok) {
                 AppLock.setEnabled(this, true)
                 onSuccess()
@@ -950,7 +955,10 @@ class MainActivity : AppCompatActivity() {
                 .setTitle(fileName)
                 .setDescription(getString(R.string.download_desc))
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                // v1.3.32 — subfolder "AGSI/" (konsisten dgn struk & laporan
+                // dari jembatan saveFile): semua unduhan AGSI kini dalam satu
+                // folder Unduhan/AGSI, mudah dicari di aplikasi Files.
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "AGSI/$fileName")
             CookieManager.getInstance().getCookie(url)?.let {
                 request.addRequestHeader("Cookie", it)
             }
@@ -1016,6 +1024,27 @@ class MainActivity : AppCompatActivity() {
         wv.post { wv.evaluateJavascript(script, null) }
     }
 
+    /** Tulis bytes PER BAGIAN sambil memperbarui kartu unduhan di status bar
+     *  dengan persabagan NYATA (v1.3.30 — permintaan pemilik: unduhan struk
+     *  lebih "tajam"): baris progres terisi + "67% · 1,2 MB". Bagian 256 KB,
+     *  laporan tiap ≥10% (file kecil: sekali tulis + langsung 100%). */
+    private fun writeWithProgress(out: OutputStream, bytes: ByteArray, fileName: String) {
+        val chunk = 256 * 1024
+        var written = 0
+        var lastPct = -100
+        do {
+            val len = minOf(chunk, bytes.size - written)
+            out.write(bytes, written, len)
+            written += len
+            val pct = if (bytes.isEmpty()) 100 else written * 100 / bytes.size
+            if (pct - lastPct >= 10 || written == bytes.size) {
+                lastPct = pct
+                DownloadNotifier.progress(this, fileName, pct, written.toLong())
+            }
+        } while (written < bytes.size)
+        out.flush()
+    }
+
     /**
      * Simpan file (base64 dari web) ke folder Unduhan.
      *  - Android 10+ : MediaStore Downloads → Unduhan/AGSI, tanpa dialog,
@@ -1047,7 +1076,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                     ?: throw IOException("MediaStore menolak penyimpanan")
-                resolver.openOutputStream(uri)?.use { it.write(bytes) }
+                resolver.openOutputStream(uri)?.use { writeWithProgress(it, bytes, fileName) }
                     ?: throw IOException("Tidak bisa membuka output stream")
                 values.clear()
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0)
@@ -1137,14 +1166,51 @@ class MainActivity : AppCompatActivity() {
                 target = File(dir, "$base (${i})$ext")
                 i++
             }
-            target.outputStream().use { it.write(bytes) }
+            target.outputStream().use { writeWithProgress(it, bytes, target.name) }
             Toast.makeText(this, getString(R.string.file_saved, target.name), Toast.LENGTH_LONG).show()
+            // v1.3.32 — DAFTARKAN ke DownloadManager SISTEM: struk & laporan
+            // masuk daftar "Unduhan" resmi Android (aplikasi Files/Unduhan) dan
+            // sistem menampilkan kartu unduhan selesai di status bar — persis
+            // unduhan lewat browser/Chrome. (Android 10+ tidak perlu: MediaStore
+            // Downloads sudah otomatis terdaftar di UI Unduhan sistem.)
+            registerCompletedDownload(target, mimeType)
             // v1.3.28 — kartu unduhan selesai (tap → buka via FileProvider)
             DownloadNotifier.completed(this, target.name, mimeType, DownloadNotifier.fileProviderUri(this, target))
             resolveBridge(cbId, true, target.name)
         } catch (e: Exception) {
             Log.w(TAG, "Simpan langsung Unduhan gagal — pakai dialog Simpan-ke (SAF)", e)
             launchSaveFileDialog(cbId, bytes, fileName, mimeType)
+        }
+    }
+
+    /**
+     * v1.3.32 — registrasi file yang sudah ditulis ke DownloadManager SISTEM
+     * (DownloadManager.addCompletedDownload — API resmi Android untuk
+     * mendaftarkan file hasil unduhan manual): file tampil di daftar Unduhan
+     * sistem dan bila showNotification=true sistem ikut menampilkan kartu
+     * "Unduhan selesai" di status bar.
+     *
+     * Hanya untuk Android 8–9 (jalur File langsung Unduhan/AGSI); di Android
+     * 10+ file tersimpan via MediaStore.Downloads yang sudah otomatis tampak
+     * di aplikasi Unduhan, dan addCompletedDownload dengan path MediaStore
+     * memang tidak sah (IllegalArgumentException) — dilewati.
+     * Gagal registrasi BUKAN kegagalan simpan: file tetap ada di Unduhan/AGSI.
+     */
+    private fun registerCompletedDownload(file: File, mimeType: String) {
+        try {
+            @Suppress("DEPRECATION")
+            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            dm.addCompletedDownload(
+                file.name,
+                "AGSI — struk & laporan", // deskripsi kartu unduhan sistem
+                true, // tampil di UI Unduhan (aplikasi Files / Unduhan)
+                mimeType,
+                file.absolutePath,
+                file.length(),
+                true, // sistem menampilkan notifikasi unduhan selesai di status bar
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Registrasi DownloadManager sistem gagal — file tetap tersimpan", e)
         }
     }
 
@@ -1203,13 +1269,35 @@ class MainActivity : AppCompatActivity() {
             resolveBridge(cbId, false, "data PDF tidak valid")
             return
         }
-        mainHandler.postDelayed({
-            resolveBridge(
-                cbId,
+        // v1.3.37 — penjaga jawaban tunggal: pengawas 12 dtk lama bisa
+        // menjawab "gagal" SETELAH jawaban sukses terkirim (dua jawaban
+        // satu cbId — web sudah lanjut). Kini hanya jalur PERTAMA yang dijawab.
+        var answered = false
+        fun done(ok: Boolean, message: String) {
+            if (answered) return
+            answered = true
+            resolveBridge(cbId, ok, message)
+        }
+        // v1.3.37 — deteksi dini layanan cetak dimatikan ROM (OPPO/realme/
+        // MIUI mematikan "Print Spooler" bawaan): print() TETAP mengembalikan
+        // job tapi dialog TIDAK PERNAH tampil — laporan pemilik "dialog
+        // printer tidak muncul". Bila nonaktif: halaman "Aktifkan" spooler
+        // langsung dibuka + jawaban sebab spesifik (bukan "sukses" palsu).
+        if (printSpoolerDisabled()) {
+            openPrintSpoolerSettings()
+            done(
+                false,
+                "LAYANAN_CETAK_NONAKTIF|Layanan cetak Android (Print Spooler) nonaktif di HP ini — halaman pengaturannya sudah dibuka: tekan 'Aktifkan', kembali ke AGSI, lalu tekan Cetak lagi.",
+            )
+            return
+        }
+        val watchdog = Runnable {
+            done(
                 false,
                 "Dialog cetak tidak terbuka. Aktifkan 'Cetak' di Pengaturan ▸ Aplikasi ▸ Tampilkan aplikasi sistem, atau pasang plugin printer Anda.",
             )
-        }, 12_000)
+        }
+        mainHandler.postDelayed(watchdog, 12_000)
         try {
             val dir = File(cacheDir, "print").apply { mkdirs() }
             val pdf = File(dir, fileName.ifBlank { "agsi-dokumen.pdf" })
@@ -1220,15 +1308,69 @@ class MainActivity : AppCompatActivity() {
                 PdfPrintAdapter(pdf, fileName),
                 PrintAttributes.Builder().build(),
             )
+            mainHandler.removeCallbacks(watchdog)
             if (job == null) {
-                resolveBridge(cbId, false, "Layanan cetak sistem tidak merespons. Periksa layanan cetak di Pengaturan.")
+                openPrintSpoolerSettings()
+                done(
+                    false,
+                    "LAYANAN_CETAK_NONAKTIF|Layanan cetak sistem tidak merespons — halaman pengaturan cetak dibuka; aktifkan layanan cetak lalu tekan Cetak lagi.",
+                )
                 return
             }
-            resolveBridge(cbId, true, "dialog cetak dibuka")
+            done(true, "dialog cetak dibuka")
         } catch (e: Exception) {
             Log.w(TAG, "Gagal menyiapkan cetak PDF", e)
-            resolveBridge(cbId, false, "Gagal menyiapkan cetak: ${e.message ?: "tidak diketahui"}")
+            mainHandler.removeCallbacks(watchdog)
+            done(false, "Gagal menyiapkan cetak: ${e.message ?: "tidak diketahui"}")
         }
+    }
+
+    /** v1.3.37 — apakah layanan cetak sistem (Print Spooler) dinonaktifkan?
+     *  ROM OPPO/realme/MIUI sering mematikannya bawaan → dialog cetak tidak
+     *  pernah tampil walau print() sukses. Paket tidak ada di ROM (nama lain)
+     *  = tidak diketahui → false (biarkan print() mencoba). */
+    private fun printSpoolerDisabled(): Boolean {
+        for (pkg in listOf("com.android.printspooler", "com.android.print.spooler")) {
+            try {
+                val st = packageManager.getApplicationEnabledSetting(pkg)
+                if (st == PackageManager.COMPONENT_ENABLED_STATE_DISABLED ||
+                    st == PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER
+                ) return true
+            } catch (_: Exception) {
+                // paket tidak ditemukan di ROM ini — coba kandidat berikutnya
+            }
+        }
+        return false
+    }
+
+    /** v1.3.37 — buka halaman untuk MENGAKTIFKAN layanan cetak, urut
+     *  tercepat: 1) detail aplikasi Print Spooler (satu ketuk "Aktifkan"),
+     *  2) halaman Pengaturan ▸ Cetak sistem, 3) toast panduan. */
+    fun openPrintSpoolerSettings() {
+        val candidates = mutableListOf<Intent>()
+        for (pkg in listOf("com.android.printspooler", "com.android.print.spooler")) {
+            try {
+                packageManager.getPackageInfo(pkg, 0)
+                candidates += Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.parse("package:$pkg"))
+            } catch (_: Exception) {
+                // paket tidak ada di ROM ini
+            }
+        }
+        candidates += Intent("android.settings.ACTION_PRINT_SETTINGS")
+        for (intent in candidates) {
+            try {
+                startActivity(intent)
+                return
+            } catch (_: Exception) {
+                // layar tidak tersedia — coba kandidat berikutnya
+            }
+        }
+        Toast.makeText(
+            this,
+            "Aktifkan 'Print Spooler' di Pengaturan ▸ Aplikasi ▸ Tampilkan aplikasi sistem",
+            Toast.LENGTH_LONG,
+        ).show()
     }
 
     /**

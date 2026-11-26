@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   Banknote,
   Bike,
+  Camera,
   CheckCheck,
   Clock,
   HandCoins,
@@ -22,6 +23,10 @@ import {
   X,
 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { PhotoProofModal } from "@/components/shared/PhotoProofModal";
+import { compressProofPhoto } from "@/lib/photo-compress";
+import { CourierMapSheet } from "@/components/courier/CourierMapSheet";
+import type { MapPoint } from "@/components/shared/LiveMap";
 import { apiFetch } from "@/lib/api";
 import { useNoticeStore } from "@/lib/store";
 import { formatDateTime, formatIDR, type OrderData } from "@/lib/types";
@@ -118,6 +123,17 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
   const [tab, setTab] = useState<Tab>("antaran");
   const [setorArmed, setSetorArmed] = useState(false);
   const [setorBusy, setSetorBusy] = useState(false);
+  // ===== Pelacakan real-time (permintaan pemilik): kurir mengirim GPS
+  // berkala selama ada antaran aktif & membuka peta lokasi pelanggan =====
+  const [livePos, setLivePos] = useState<MapPoint | null>(null);
+  const [mapOrder, setMapOrder] = useState<OrderData | null>(null);
+  // ===== BUKTI FOTO PENGIRIMAN (permintaan pemilik): kurir wajib mengunggah
+  // foto sebelum "Sampai Tujuan"; admin & pelanggan dapat melihatnya. =====
+  const [photoBusy, setPhotoBusy] = useState<string | null>(null); // orderId yang sedang unggah
+  const [proofAt, setProofAt] = useState<Record<string, string>>({}); // id → uploadedAt (lokal)
+  const [photoTargetId, setPhotoTargetId] = useState<string | null>(null); // target input file
+  const [proofView, setProofView] = useState<OrderData | null>(null); // modal lihat bukti
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -145,6 +161,49 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
     return () => clearInterval(iv);
   }, [load]);
 
+  // ===== PELACAKAN REAL-TIME — kurir mengirim GPS tiap 8 dtk selama ada
+  // antaran aktif (permintaan pemilik: pelanggan melihat kurir bergerak di
+  // peta). Hanya saat halaman terlihat (hemat baterai) & tanpa melempar.
+  const activeDeliveryIds = (orders ?? [])
+    .filter((o) => o.type === "DELIVERY" && o.status === "READY")
+    .map((o) => o.id)
+    .join(",");
+
+  useEffect(() => {
+    if (!activeDeliveryIds) return;
+    const ids = activeDeliveryIds.split(",");
+
+    const send = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      if (typeof navigator === "undefined" || !navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setLivePos(p);
+          for (const id of ids) {
+            try {
+              await apiFetch("/api/courier/location", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ orderId: id, lat: p.lat, lng: p.lng }),
+              });
+            } catch {
+              // satu gagal → lanjut pesanan berikut (interval berikutnya kirim ulang)
+            }
+          }
+        },
+        () => {
+          // GPS ditolak/tidak tersedia — pelanggan hanya melihat timeline
+        },
+        { enableHighAccuracy: true, timeout: 9000, maximumAge: 6000 },
+      );
+    };
+
+    send();
+    const iv = setInterval(send, 8000);
+    return () => clearInterval(iv);
+  }, [activeDeliveryIds]);
+
   /** Galat aksi hilang sendiri beberapa detik */
   useEffect(() => {
     if (!actionError) return;
@@ -152,8 +211,57 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
     return () => clearTimeout(t);
   }, [actionError]);
 
+  // ===== BUKTI FOTO: buka kamera/galeri lalu unggah (kompresi di perangkat)
+  const openPhotoPicker = (o: OrderData) => {
+    setPhotoTargetId(o.id);
+    // reset nilai agar memilih file yang sama tetap memicu onChange
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.click();
+    }
+  };
+
+  const onPhotoSelected = async (file: File | null | undefined) => {
+    const orderId = photoTargetId;
+    if (!file || !orderId) return;
+    setPhotoBusy(orderId);
+    setActionError(null);
+    try {
+      const image = await compressProofPhoto(file);
+      const res = await apiFetch(`/api/orders/${orderId}/delivery-photo`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Gagal mengunggah foto.");
+      setProofAt((prev) => ({ ...prev, [orderId]: data.uploadedAt ?? new Date().toISOString() }));
+      await load();
+      showNotice({
+        type: "success",
+        title: "Foto Bukti Terunggah ✓",
+        message: "Foto pengiriman tersimpan — admin & pelanggan bisa melihatnya.",
+      });
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Gagal mengunggah foto bukti.");
+    } finally {
+      setPhotoBusy(null);
+      setPhotoTargetId(null);
+    }
+  };
+
+  /** Foto bukti sudah ada? (unggahan lama dari server / baru dari perangkat) */
+  const proofTimestamp = (o: OrderData): string | null =>
+    proofAt[o.id] ?? (o.deliveryPhotoAt ?? null);
+
   /** Tandai pesanan sampai tujuan → API kini mengizinkan KURIR (COMPLETED) */
   const completeDelivery = async (o: OrderData) => {
+    // WAJIB bukti foto dulu (permintaan pemilik) — server juga menolak
+    const hasPhoto = o.deliveryPhotoAt != null || !!proofAt[o.id];
+    if (!hasPhoto) {
+      setActionError("Unggah dulu FOTO BUKTI pengiriman (tombol 📷) sebelum menekan Sampai Tujuan.");
+      return;
+    }
     setUpdating(o.id);
     setActionError(null);
     try {
@@ -577,16 +685,69 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
                   </div>
                 </div>
 
-                {/* Aksi: rute + sampai tujuan */}
+                {/* BUKTI FOTO PENGIRIMAN — wajib sebelum "Sampai Tujuan" */}
+                {!done && (
+                  <div className="flex items-center gap-2.5 border-t border-emerald-50 px-4 py-2.5">
+                    {proofTimestamp(o) ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`/api/orders/${o.id}/delivery-photo?v=${encodeURIComponent(proofTimestamp(o)!)}`}
+                        alt={`Bukti foto ${o.code}`}
+                        className="h-14 w-14 shrink-0 rounded-lg object-cover ring-1 ring-emerald-200"
+                      />
+                    ) : (
+                      <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-emerald-300 bg-emerald-50/60 text-emerald-300">
+                        <Camera className="h-5 w-5" />
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className={cn("text-[11px] font-black", proofTimestamp(o) ? "text-emerald-600" : "text-amber-600")}>
+                        {proofTimestamp(o) ? "✓ Foto bukti terunggah" : "WAJIB: foto bukti pengiriman"}
+                      </p>
+                      <p className="text-[10px] leading-snug text-neutral-400">
+                        {proofTimestamp(o)
+                          ? "Ketuk kamera untuk mengganti foto bila perlu."
+                          : "Foto paket di depan rumah/diserahkan ke pelanggan — admin & pelanggan melihatnya."}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => openPhotoPicker(o)}
+                      disabled={photoBusy === o.id}
+                      className="press-effect flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-emerald-600 px-3 text-[11px] font-black text-white shadow-md shadow-emerald-500/30 hover:bg-emerald-700 disabled:opacity-60"
+                    >
+                      {photoBusy === o.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                      {proofTimestamp(o) ? "Ulangi" : "Foto"}
+                    </button>
+                  </div>
+                )}
+                {done && proofTimestamp(o) && (
+                  <div className="border-t border-emerald-50 px-4 py-2.5">
+                    <button
+                      onClick={() => setProofView(o)}
+                      className="text-[11px] font-black text-emerald-600 underline"
+                    >
+                      📷 Lihat bukti foto pengiriman
+                    </button>
+                  </div>
+                )}
+
+                {/* Aksi: peta pelanggan + rute + sampai tujuan */}
                 {!done && (
                   <div className="flex gap-2 border-t border-emerald-50 px-4 py-3">
+                    <button
+                      onClick={() => setMapOrder(o)}
+                      aria-label={`Lihat peta pelanggan ${o.code}`}
+                      className="press-effect flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-700 ring-1 ring-orange-200 transition hover:bg-orange-100"
+                    >
+                      <MapPin className="h-4 w-4" />
+                    </button>
                     <a
                       href={mapsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="press-effect flex h-10 flex-[1.4] items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 text-[12px] font-black text-emerald-700 hover:bg-emerald-100"
+                      className="press-effect flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 text-[12px] font-black text-emerald-700 hover:bg-emerald-100"
                     >
-                      <Navigation className="h-4 w-4" /> Buka Rute GPS
+                      <Navigation className="h-4 w-4" /> Rute GPS
                     </a>
                     <button
                       onClick={() => void completeDelivery(o)}
@@ -623,6 +784,19 @@ export function CourierHomeView({ user, onLogout }: CourierHomeViewProps) {
           <RefreshCw className="h-3.5 w-3.5" /> {error} — Ketuk untuk coba lagi
         </button>
       )}
+
+      {/* ===== SHEET PETA PELANGGAN (pelacakan real-time) ===== */}
+      <CourierMapSheet order={mapOrder} livePos={livePos} onClose={() => setMapOrder(null)} />
+
+      {/* ===== BUKTI FOTO: input kamera/galeri tersembunyi + modal lihat ===== */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => void onPhotoSelected(e.target.files?.[0])}
+      />
+      <PhotoProofModal order={proofView} onClose={() => setProofView(null)} />
 
       {/* ===== SHEET RIWAYAT PENGANTARAN ===== */}
       {createPortal(

@@ -129,11 +129,18 @@ export type OrderData = {
   courierUserId?: string | null;
   /** waktu kurir berangkat dari toko (ISO) — penanda "sedang diantar" */
   onTheWayAt?: string | null;
+  /** BUKTI FOTO PENGIRIMAN: waktu kurir mengunggah foto (null = belum ada) —
+   *  bytes diambil on-demand via /api/orders/[id]/delivery-photo */
+  deliveryPhotoAt?: string | null;
   /** ===== Pin GPS lokasi rumah pelanggan (DELIVERY) ===== */
   /** lintang pin GPS rumah pelanggan (null = pelanggan tidak menempel pin) */
   deliveryLat?: number | null;
   /** bujur pin GPS rumah pelanggan */
   deliveryLng?: number | null;
+  /** ===== JADWAL JAM PENGAMBILAN (TAKEAWAY — permintaan pemilik) ===== */
+  /** waktu pelanggan datang mengambil pesanan "Bungkus / Ambil" (ISO);
+   *  null = ambil sekarang tanpa jadwal */
+  pickupAt?: string | null;
   voucherCode: string | null;
   voucherDiscount: number;
   total: number;
@@ -311,6 +318,24 @@ export function formatDateTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** Format jadwal pengambilan pesanan Bungkus (permintaan pemilik):
+ *  "Hari ini 15:30" / "Besok 10:00" / "23/11 15:30" (di luar itu).
+ *  Waktu disimpan sebagai DateTime (UTC) — seluruh pengguna AGSI berada
+ *  di WIB sehingga jam perangkat lokal aman dipakai untuk menampilkan.
+ *  null / ISO tidak valid → null (baris jadwal tidak ditampilkan). */
+export function formatPickup(iso: string | Date | null | undefined): string | null {
+  if (!iso) return null;
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  if (Number.isNaN(d.getTime())) return null;
+  const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const now = new Date();
+  if (sameDay(d, now)) return `Hari ini ${time}`;
+  if (sameDay(d, new Date(now.getTime() + 24 * 60 * 60 * 1000))) return `Besok ${time}`;
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${time}`;
 }
 
 export const CATEGORIES = ["Paket Geprek", "Ayam & Laos", "Cemilan", "Minuman", "Topping"];
