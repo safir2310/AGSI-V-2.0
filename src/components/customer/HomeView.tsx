@@ -20,6 +20,7 @@ import { ProductThumb } from "@/components/shared/ProductThumb";
 import { StoreSheet } from "@/components/shared/StoreSheet";
 import { BannerPopup } from "@/components/customer/BannerPopup";
 import { CourierScene } from "@/components/customer/CourierScene";
+import { HeliDropScene } from "@/components/customer/HeliDropScene";
 import { MotionText, boxAnim, useBindSpeed, useMotionTarget } from "@/components/motion/MotionRuntime";
 import { refreshVouchers, useProductsStore, useSettingsStore, useVouchersStore } from "@/lib/hooks";
 import { useCartStore, useNoticeStore, type AppView } from "@/lib/store";
@@ -410,6 +411,12 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
           )}
         </div>
       </motion.section>
+
+      {/* ===== LANGIT ANIMASI: HELI ANTAR PAKET (bagian bawah beranda) =====
+          Pasangan adegan jalan animasi di atas — MODEL LAIN: helikopter
+          kurir menurunkan paket ke rumah pelanggan. Murni dekorasi tanpa
+          konfigurasi admin (lihat HeliDropScene.tsx). */}
+      <HeliDropScene />
 
       {/* ===== POPUP PILIHAN TOKO (dibuka dari alamat di hero) ===== */}
       <StoreSheet open={storeOpen} onClose={() => setStoreOpen(false)} />
