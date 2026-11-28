@@ -1,0 +1,14 @@
+{
+  "source": "DATABASE_URL",
+  "users": [
+    {
+      "id": "cmw17kimi0000qs4svr4lj6wd",
+      "name": "Musafir",
+      "email": "2310musafir@gmail.com",
+      "phone": "0812-1111-2222",
+      "role": "OWNER"
+    }
+  ],
+  "addresses": [],
+  "orderPhones": []
+}

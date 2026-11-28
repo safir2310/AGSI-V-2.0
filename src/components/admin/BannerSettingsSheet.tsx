@@ -13,7 +13,6 @@ import {
   PanelTop,
   Plus,
   Save,
-  Tag,
   Ticket,
   Trash2,
   TriangleAlert,
@@ -35,11 +34,6 @@ export type BannerSettingsSheetProps = {
   onClose: () => void;
 };
 
-const MAX_TITLE = 60;
-const MAX_TEXT = 160;
-const MAX_STRIP_BADGE = 24;
-const MAX_STRIP_TITLE = 80;
-const MAX_STRIP_TEXT = 120;
 const MAX_HERO_BADGE = 24;
 const MAX_HERO_TITLE = 80;
 const MAX_HERO_TEXT = 120;
@@ -181,19 +175,13 @@ async function apiFetchTimeout(input: string, init: RequestInit, timeoutMs = 120
 /** Bandingkan dua payload (urutan kunci konsisten) — true = sama. */
 const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Isi request PUT bagian banner popup (tanpa gambar). */
-const bannerPayloadOf = (s: { enabled: boolean; title: string; text: string }) => ({
+/** Isi request PUT bagian banner popup (tanpa gambar).
+ *  Popup kini GAMBAR SAJA 1:1 — judul/pesan dihapus dari popup, jadi selalu
+ *  dikirim null agar sisa teks lama di database ikut bersih. */
+const bannerPayloadOf = (s: { enabled: boolean }) => ({
   bannerEnabled: s.enabled,
-  bannerTitle: s.title.trim() || null,
-  bannerText: s.text.trim() || null,
-});
-
-/** Isi request PUT bagian strip promo. */
-const stripPayloadOf = (s: { enabled: boolean; badge: string; title: string; text: string }) => ({
-  promoStripEnabled: s.enabled,
-  promoStripBadge: s.badge.trim(),
-  promoStripTitle: s.title.trim(),
-  promoStripText: s.text.trim(),
+  bannerTitle: null,
+  bannerText: null,
 });
 
 /** Isi request PUT bagian hero Menu (tanpa gambar). */
@@ -240,7 +228,6 @@ const videoPayloadOf = (s: {
 
 type SaveSnapshot = {
   banner: unknown;
-  strip: unknown;
   hero: unknown;
   menuPromo: unknown;
   video: unknown;
@@ -251,8 +238,7 @@ const saveSnapshotFromStore = (): SaveSnapshot => {
   const st = useSettingsStore.getState();
   const storeBanners = st.menuPromo.banners ?? EMPTY_PROMO_BANNERS;
   return {
-    banner: bannerPayloadOf({ enabled: st.banner.bannerEnabled, title: st.banner.bannerTitle ?? "", text: st.banner.bannerText ?? "" }),
-    strip: stripPayloadOf({ enabled: st.promo.promoStripEnabled, badge: st.promo.promoStripBadge, title: st.promo.promoStripTitle, text: st.promo.promoStripText }),
+    banner: bannerPayloadOf({ enabled: st.banner.bannerEnabled }),
     hero: heroPayloadOf({ enabled: st.menuHero.menuHeroEnabled, badge: st.menuHero.menuHeroBadge, title: st.menuHero.menuHeroTitle, text: st.menuHero.menuHeroText }),
     menuPromo: menuPromoPayloadOf({
       vpEnabled: st.menuPromo.menuPromoVouchersEnabled,
@@ -296,12 +282,11 @@ async function processImageFile(file: File | undefined): Promise<string | null> 
  * Isi:
  *  1. Popup banner Beranda — saklar AKTIF/NONAKTIF, upload gambar (otomatis
  *     dikompres), judul & pesan singkat.
- *  2. Strip "Promo Hari Ini" di Beranda — 3 baris teks.
- *  3. Hero banner halaman Menu — saklar, gambar latar, badge, judul, teks.
- *  4. 2 Banner Promo Menu (slot 1 & 2) — dua slide carousel yang berganti
+ *  2. Hero banner halaman Menu — saklar, gambar latar, badge, judul, teks.
+ *  3. 2 Banner Promo Menu (slot 1 & 2) — dua slide carousel yang berganti
  *     otomatis: saklar, gambar latar, emoji, tema warna & 3 baris teks per banner.
- *  5. Slide voucher di carousel Menu — saklar + jumlah maksimal (1–5).
- *  6. AGSI Smart Video Promo Banner (dasar halaman Menu) — carousel video MP4:
+ *  4. Slide voucher di carousel Menu — saklar + jumlah maksimal (1–5).
+ *  5. AGSI Smart Video Promo Banner (dasar halaman Menu) — carousel video MP4:
  *     upload/ganti/hapus video per slide (bertahap/chunked), caption, tautan
  *     produk/promo, saklar aktif.
  *
@@ -316,13 +301,6 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [enabled, setEnabled] = useState(false);
-  const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
-  // ===== Strip "Promo Hari Ini" (baris oranye di Beranda) =====
-  const [promoEnabled, setPromoEnabled] = useState(true);
-  const [promoBadge, setPromoBadge] = useState("");
-  const [promoTitle, setPromoTitle] = useState("");
-  const [promoText, setPromoText] = useState("");
   // ===== Hero banner halaman Menu =====
   const [heroEnabled, setHeroEnabled] = useState(true);
   const [heroBadge, setHeroBadge] = useState("");
@@ -381,17 +359,9 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       await refreshSettings();
       const b = useSettingsStore.getState().banner;
       setEnabled(b.bannerEnabled);
-      setTitle(b.bannerTitle ?? "");
-      setText(b.bannerText ?? "");
       setServerHasImage(b.bannerHasImage);
       setServerVersion(b.bannerVersion);
       setImageData(undefined);
-      // Strip promo — nilai tersimpan atau default bawaan
-      const p = useSettingsStore.getState().promo;
-      setPromoEnabled(p.promoStripEnabled);
-      setPromoBadge(p.promoStripBadge);
-      setPromoTitle(p.promoStripTitle);
-      setPromoText(p.promoStripText);
       // Hero banner menu — nilai tersimpan atau default bawaan
       const h = useSettingsStore.getState().menuHero;
       setHeroEnabled(h.menuHeroEnabled);
@@ -615,19 +585,12 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
 
   const save = async () => {
     if (saving) return;
-    if (enabled && previewSrc === null && !title.trim()) {
+    // popup kini GAMBAR SAJA — tanpa gambar, tidak ada yang bisa ditampilkan
+    if (enabled && previewSrc === null) {
       showNotice({
         type: "error",
         title: "Banner Belum Siap",
-        message: "Unggah gambar banner atau isi judul dulu — popup butuh minimal satu konten.",
-      });
-      return;
-    }
-    if (promoEnabled && !promoBadge.trim() && !promoTitle.trim() && !promoText.trim()) {
-      showNotice({
-        type: "error",
-        title: "Strip Promo Belum Siap",
-        message: "Isi minimal satu baris strip promo, atau matikan saklar Strip Promonya.",
+        message: "Unggah gambar banner dulu — popup beranda kini menampilkan gambar saja.",
       });
       return;
     }
@@ -686,8 +649,8 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
       // kecil = selesai cepat.
       const base = initialRef.current ?? saveSnapshotFromStore();
 
-      // Bagian 1 — popup banner Beranda (teks + gambar)
-      const bannerTeks = bannerPayloadOf({ enabled, title, text });
+      // Bagian 1 — popup banner Beranda (gambar saja + saklar)
+      const bannerTeks = bannerPayloadOf({ enabled });
       if (imageData !== undefined || !sameJson(bannerTeks, base.banner)) {
         const bannerStep: Record<string, unknown> = { ...bannerTeks, bannerTouch: true };
         if (imageData !== undefined) {
@@ -697,13 +660,7 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
         steps.push({ label: "banner popup", body: bannerStep });
       }
 
-      // Bagian 2 — strip promo hari ini (teks saja, sangat kecil)
-      const stripTeks = stripPayloadOf({ enabled: promoEnabled, badge: promoBadge, title: promoTitle, text: promoText });
-      if (!sameJson(stripTeks, base.strip)) {
-        steps.push({ label: "strip promo", body: stripTeks });
-      }
-
-      // Bagian 3 — hero banner Menu (teks + gambar)
+      // Bagian 2 — hero banner Menu (teks + gambar)
       const heroTeks = heroPayloadOf({ enabled: heroEnabled, badge: heroBadge, title: heroTitle, text: heroText });
       if (heroImageData !== undefined || !sameJson(heroTeks, base.hero)) {
         const heroStep: Record<string, unknown> = { ...heroTeks, menuHeroTouch: true };
@@ -714,7 +671,7 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
         steps.push({ label: "hero Menu", body: heroStep });
       }
 
-      // Bagian 4 — carousel Menu: voucher + 2 banner promo (teks + gambar dua
+      // Bagian 3 — carousel Menu: voucher + 2 banner promo (teks + gambar dua
       // slot SEKALIGUS — bagian menuPromo hanya boleh ditulis satu request)
       const mpTeks = menuPromoPayloadOf({ vpEnabled, vpMax, banners: bannerDrafts });
       const mpGambarBerubah = bannerDrafts.some((d) => d.imageData !== undefined);
@@ -735,7 +692,7 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
         });
       }
 
-      // Bagian 5 — AGSI Smart Video Promo Banner: metadata slide saja (bytes
+      // Bagian 4 — AGSI Smart Video Promo Banner: metadata slide saja (bytes
       // video sudah terunggah bertahap saat dipilih, via /api/settings/video-promo)
       const videoTeks = videoPayloadOf({ enabled: vidEnabled, slides: vidSlides });
       if (!sameJson(videoTeks, base.video)) {
@@ -848,7 +805,8 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
     }
   };
 
-  const hasAnyContent = previewSrc !== null || !!title.trim();
+  // popup gambar saja — konten = ada gambar (dipilih/baru dari server)
+  const hasAnyContent = previewSrc !== null;
   const active = enabled && hasAnyContent;
 
   // Portal ke <body> agar modal tidak terjebak stacking context `main` (z-10)
@@ -925,7 +883,8 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-black text-neutral-800">Popup Banner</p>
                         <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-500">
-                          Tampilkan popup promo saat pelanggan membuka halaman Beranda.
+                          Tampilkan popup promo saat pelanggan membuka halaman Beranda. Gambar tampil
+                          penuh kotak 1:1 (persegi) — disarankan foto promo rasio 1:1, mis. 1080×1080.
                         </p>
                         <span
                           className={cn(
@@ -953,21 +912,11 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                   </p>
                   <div className="overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm">
                     {previewSrc ? (
-                      <img src={previewSrc} alt="Pratinjau banner" className="aspect-video w-full object-cover" />
+                      <img src={previewSrc} alt="Pratinjau banner" className="aspect-square w-full object-cover" />
                     ) : (
-                      <div className="flex aspect-video w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-orange-50 to-orange-100/60 text-neutral-400">
+                      <div className="flex aspect-square w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-orange-50 to-orange-100/60 text-neutral-400">
                         <ImageIcon className="h-7 w-7" />
                         <span className="text-[11px] font-semibold">Belum ada gambar banner</span>
-                      </div>
-                    )}
-                    {(title.trim() || text.trim()) && (
-                      <div className="border-t border-orange-50 px-4 py-3 text-center">
-                        {title.trim() && (
-                          <p className="text-sm font-black text-neutral-900">{title.trim()}</p>
-                        )}
-                        {text.trim() && (
-                          <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-500">{text.trim()}</p>
-                        )}
                       </div>
                     )}
                   </div>
@@ -989,7 +938,7 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                     </div>
                   ) : previewSrc ? (
                     <div className="relative overflow-hidden rounded-2xl border border-orange-200">
-                      <img src={previewSrc} alt="Gambar banner terpilih" className="aspect-video w-full object-cover" />
+                      <img src={previewSrc} alt="Gambar banner terpilih" className="aspect-square w-full object-cover" />
                       <div className="absolute bottom-2 right-2 flex gap-2">
                         <button
                           onClick={() => fileInputRef.current?.click()}
@@ -1017,140 +966,10 @@ export function BannerSettingsSheet({ open, onClose }: BannerSettingsSheetProps)
                       <ImagePlus className="h-7 w-7" />
                       <span className="text-xs font-extrabold">Ketuk untuk unggah gambar</span>
                       <span className="text-[10px] font-semibold text-neutral-400">
-                        JPG / PNG / WEBP — disarankan rasio lebar ±16:9
+                        JPG / PNG / WEBP — disarankan persegi 1:1, mis. 1080×1080
                       </span>
                     </button>
                   )}
-
-                  {/* ===== JUDUL & PESAN ===== */}
-                  <p className="mb-2 mt-4 text-[11px] font-black uppercase tracking-widest text-neutral-400">
-                    Judul &amp; pesan (opsional)
-                  </p>
-                  <div className="space-y-2.5">
-                    <div>
-                      <input
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value.slice(0, MAX_TITLE))}
-                        placeholder="cth: Promo Geprek Hemat Jumat!"
-                        className="w-full rounded-xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-800 outline-none transition placeholder:font-normal placeholder:text-neutral-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                      />
-                      <p className="mt-1 text-right text-[10px] font-semibold text-neutral-300">
-                        {title.length}/{MAX_TITLE}
-                      </p>
-                    </div>
-                    <div>
-                      <textarea
-                        value={text}
-                        onChange={(e) => setText(e.target.value.slice(0, MAX_TEXT))}
-                        placeholder="cth: Beli 2 gratis 1 es teh — hanya hari ini di AGSI!"
-                        rows={2}
-                        className="w-full resize-none rounded-xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-medium text-neutral-800 outline-none transition placeholder:font-normal placeholder:text-neutral-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                      />
-                      <p className="mt-1 text-right text-[10px] font-semibold text-neutral-300">
-                        {text.length}/{MAX_TEXT}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* ===== STRIP PROMO HARI INI (Beranda) ===== */}
-                  <div className="mt-6 flex items-center gap-2">
-                    <div className="h-px flex-1 bg-neutral-200" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
-                      Strip Promo Hari Ini
-                    </span>
-                    <div className="h-px flex-1 bg-neutral-200" />
-                  </div>
-                  <div
-                    className={cn(
-                      "mt-3 rounded-2xl border p-4 transition-colors",
-                      promoEnabled ? "border-orange-200 bg-orange-50/60" : "border-neutral-200 bg-neutral-50"
-                    )}
-                  >
-                    <div className="flex items-start gap-3">
-                      <span
-                        className={cn(
-                          "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
-                          promoEnabled ? "bg-orange-600 text-white" : "bg-neutral-200 text-neutral-400"
-                        )}
-                      >
-                        <Tag className="h-5.5 w-5.5" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-black text-neutral-800">Strip “Promo Hari Ini”</p>
-                        <p className="mt-0.5 text-[11px] leading-relaxed text-neutral-500">
-                          Kotak oranye di Beranda (di bawah Paling Dicari). Kosongkan baris mana pun untuk
-                          menyembunyikannya.
-                        </p>
-                      </div>
-                      <Switch
-                        checked={promoEnabled}
-                        onCheckedChange={setPromoEnabled}
-                        aria-label={`${promoEnabled ? "Nonaktifkan" : "Aktifkan"} strip promo hari ini`}
-                        className="mt-0.5 h-6 w-11 data-[state=checked]:bg-orange-600 data-[state=unchecked]:bg-neutral-300"
-                      />
-                    </div>
-
-                    {/* Pratinjau strip */}
-                    <div className="relative mt-3 overflow-hidden rounded-xl bg-gradient-to-r from-orange-600 via-orange-500 to-orange-400 p-3.5 text-left shadow">
-                      <div className="pointer-events-none absolute -right-3 -top-5 text-[54px] opacity-25">🌶️</div>
-                      {promoBadge.trim() && (
-                        <p className="text-[9px] font-bold uppercase tracking-widest text-orange-100">
-                          {promoBadge.trim()}
-                        </p>
-                      )}
-                      {promoTitle.trim() && (
-                        <p className="mt-0.5 text-sm font-extrabold text-white">{promoTitle.trim()}</p>
-                      )}
-                      {promoText.trim() && (
-                        <p className="mt-0.5 text-[10px] font-medium text-orange-50">{promoText.trim()}</p>
-                      )}
-                      {!promoBadge.trim() && !promoTitle.trim() && !promoText.trim() && (
-                        <p className="text-[10px] font-semibold text-orange-100">
-                          Semua baris kosong — strip tidak akan tampil.
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Input 3 baris */}
-                    <div className="mt-3 space-y-2.5">
-                      <div>
-                        <input
-                          value={promoBadge}
-                          onChange={(e) => setPromoBadge(e.target.value.slice(0, MAX_STRIP_BADGE))}
-                          placeholder="cth: Promo Hari Ini"
-                          disabled={!promoEnabled}
-                          className="w-full rounded-xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-800 outline-none transition placeholder:font-normal placeholder:text-neutral-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
-                        />
-                        <p className="mt-1 text-right text-[10px] font-semibold text-neutral-300">
-                          Label kecil · {promoBadge.length}/{MAX_STRIP_BADGE}
-                        </p>
-                      </div>
-                      <div>
-                        <input
-                          value={promoTitle}
-                          onChange={(e) => setPromoTitle(e.target.value.slice(0, MAX_STRIP_TITLE))}
-                          placeholder="cth: Paket Komplit mulai Rp 27.000"
-                          disabled={!promoEnabled}
-                          className="w-full rounded-xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-800 outline-none transition placeholder:font-normal placeholder:text-neutral-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
-                        />
-                        <p className="mt-1 text-right text-[10px] font-semibold text-neutral-300">
-                          Judul utama · {promoTitle.length}/{MAX_STRIP_TITLE}
-                        </p>
-                      </div>
-                      <div>
-                        <input
-                          value={promoText}
-                          onChange={(e) => setPromoText(e.target.value.slice(0, MAX_STRIP_TEXT))}
-                          placeholder="cth: Geprek + nasi + es teh manis jumbo"
-                          disabled={!promoEnabled}
-                          className="w-full rounded-xl border border-orange-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-800 outline-none transition placeholder:font-normal placeholder:text-neutral-300 focus:border-orange-400 focus:ring-2 focus:ring-orange-100 disabled:opacity-50"
-                        />
-                        <p className="mt-1 text-right text-[10px] font-semibold text-neutral-300">
-                          Baris penjelas · {promoText.length}/{MAX_STRIP_TEXT}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
 
                   {/* ===== HERO BANNER HALAMAN MENU ===== */}
                   <div className="mt-6 flex items-center gap-2">

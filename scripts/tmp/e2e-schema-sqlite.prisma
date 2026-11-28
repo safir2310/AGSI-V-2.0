@@ -9,8 +9,10 @@ generator client {
 }
 
 datasource db {
-  // Prisma Postgres (Vercel-ready): postgres://…@db.prisma.io:5432/postgres?sslmode=require
-  // variabel DATABASE_URL dipakai CLI (db push) sekaligus runtime aplikasi.
+  // Supabase (Postgres) — aws-1-ap-southeast-1.pooler.supabase.com (pooler
+  // pgbouncer utk serverless). Runtime: DATABASE_URL lewat PrismaClient
+  // standar (tanpa adapter). Era sebelumnya: Turso/libSQL (prisma/sql/
+  // sqlite-schema.sql), era awal: Prisma Postgres.
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
@@ -21,6 +23,13 @@ model User {
   passwordHash         String
   name                 String
   phone                String?
+  // ===== AUTHENTICATOR (TOTP) =====
+  // Secret TOTP (RFC 6238) untuk verifikasi "lupa password" lewat aplikasi
+  // authenticator (Google Authenticator / Authy / Aegis dll). Disimpan
+  // TERENKRIPSI (AES-256-GCM; kunci diturunkan dari env OTP_SECRET) dan TIDAK
+  // pernah dikirim ke klien. totpEnabledAt null = belum aktif (setup pending).
+  totpSecretEnc        String?
+  totpEnabledAt        DateTime?
   role                 String                @default("CUSTOMER") // CUSTOMER | ADMIN | OWNER | CASHIER | COURIER
   points               Int                   @default(0)
   // Kode member 8 digit — di-scan lewat barcode di kartu member
@@ -117,6 +126,9 @@ model PasswordReset {
   expiresAt DateTime
   usedAt    DateTime?
   attempts  Int       @default(0)
+  // Jalur verifikasi langkah 2 reset: "email" (OTP email/push/fallback) atau
+  // "totp" (kode dari aplikasi authenticator — tidak ada kode yang dikirim).
+  mode      String    @default("email")
   createdAt DateTime  @default(now())
 
   @@index([email])
@@ -171,6 +183,13 @@ model Order {
   // Alasan penyedia utama ditolak (mis. "Access denied") — jejak transparansi
   // agar pemilik tahu QR tampilan berasal dari fallback uji, bukan penyedia nyata.
   qrisFallbackReason String?
+  // ===== DOKU Checkout GANDA (update QR QRIS DOKU asli, 2026-11-26) =====
+  // Kartu QR menampilkan halaman QRIS DOKU ASLI (checkout QRIS-only, invoice
+  // dasar). Checkout kedua "semua metode" (DOKU Wallet, VA, dll.) disimpan di
+  // sini — pelanggan boleh lunas lewat SALAH SATU dari kedua invoice; status
+  // digabung (polling + webhook) → PAID begitu salah satu dana masuk.
+  qrisWebTrxId       String?
+  qrisWebUrl         String?
   // Deklarasi manual pembayaran QRIS statis oleh pelanggan/kasir
   // (POST /api/orders/[id]/qris/declare). NULL = lunas lewat webhook
   // gateway (verifikasi otomatis), bukan deklarasi manual.
@@ -191,6 +210,19 @@ model Order {
   courierName        String? // nama kurir AGSI yang mengantar
   courierPhone       String? // no. HP kurir (opsional — tombol telepon/WA)
   onTheWayAt         DateTime? // waktu kurir berangkat dari toko
+  // ===== Posisi LANGSUNG kurir (type DELIVERY, dari aplikasi kurir) =====
+  // Kurir yang membuka beranda saat ada pesanan aktif mengirim GPS tiap ±8
+  // dtk (POST /api/courier/location) → pelanggan melihat kurir bergerak di
+  // peta (Lacak Kurir). NULL = kurir belum mengirim posisi / pesanan selesai.
+  courierLat         Float? // lintang terakhir kurir (-90..90)
+  courierLng         Float? // bujur terakhir kurir (-90..180)
+  courierLocAt       DateTime? // waktu posisi terakhir dikirim
+  // ===== BUKTI FOTO PENGIRIMAN (permintaan pemilik) =====
+  // Kurir mengunggah foto (paket di depan rumah/diserahkan ke pelanggan)
+  // sebelum menekan "Sampai Tujuan" — WAJIB untuk antar via akun kurir.
+  // Datanya di tabel DeliveryPhoto agar daftar 100 pesanan tetap ringan;
+  // kolom ini hanya PENANDA ringan "foto sudah ada" untuk UI admin/pelanggan.
+  deliveryPhotoAt    DateTime? // waktu bukti foto diunggah; NULL = belum ada
   // ===== Akun kurir (role COURIER) yang ditugaskan =====
   // Terisi saat staff menugaskan AKUN kurir (bukan cuma nama bebas) —
   // akun kurir itu bisa melihat pesanan ini di beranda kurirnya lengkap
@@ -202,6 +234,12 @@ model Order {
   // kurir membuka link Google Maps langsung ke titik ini.
   deliveryLat        Float? // lintang pin GPS (-90..90)
   deliveryLng        Float? // bujur pin GPS (-90..180)
+  // ===== JADWAL JAM PENGAMBILAN (type TAKEAWAY — permintaan pemilik) =====
+  // Pelanggan "Bungkus / Ambil" bisa menjadwalkan kapan datang mengambil
+  // pesanan (slot 30 menit, hari ini atau besok). Dapur menyiapkan pesanan
+  // menjelang jam tersebut. NULL = ambil sekarang (tanpa jadwal) — pesanan
+  // langsung masuk dapur seperti biasa.
+  pickupAt           DateTime? // jadwal jam pengambilan (null = ambil sekarang)
   // ===== Uang COD di tangan kurir (setoran) =====
   // Pesanan antar tunai yang diselesaikan kurir → paidVia = "COD" (uang
   // tunai berpindah ke tangan kurir, WAJIB disetor ke admin). Saat kurir
@@ -218,9 +256,29 @@ model Order {
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   items              OrderItem[]
+  deliveryPhoto      DeliveryPhoto?
 
   @@index([status])
   @@index([createdAt])
+}
+
+// ===== BUKTI FOTO PENGIRIMAN KURIR (permintaan pemilik) =====
+// Foto (±100–200 KB, dikompresi di perangkat kurir) sebagai bukti pengiriman:
+// kurir WAJIB mengunggah sebelum "Sampai Tujuan"; admin & pelanggan dapat
+// melihatnya lewat GET /api/orders/[id]/delivery-photo. Tabel terpisah dari
+// Order supaya daftar 100 pesanan TIDAK ikut memuat bytes foto (payload list
+// tetap ringan; foto diambil on-demand saat tombol buka ditekan).
+model DeliveryPhoto {
+  id               String   @id @default(cuid())
+  orderId          String   @unique
+  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  data             String // base64 (data-URL utuh juga diterima — decode tahan banting)
+  mime             String? // image/jpeg | image/png | image/webp
+  uploadedAt       DateTime @default(now())
+  uploadedByUserId String? // id akun kurir pengunggah
+  uploadedByName   String? // snapshot nama kurir (tampil di modal admin/pelanggan)
+
+  @@index([uploadedAt])
 }
 
 // ===== SETORAN UANG COD KURIR =====
@@ -233,7 +291,7 @@ model CourierSetoran {
   courierUserId String
   courier       User      @relation(fields: [courierUserId], references: [id], onDelete: Cascade)
   amount        Int // uang MENU yang disetor ke admin (total pesanan dikurangi ongkir)
-  ongkir        Int @default(0) // total ongkir pesanan terikat — PENDAPATAN KURIR, tidak ikut disetor
+  ongkir        Int       @default(0) // total ongkir pesanan terikat — PENDAPATAN KURIR, tidak ikut disetor
   orderCount    Int // banyaknya pesanan COD yang diikat setoran ini
   note          String? // catatan kurir (mis. "disetor sore, uang kembalian disiapkan")
   createdAt     DateTime  @default(now()) // waktu kurir menekan "Setor ke Admin"
@@ -414,15 +472,33 @@ model StoreSetting {
   // desktop. Diatur admin dari Profil → "Banner & Promo" (bagian AGSI Smart
   // Video Promo Banner). Bytes video disimpan base64 per slot (portabel di
   // semua lingkungan) & disajikan publik via /api/settings/video-promo/video.
-  videoPromoEnabled          Boolean   @default(false)
-  videoPromoSlides           Json? // array konfigurasi 3 slide (tanpa bytes video)
-  videoPromoUpdatedAt        DateTime? // versi konten video promo — cache-buster URL
-  videoPromoSlot1Data        String? // video slide 1 (base64)
-  videoPromoSlot1Mime        String?
-  videoPromoSlot2Data        String? // video slide 2 (base64)
-  videoPromoSlot2Mime        String?
-  videoPromoSlot3Data        String? // video slide 3 (base64)
-  videoPromoSlot3Mime        String?
+  videoPromoEnabled         Boolean   @default(false)
+  videoPromoSlides          Json? // array konfigurasi 3 slide (tanpa bytes video)
+  videoPromoUpdatedAt       DateTime? // versi konten video promo — cache-buster URL
+  videoPromoSlot1Data       String? // video slide 1 (base64)
+  videoPromoSlot1Mime       String?
+  videoPromoSlot2Data       String? // video slide 2 (base64)
+  videoPromoSlot2Mime       String?
+  videoPromoSlot3Data       String? // video slide 3 (base64)
+  videoPromoSlot3Mime       String?
+  // ===== ANIMASI KURIR + TIPOGRAFI KINETIK DI BERANDA =====
+  // Diatur admin dari Profil → "Animasi Beranda". Satu kolom JSON berisi
+  // konfigurasi adegan motor kurir + spanduk teks: saklar aktif, teks
+  // spanduk, font/gaya/ketebalan, warna teks & aksen, ukuran huruf, kecepatan
+  // siklus, dan ledakan BOOM. JSON agar mudah ditambah tanpa kolom baru;
+  // dinormalisasi + divalidasi server-side (lihat store-settings.ts — nilai
+  // bawaan = tampilan sebelum ada setting).
+  courierAnim               Json?
+  // ===== AGSI MOTION STUDIO — PUSAT KENDALI ANIMASI =====
+  // Satu kolom JSON berisi seluruh konfigurasi Motion Studio: dokumen aktif
+  // (global gates per perangkat + 9 target animasi: hero, judul section,
+  // kartu produk, poster promo, popup banner, logo header, splash, transisi
+  // halaman, badge keranjang), preset library admin, riwayat versi (publish/
+  // restore/reset), jadwal animasi, dan DRAFT yang belum dipublikasikan.
+  // Dinormalisasi & tervalidasi server-side (store-settings.ts + motion-
+  // config.ts — hanya kunci efek dari katalog yang dikenal, tanpa kode
+  // animasi mentah). Dilihat juga prisma/sql/016-motion-studio.sql.
+  motion                    Json?
   updatedAt                 DateTime  @updatedAt
 }
 

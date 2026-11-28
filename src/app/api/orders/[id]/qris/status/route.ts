@@ -98,7 +98,9 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   try {
     markChecked(order.id);
-    const gwStatus = await getQrisGatewayStatus(order.qrisTrxId);
+    // Checkout ganda DOKU: status digabung — PAID begitu SALAH SATU invoice
+    // (QRIS asli atau halaman semua-metode) terbayar.
+    const gwStatus = await getQrisGatewayStatus(order.qrisTrxId, order.qrisWebTrxId);
 
     if (gwStatus === "PAID") {
       // ==== UANG MASUK -> sistem melunaskan pesanan ====
@@ -138,7 +140,14 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (err instanceof QrisGatewayError && err.status === 404) {
       await db.order.update({
         where: { id: order.id },
-        data: { qrisTrxId: null, qrisPayload: null, qrisMode: null, qrisExpiresAt: null },
+        data: {
+          qrisTrxId: null,
+          qrisPayload: null,
+          qrisMode: null,
+          qrisExpiresAt: null,
+          qrisWebTrxId: null,
+          qrisWebUrl: null,
+        },
       });
       return NextResponse.json({
         paymentStatus: order.paymentStatus,

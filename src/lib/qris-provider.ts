@@ -45,6 +45,15 @@ export type GatewayTransaction = {
   /** URL halaman pembayaran (jalur DOKU Checkout — pelanggan menyelesaikan
    *  pembayaran di halaman DOKU; status tetap diverifikasi otomatis) */
   paymentUrl?: string;
+  /** DOKU Checkout GANDA (update QR QRIS asli 2026-11-26): paymentUrl adalah
+   *  halaman QRIS DOKU ASLI (kanal QRIS saja) — ditampilkan sebagai kartu QR
+   *  di layar pembayaran (iframe), bukan sekadar QR tautan. */
+  qrPage?: boolean;
+  /** Invoice DOKU checkout kedua "semua metode" (DOKU Wallet, VA, dll.) —
+   *  pelanggan boleh lunas lewat salah satu dari kedua invoice. */
+  webTrxId?: string;
+  /** URL halaman checkout "semua metode" (tombol di layar pembayaran) */
+  webUrl?: string;
   expiresAt?: string | null;
   /** Penyedia yang benar-benar melayani: "casaku" | "midtrans" | "internal" | "external" */
   provider?: string;

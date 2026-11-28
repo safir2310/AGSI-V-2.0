@@ -19,6 +19,9 @@ import { SpicyDots } from "@/components/shared/StatusBadge";
 import { ProductThumb } from "@/components/shared/ProductThumb";
 import { StoreSheet } from "@/components/shared/StoreSheet";
 import { BannerPopup } from "@/components/customer/BannerPopup";
+import { CourierScene } from "@/components/customer/CourierScene";
+import { HeliDropScene } from "@/components/customer/HeliDropScene";
+import { MotionText, boxAnim, useBindSpeed, useMotionTarget } from "@/components/motion/MotionRuntime";
 import { refreshVouchers, useProductsStore, useSettingsStore, useVouchersStore } from "@/lib/hooks";
 import { useCartStore, useNoticeStore, type AppView } from "@/lib/store";
 import { copyText } from "@/lib/clipboard";
@@ -46,6 +49,7 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
   /** true bila teks alamat terpotong → ujungnya diberi efek pudar transparan */
   const [addrTruncated, setAddrTruncated] = useState(false);
 
+
   useEffect(() => {
     const measure = () => {
       const el = addrRef.current;
@@ -61,6 +65,13 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
   // Konten strip "Promo Hari Ini" + popup banner (diatur admin dari Profil).
   // load() aman dipanggil berulang — skip bila sudah termuat.
   const promo = useSettingsStore((s) => s.promo);
+  // Konfigurasi adegan animasi kurir (Profil Admin → Animasi Beranda)
+  const courierAnim = useSettingsStore((s) => s.courierAnim);
+  // ===== AGSI MOTION STUDIO ===== target animasi Beranda (hero, judul
+  // section, kartu produk, poster promo) — dikelola admin dari Profil Admin
+  // → "AGSI Motion Studio"; tanpa konfigurasi → semua render polos.
+  const productCardsTarget = useMotionTarget("productCards");
+  useBindSpeed();
   useEffect(() => {
     void useSettingsStore.getState().load();
   }, []);
@@ -97,14 +108,69 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
     <div className="space-y-5">
       {/* ===== HERO ===== */}
       <section className="bg-brand-gradient relative overflow-hidden rounded-b-[2rem] px-5 pb-6 pt-[calc(1rem+env(safe-area-inset-top,0px))]">
-        <div className="pointer-events-none absolute -right-14 top-6 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
+        {/* Glow latar yang berarak pelan — hero terasa hidup, bukan gambar statis */}
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute -right-14 top-6 h-44 w-44 rounded-full bg-white/10 blur-2xl"
+          animate={prefersReduced ? undefined : { x: [0, -18, 0], y: [0, 12, 0], scale: [1, 1.12, 1] }}
+          transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute -left-16 bottom-2 h-40 w-40 rounded-full bg-yellow-200/20 blur-2xl"
+          animate={prefersReduced ? undefined : { x: [0, 20, 0], y: [0, -14, 0], scale: [1, 1.15, 1] }}
+          transition={{ duration: 11, repeat: Infinity, ease: "easeInOut", delay: 1.2 }}
+        />
+        {/* Objek melayang bertema menu — bergoyang & berputar pelan tanpa henti */}
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute left-[57%] top-1 select-none text-4xl leading-none opacity-80 drop-shadow-md"
+          animate={prefersReduced ? undefined : { y: [0, -12, 0], rotate: [0, 12, 0] }}
+          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+        >
+          🌶️
+        </motion.div>
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute bottom-1.5 left-[45%] select-none text-3xl leading-none opacity-70 drop-shadow-md"
+          animate={prefersReduced ? undefined : { y: [0, 9, 0], rotate: [0, -10, 0] }}
+          transition={{ duration: 7.5, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
+        >
+          🍗
+        </motion.div>
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-3 right-2 select-none text-3xl leading-none opacity-60 drop-shadow-md"
+          animate={prefersReduced ? undefined : { y: [0, -8, 0], rotate: [0, 8, 0] }}
+          transition={{ duration: 8.5, repeat: Infinity, ease: "easeInOut", delay: 1.6 }}
+        >
+          🍚
+        </motion.div>
+        {/* Kilau bintang kecil berdenyut di sela judul */}
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute left-[40%] top-16 select-none text-lg leading-none"
+          animate={prefersReduced ? undefined : { scale: [1, 1.35, 1], opacity: [0.9, 0.4, 0.9], rotate: [0, 18, 0] }}
+          transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
+        >
+          ✨
+        </motion.div>
+        {/* Kilau cahaya menyapu hero setiap beberapa detik */}
+        {!prefersReduced && (
+          <motion.div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 skew-x-[-12deg] bg-gradient-to-r from-transparent via-white/25 to-transparent"
+            animate={{ x: ["0%", "480%"] }}
+            transition={{ duration: 2.8, repeat: Infinity, repeatDelay: 7, ease: "easeInOut" }}
+          />
+        )}
         <div className="relative z-10 flex items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-orange-100">
               Selamat datang di
             </p>
             <h1 className="mt-0.5 text-2xl font-black uppercase leading-tight text-white drop-shadow-sm">
-              Ayam Geprek
+              <MotionText targetKey="heroTitle">Ayam Geprek</MotionText>
               <span className="mt-1 block text-xl tracking-normal text-orange-50">
                 Sambal <span className="rounded-lg bg-white/95 px-2 py-0.5 text-orange-700">Ijo</span>
               </span>
@@ -149,16 +215,31 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
         </div>
       </section>
 
+      {/* ===== JALANAN ANIMASI: KURIR + TIPOGRAFI KINETIK =====
+          Adegannya kini komponen CourierScene (CourierScene.tsx) dengan
+          konfigurasi yang dikelola admin dari Profil → "Animasi
+          Beranda": teks spanduk, font, gaya huruf, warna, ukuran,
+          kecepatan siklus, ledakan BOOM, dan saklar aktif (kolom JSON
+          courierAnim di tabel StoreSetting, ikut snapshot /api/settings).
+          Nonaktif → adegan tidak dirender sama sekali. */}
+      {courierAnim.enabled && <CourierScene cfg={courierAnim} />}
+
+
       {/* ===== KEUNGGULAN ===== */}
       <motion.section {...reveal(0.05)} className="grid grid-cols-3 gap-2.5 px-4">
-        {HIGHLIGHTS.map((h) => (
+        {HIGHLIGHTS.map((h, i) => (
           <div
             key={h.title}
             className="flex flex-col items-center gap-1 rounded-2xl border border-orange-100 bg-white p-3 text-center shadow-sm"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100">
+            {/* Ikon mengambang pelan bergantian — kartu keunggulan ikut terasa hidup */}
+            <motion.span
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100"
+              animate={prefersReduced ? undefined : { y: [0, -4, 0] }}
+              transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut", delay: i * 0.45 }}
+            >
               <h.icon className="h-4 w-4 text-orange-600" />
-            </span>
+            </motion.span>
             <p className="text-[11px] font-extrabold leading-tight text-neutral-800">{h.title}</p>
             <p className="text-[10px] leading-tight text-neutral-400">{h.desc}</p>
           </div>
@@ -170,7 +251,9 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
         <motion.section {...reveal(0.08)} className="px-4">
           <div className="mb-3 flex items-end justify-between">
             <div>
-              <h2 className="text-lg font-black text-neutral-900">Voucher Buat Kamu 🎟️</h2>
+              <h2 className="text-lg font-black text-neutral-900">
+                <MotionText targetKey="sectionTitles">Voucher Buat Kamu 🎟️</MotionText>
+              </h2>
               <p className="text-xs text-neutral-400">Tukar kodenya di keranjang — sekali pakai</p>
             </div>
           </div>
@@ -268,7 +351,9 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
       <motion.section {...reveal(0.12)} className="px-4">
         <div className="mb-3 flex items-end justify-between">
           <div>
-            <h2 className="text-lg font-black text-neutral-900">Paling Dicari 🔥</h2>
+            <h2 className="text-lg font-black text-neutral-900">
+              <MotionText targetKey="sectionTitles">Paling Dicari 🔥</MotionText>
+            </h2>
             <p className="text-xs text-neutral-400">Favorit para pecinta pedas</p>
           </div>
           <button
@@ -280,34 +365,45 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          {popular.map((p, i) => (
-            <motion.button
-              key={p.id}
-              type="button"
-              onClick={() => go("menu")}
-              initial={prefersReduced ? false : { opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.14 + i * 0.05, duration: 0.35 }}
-              whileHover={prefersReduced ? undefined : { y: -4 }}
-              whileTap={{ scale: 0.96 }}
-              className="card-lift group relative overflow-hidden rounded-2xl border border-orange-100 bg-white p-3 text-left shadow-sm"
-            >
-              <ProductThumb
-                product={p}
-                className="mb-2 aspect-square w-full text-5xl"
-                imgClassName="aspect-square transition-transform duration-300 group-hover:scale-110"
-                emojiClassName="transition-transform duration-300 group-hover:scale-110"
-              />
-              <SpicyDots level={p.spicy} />
-              <p className="mt-0.5 line-clamp-1 text-sm font-bold text-neutral-800">{p.name}</p>
-              <div className="mt-1 flex items-center justify-between">
-                <span className="text-sm font-black text-orange-600">{formatIDR(p.price)}</span>
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-600 text-white shadow-md transition group-hover:scale-110">
-                  +
-                </span>
-              </div>
-            </motion.button>
-          ))}
+          {popular.map((p, i) => {
+            // AGSI Motion Studio: entrance kartu produk mengikuti target
+            // "productCards" (efek, stagger, easing) — fallback = perilaku lama
+            const a = productCardsTarget
+              ? boxAnim(productCardsTarget, i)
+              : {
+                  initial: prefersReduced ? false : { opacity: 0, y: 16 },
+                  animate: { opacity: 1, y: 0 },
+                  transition: { delay: 0.14 + i * 0.05, duration: 0.35 },
+                };
+            return (
+              <motion.button
+                key={p.id}
+                type="button"
+                onClick={() => go("menu")}
+                initial={a.initial}
+                animate={a.animate}
+                transition={a.transition}
+                whileHover={prefersReduced ? undefined : { y: -4 }}
+                whileTap={{ scale: 0.96 }}
+                className="card-lift group relative overflow-hidden rounded-2xl border border-orange-100 bg-white p-3 text-left shadow-sm"
+              >
+                <ProductThumb
+                  product={p}
+                  className="mb-2 aspect-square w-full text-5xl"
+                  imgClassName="aspect-square transition-transform duration-300 group-hover:scale-110"
+                  emojiClassName="transition-transform duration-300 group-hover:scale-110"
+                />
+                <SpicyDots level={p.spicy} />
+                <p className="mt-0.5 line-clamp-1 text-sm font-bold text-neutral-800">{p.name}</p>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-sm font-black text-orange-600">{formatIDR(p.price)}</span>
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-600 text-white shadow-md transition group-hover:scale-110">
+                    +
+                  </span>
+                </div>
+              </motion.button>
+            );
+          })}
           {popular.length === 0 && (
             <div className="col-span-2 rounded-2xl border border-dashed border-orange-200 bg-orange-50/50 p-6 text-center text-sm text-neutral-400">
               Memuat menu favorit…
@@ -316,67 +412,11 @@ export function HomeView({ go }: { go: (v: AppView) => void }) {
         </div>
       </motion.section>
 
-      {/* ===== POSTER 3D PROMO HARI INI (konten diatur admin dari Profil) ===== */}
-      {promo.promoStripEnabled && (promo.promoStripBadge.trim() || promo.promoStripTitle.trim() || promo.promoStripText.trim()) && (
-        <motion.section {...reveal(0.2)} className="px-4">
-          <button
-            onClick={() => go("menu")}
-            className="scene-3d press-effect relative block w-full text-left"
-          >
-            <div className="tilt-3d relative w-full overflow-hidden rounded-3xl bg-gradient-to-br from-orange-700 via-orange-500 to-amber-400 px-5 pb-8 pt-6 shadow-[0_26px_48px_-14px_rgba(194,65,12,0.65)]">
-              {/* Glow kedalaman — bola cahaya di kedua sisi */}
-              <div className="pointer-events-none absolute -left-10 -top-14 h-40 w-40 rounded-full bg-white/30 blur-2xl" />
-              <div className="pointer-events-none absolute -bottom-16 right-1/4 h-36 w-36 rounded-full bg-yellow-200/50 blur-2xl" />
-              {/* Objek mengapung 3D — emoji dengan bayangan jatuh */}
-              <motion.div
-                aria-hidden
-                className="float-3d pointer-events-none absolute -right-3 -top-7 select-none text-[88px] leading-none opacity-90"
-                animate={prefersReduced ? undefined : { y: [0, -10, 0], rotate: [0, 6, 0] }}
-                transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
-              >
-                🌶️
-              </motion.div>
-              <motion.div
-                aria-hidden
-                className="float-3d pointer-events-none absolute bottom-3 right-24 select-none text-[52px] leading-none opacity-85"
-                animate={prefersReduced ? undefined : { y: [0, 8, 0], rotate: [0, -8, 0] }}
-                transition={{ duration: 6.5, repeat: Infinity, ease: "easeInOut" }}
-              >
-                🍗
-              </motion.div>
-              {/* Kilau menyapu berkala */}
-              {!prefersReduced && (
-                <motion.div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 skew-x-[-12deg] bg-gradient-to-r from-transparent via-white/40 to-transparent"
-                  animate={{ x: ["0%", "480%"] }}
-                  transition={{ duration: 2.6, repeat: Infinity, repeatDelay: 3, ease: "easeInOut" }}
-                />
-              )}
-              {/* Konten poster */}
-              <div className="relative max-w-[76%]">
-                {promo.promoStripBadge.trim() && (
-                  <span className="chip-3d inline-flex items-center rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-orange-950">
-                    {promo.promoStripBadge.trim()}
-                  </span>
-                )}
-                {promo.promoStripTitle.trim() && (
-                  <p className="text-3d mt-2 text-[26px] font-black leading-[1.06] text-white">
-                    {promo.promoStripTitle.trim()}
-                  </p>
-                )}
-                {promo.promoStripText.trim() && (
-                  <p className="mt-2.5 inline-flex items-center rounded-xl bg-orange-950/35 px-3 py-1.5 text-xs font-bold text-orange-50 ring-1 ring-white/25 backdrop-blur-sm">
-                    {promo.promoStripText.trim()}
-                  </p>
-                )}
-              </div>
-              {/* Alas bayangan 3D — kesan poster berdiri di atas permukaan */}
-              <div className="pointer-events-none absolute inset-x-8 -bottom-3 h-7 rounded-full bg-orange-950/45 blur-lg" />
-            </div>
-          </button>
-        </motion.section>
-      )}
+      {/* ===== LANGIT ANIMASI: HELI ANTAR PAKET (bagian bawah beranda) =====
+          Pasangan adegan jalan animasi di atas — MODEL LAIN: helikopter
+          kurir menurunkan paket ke rumah pelanggan. Murni dekorasi tanpa
+          konfigurasi admin (lihat HeliDropScene.tsx). */}
+      <HeliDropScene />
 
       {/* ===== POPUP PILIHAN TOKO (dibuka dari alamat di hero) ===== */}
       <StoreSheet open={storeOpen} onClose={() => setStoreOpen(false)} />

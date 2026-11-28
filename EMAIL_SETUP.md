@@ -37,28 +37,55 @@ kosong muncul pesan "Layanan email belum aktif di server".
 
 ## 3. ⚠️ Batas Akun Resend Saat Ini (PENTING)
 
-Kondisi akun Resend AGSI (dicek via API, `GET /domains`):
+Kondisi akun Resend AGSI (dicek via API `GET /domains`, 21 Nov 2026):
 
-| Domain | Status | Arti |
+| Domain | Status | Diagnosa |
 | --- | --- | --- |
-| `agsi.co.id` | **pending** | DNS record belum terverifikasi — selesaikan |
-| `ayamgepreksambalijo.com` | **failed** | Gagal verifikasi — periksa DNS / hapus |
+| `agsi.co.id` | **failed** | nameserver `89.116.171.90` menjawab **SERVFAIL** ("No Reachable Authority") — server DNS mati/salah zona |
+| `ayamgepreksambalijo.com` | **failed** | **NXDOMAIN** — domain tidak ada di DNS publik (belum terdaftar / masa registrasi habis) |
 
-Selama belum ada domain **verified**, pengirim fallback
-`onboarding@resend.dev` **hanya boleh mengirim ke email pemilik akun
-Resend**. Kalau OTP dikirim ke email lain, Resend menolak dengan pesan:
+Selama belum ada domain **verified**, pengirim fallback `onboarding@resend.dev`
+**hanya boleh mengirim ke email pemilik akun Resend** (`musafir2310@gmail.com`).
+Kalau OTP dikirim ke email lain, Resend menolak dengan pesan:
 
-> `You can only send testing emails to your own email address (...)
-> until you verify your domain.`
+> `You can only send testing emails to your own email address (musafir2310@gmail.com)...`
 
-Yang harus dilakukan:
-1. Buka console Resend ▸ **Domains** ▸ `agsi.co.id` → pasang semua **DNS
-   record** yang diminta (SPF/DKIM/DMARC) di pengelola domain `agsi.co.id`
-   → tunggu status berubah **Verified** (biasanya menit–jam).
-2. Lalu isi di `.env`:
-   `RESEND_FROM="AGSI POS <no-reply@agsi.co.id>"`
-   → restart server → OTP bisa terkirim ke email pelanggan mana pun.
+Yang harus dilakukan (fokus `agsi.co.id`):
+1. Di pengelola domain `.co.id`: **perbaiki nameserver** (arahkan ke DNS yang
+   aktif — Cloudflare / default registrar / Vercel DNS), lalu pasang **4 record
+   Resend** berikut:
+
+   | Tipe | Nama | Nilai | Prioritas |
+   | --- | --- | --- | --- |
+   | TXT | `resend._domainkey.agsi.co.id` | `p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDLZKrDjzOZ4DWQvuaDkXGv5CSA3xwFk0DLm6a6lN3K3jGzNMrJH4tx4YnlSJR1ONVhh1KzdVpph02WTkOdY1FqmwiCJFjBI6LFuV6Ex+ZTIu/In3Jot892jS+dfhpdoC+U8w4hVDhq9+wC2OtFWkGtlF9C0qtGGUoK7F7rsXZGrQIDAQAB` | — |
+   | CNAME | `rsend.agsi.co.id` | `rsend-apne1.forge.rmta.net` | — |
+   | CNAME | `send.agsi.co.id` | `send.forge.rmta.net` | — |
+   | MX | `agsi.co.id` (@) | `receive-apne1.forge.rmta.net` | 10 |
+
+2. Setelah status **Verified**: isi env Vercel
+   `RESEND_FROM="AGSI POS <no-reply@agsi.co.id>"` → deploy ulang → OTP email
+   aktif untuk semua user (bukan hanya via push).
 3. (Opsional) Hapus `ayamgepreksambalijo.com` yang gagal agar daftar rapi.
+
+### Fallback OTP yang sudah aktif di production (deploy 91b6f33+)
+
+Sementara domain belum verified, reset password akun **ADMIN/OWNER** tetap
+berfungsi dengan urutan kanal:
+
+1. Email ke email akun (jika Resend mengizinkan);
+2. **Notifikasi push** ke perangkat terdaftar milik user itu sendiri
+   (respons API: `viaPush: true`);
+3. Email ke `RESEND_FALLBACK_TO` = inbox pemilik akun Resend
+   (respons API: `viaOwnerEmail: true`).
+
+Akun pelanggan (CUSTOMER) belum punya fallback — butuh domain verified.
+
+### Catatan `OTP_SECRET`
+
+Env `OTP_SECRET` (diisi secret acak di Vercel, production/preview/development)
+**belum dipakai kode aplikasi** — OTP disimpan sebagai hash scrypt+salt di
+tabel `PasswordReset`, tanpa perlu secret signing. Env ini disiapkan untuk
+kebutuhan masa depan (mis. HMAC pada tautan reset satu-kali).
 
 ## 4. Mode Development & Pengujian Tanpa Inbox
 
