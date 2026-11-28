@@ -27,7 +27,7 @@
 let es: EventSource | null = null;
 let errorStreak = 0;
 
-function emit(scope: "orders" | "chat" | "settings", unread?: number) {
+function emit(scope: "orders" | "chat", unread?: number) {
   window.dispatchEvent(
     new CustomEvent("agsi-sync", { detail: { scope, unread } })
   );
@@ -38,13 +38,6 @@ function connect() {
   es.addEventListener("orders", () => {
     errorStreak = 0;
     emit("orders");
-  });
-  es.addEventListener("settings", () => {
-    errorStreak = 0;
-    // AGSI Motion Studio / pengaturan toko berubah (publish dll) — klien
-    // memuat ulang snapshot TANPA polling tambahan (event hanya dikirim
-    // server saat versi benar-benar naik).
-    emit("settings");
   });
   es.addEventListener("chat", (e) => {
     errorStreak = 0;

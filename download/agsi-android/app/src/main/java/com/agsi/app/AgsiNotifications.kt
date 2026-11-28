@@ -1,6 +1,5 @@
 package com.agsi.app
 
-import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -8,7 +7,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
@@ -20,11 +18,8 @@ import androidx.core.content.ContextCompat
  * sehingga setiap kartu notifikasi konsisten memenuhi 10 fitur notifikasi:
  *
  *  1. HEADS-UP BANNER  — channel IMPORTANCE_HIGH + PRIORITY_HIGH.
- *  2. LOCK SCREEN PUSH — VISIBILITY_PUBLIC (detail terbaca tanpa buka kunci).
- *     v1.3.36 (permintaan pemilik): saat layar mati/terkunci NOTIFIKASI SAJA
- *     — aplikasi TIDAK dibuka otomatis (full-screen intent dilepas & flag
- *     show-when-locked dihapus); ketukan kartu tetap membuka aplikasi setelah
- *     buka kunci (alur baku Android).
+ *  2. LOCK SCREEN PUSH — VISIBILITY_PUBLIC (detail terbaca tanpa buka kunci)
+ *     + full-screen intent yang membangunkan layar yang tidur.
  *  3. NOTIFICATION SOUND — suara khas AGSI ("chime" ganda) dari channel v4
  *     (res/raw/agsi_chime.wav, lihat AgsiApp).
  *  4. VIBRATION ALERT  — pola getar kuat di channel v4.
@@ -61,21 +56,6 @@ object AgsiNotifications {
     )
 
     private val mainHandler = Handler(Looper.getMainLooper())
-
-    /**
-     * v1.3.36 — layar mati ATAU terkunci? Dipakai untuk memutuskan apakah
-     * notifikasi boleh memunculkan aplikasi (full-screen intent) atau cukup
-     * tampil sebagai kartu notifikasi biasa (permintaan pemilik: "saat layar
-     * HP terkunci jangan buka aplikasi, tampilkan notifikasi saja").
-     */
-    private fun deviceLockedOrAsleep(ctx: Context): Boolean {
-        val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager
-        val km = ctx.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
-        val asleep = pm?.isInteractive == false
-        val locked = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-            km?.isKeyguardLocked == true else km?.inKeyguardRestrictedInputMode() == true
-        return asleep || locked
-    }
 
     /** PendingIntent deep-link: buka MainActivity lalu navigasi ke url. */
     fun deepLinkIntent(ctx: Context, url: String): PendingIntent {
@@ -135,13 +115,7 @@ object AgsiNotifications {
         // bar & layar kunci tetap terisi, suara/getar tetap dari popup
         // halaman (anti suara dobel). Saat aplikasi ditutup / layar terkunci
         // → kartu PENUH: status bar + layar kunci + suara khas AGSI + getar
-        // + heads-up.
-        //
-        // v1.3.36 (permintaan pemilik): full-screen intent (membangunkan
-        // layar & menampilkan aplikasi di atas kunci) HANYA saat layar menyala
-        // dan tidak terkunci. Saat layar mati/terkunci → NOTIFIKASI SAJA:
-        // kartu masuk layar kunci + suara + getar, aplikasi tidak dibuka;
-        // ketukan kartu tetap membuka aplikasi setelah buka kunci.
+        // + heads-up + full-screen intent, SEMUA BERSAMAAN.
         val builder = NotificationCompat.Builder(ctx, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -160,12 +134,10 @@ object AgsiNotifications {
         } else {
             builder
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                // ⏰ Bangunkan layar yang tidur (full-screen intent) — suara,
+                // getar & heads-up mengikuti setelan channel v4
+                .setFullScreenIntent(content, true)
                 .setDefaults(android.app.Notification.DEFAULT_LIGHTS)
-            // ⏰ Full-screen intent hanya saat layar aktif & tak terkunci —
-            //    suara, getar & heads-up tetap mengikuti setelan channel v4
-            if (!deviceLockedOrAsleep(ctx)) {
-                builder.setFullScreenIntent(content, true)
-            }
         }
         if (unreadCount > 0) builder.setNumber(unreadCount)
         if (chatQuickReply) builder.addAction(replyAction(ctx, tag, id))

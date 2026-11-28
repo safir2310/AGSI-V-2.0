@@ -45,8 +45,6 @@ export function AuthView({ onSuccess }: AuthViewProps) {
     confirmPassword: "",
     sentTo: "",
     minutes: 10,
-    /** true = akun memakai authenticator (TOTP) — langkah 2 meminta kode aplikasi, bukan email */
-    totp: false,
   });
   /* Hitungan mundur cooldown tombol "Kirim ulang OTP" (detik) */
   const [otpCooldown, setOtpCooldown] = useState(0);
@@ -216,34 +214,13 @@ export function AuthView({ onSuccess }: AuthViewProps) {
         confirmPassword: "",
         sentTo,
         minutes: data.minutes ?? 10,
-        totp: data.mode === "totp",
       });
       setOtpCooldown(60);
-      if (data.mode === "totp") {
-        showNotice({
-          type: "success",
-          title: "Authenticator Siap 🔐",
-          message: `Akun ${sentTo} terverifikasi lewat aplikasi authenticator — masukkan kode 6 digit dari aplikasimu di langkah berikutnya. Tidak ada kode email yang dikirim.`,
-        });
-      } else if (data.viaPush) {
-        showNotice({
-          type: "success",
-          title: "Kode OTP via Notifikasi 📱",
-          message: `Email gagal terkirim (layanan email masih mode testing) — kode OTP 6 digit dikirim lewat NOTIFIKASI aplikasi AGSI di perangkatmu. Berlaku ${data.minutes ?? 10} menit.${data.note ? ` (${data.note})` : ""}`,
-        });
-      } else if (data.viaOwnerEmail) {
-        showNotice({
-          type: "success",
-          title: "Kode OTP ke Email Pemilik 📧",
-          message: `Layanan email masih mode testing — kode OTP 6 digit dikirim ke email pemilik akun Resend: ${data.fallbackTo}. Cek inbox & folder spam di sana. Berlaku ${data.minutes ?? 10} menit.${data.note ? ` (${data.note})` : ""}`,
-        });
-      } else {
-        showNotice({
-          type: "success",
-          title: "Kode OTP Terkirim 📧",
-          message: `Kami mengirim kode OTP 6 digit ke ${sentTo}. Berlaku ${data.minutes ?? 10} menit — cek juga folder spam ya.${data.devNote ? ` (${data.devNote})` : ""}`,
-        });
-      }
+      showNotice({
+        type: "success",
+        title: "Kode OTP Terkirim 📧",
+        message: `Kami mengirim kode OTP 6 digit ke ${sentTo}. Berlaku ${data.minutes ?? 10} menit — cek juga folder spam ya.${data.devNote ? ` (${data.devNote})` : ""}`,
+      });
     } catch {
       showNotice({ type: "error", title: "Koneksi Bermasalah", message: "Tidak dapat menghubungi server." });
     } finally {
@@ -255,13 +232,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
   const doReset = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!/^\d{6}$/.test(reset.code.trim())) {
-      showNotice({
-        type: "error",
-        title: "Kode Belum Lengkap",
-        message: reset.totp
-          ? "Masukkan 6 digit kode dari aplikasi authenticator."
-          : "Masukkan 6 digit kode OTP dari emailmu.",
-      });
+      showNotice({ type: "error", title: "Kode Belum Lengkap", message: "Masukkan 6 digit kode OTP dari emailmu." });
       return;
     }
     const pwCheck = validatePassword(reset.newPassword, { email: form.email });
@@ -291,7 +262,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
       }
       setMode("login");
       setForm((f) => ({ ...f, password: "" }));
-      setReset({ step: 1, code: "", newPassword: "", confirmPassword: "", sentTo: "", minutes: 10, totp: false });
+      setReset({ step: 1, code: "", newPassword: "", confirmPassword: "", sentTo: "", minutes: 10 });
       setOtpCooldown(0);
       showNotice({
         type: "success",
@@ -308,7 +279,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
 
   const backToLogin = () => {
     setMode("login");
-    setReset({ step: 1, code: "", newPassword: "", confirmPassword: "", sentTo: "", minutes: 10, totp: false });
+    setReset({ step: 1, code: "", newPassword: "", confirmPassword: "", sentTo: "", minutes: 10 });
     setOtpCooldown(0);
   };
 
@@ -397,8 +368,7 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                       />
                     </div>
                     <p className="text-[11px] text-neutral-400">
-                      Kami akan mengirim kode OTP 6 digit ke email ini — akun dengan
-                      Authenticator aktif akan diminta kode dari aplikasinya (tanpa email).
+                      Kami akan mengirim kode OTP 6 digit ke email ini.
                     </p>
                   </div>
                   <Button
@@ -420,18 +390,16 @@ export function AuthView({ onSuccess }: AuthViewProps) {
                   {/* Kotak info email tujuan OTP */}
                   <div className="rounded-2xl border border-orange-200 bg-orange-50 p-3.5 text-center">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-orange-700">
-                      {reset.totp ? "🔐 Verifikasi Authenticator" : "📧 Kode OTP Terkirim"}
+                      📧 Kode OTP Terkirim
                     </p>
                     <p className="mt-1 truncate text-sm font-black text-orange-700">{reset.sentTo}</p>
                     <p className="mt-1 text-[10px] text-neutral-500">
-                      {reset.totp
-                        ? "Ambil kode terbaru dari aplikasi authenticator — berganti tiap 30 detik."
-                        : `Berlaku ${reset.minutes} menit — cek juga folder spam.`}
+                      Berlaku {reset.minutes} menit — cek juga folder spam.
                     </p>
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor="reset-code">{reset.totp ? "Kode Authenticator (6 Digit)" : "Kode OTP (6 Digit)"}</Label>
+                    <Label htmlFor="reset-code">Kode OTP (6 Digit)</Label>
                     <Input
                       id="reset-code"
                       inputMode="numeric"

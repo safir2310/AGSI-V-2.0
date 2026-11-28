@@ -67,9 +67,10 @@ export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView
     if (!deliveryEnabled) {
       setOrderType((t) => (t === "DELIVERY" ? "DINE_IN" : t));
     }
-    if (!qrisEnabled && !ewalletEnabled) {
-      // Pembayaran online dimatikan penuh (kedua saklar) → kembali ke tunai
-      setPayment((p) => (p !== "CASH" ? "CASH" : p));
+    if (!qrisEnabled || !ewalletEnabled) {
+      setPayment((p) =>
+        (p === "QRIS" && !qrisEnabled) || (p === "EWALLET" && !ewalletEnabled) ? "CASH" : p
+      );
     }
   }, [deliveryEnabled, qrisEnabled, ewalletEnabled]);
   const [submitting, setSubmitting] = useState(false);
@@ -900,21 +901,22 @@ export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView
               ))}
             </div>
 
-            {/* Metode bayar — UPDATE (2026-11-26): QRIS & E-Wallet digabung
-                SATU opsi "Online (DOKU)" — halaman bayar DOKU menampilkan
-                SEMUA metode aktif (QRIS, e-wallet, VA, dll). Hilang bila
-                KEDUA saklar dimatikan (Profil Admin → Pengaturan Toko) */}
+            {/* Metode bayar — QRIS & E-Wallet saklarnya TERPISAH (Profil Admin →
+                Pengaturan Toko); masing-masing hilang bila dimatikan admin */}
             <div
               className={cn(
                 "grid gap-1.5",
-                qrisEnabled || ewalletEnabled ? "grid-cols-2" : "grid-cols-1"
+                qrisEnabled && ewalletEnabled
+                  ? "grid-cols-3"
+                  : qrisEnabled || ewalletEnabled
+                    ? "grid-cols-2"
+                    : "grid-cols-1"
               )}
             >
               {[
                 { id: "CASH" as const, label: "💵 Tunai" },
-                ...(qrisEnabled || ewalletEnabled
-                  ? [{ id: "QRIS" as const, label: "📱 Online (DOKU)" }]
-                  : []),
+                ...(qrisEnabled ? [{ id: "QRIS" as const, label: "📱 QRIS" }] : []),
+                ...(ewalletEnabled ? [{ id: "EWALLET" as const, label: "👛 E-Wallet" }] : []),
               ].map((p) => (
                 <button
                   key={p.id}
@@ -956,7 +958,11 @@ export function PosView({ user, go, onLogout }: { user: AppUser; go: (v: AppView
               ) : (
                 <>
                   <Receipt className="h-4 w-4" />{" "}
-                  {payment === "QRIS" ? "Bayar Online (DOKU)" : "Bayar & Cetak"}{" "}
+                  {payment === "QRIS"
+                    ? "Bayar QRIS"
+                    : payment === "EWALLET"
+                      ? "Bayar E-Wallet"
+                      : "Bayar & Cetak"}{" "}
                   — {formatIDR(subtotal)}
                 </>
               )}

@@ -27,7 +27,7 @@ export const ANDROID_CHANNEL_ID = "agsi_orders_v4";
 /** Channel khusus chat CS — aplikasi native membuat channel "agsi_chat_v4" */
 export const ANDROID_CHAT_CHANNEL_ID = "agsi_chat_v4";
 
-export type PushKind = "new_order" | "order_paid" | "order_status" | "chat" | "courier_task" | "otp" | "test";
+export type PushKind = "new_order" | "order_paid" | "order_status" | "chat" | "courier_task" | "test";
 
 export type PushPayload = {
   kind: PushKind;
@@ -125,25 +125,6 @@ async function tokensOfUser(userId: string): Promise<string[]> {
     select: { token: true },
   });
   return rows.map((r) => r.token);
-}
-
-/**
- * Fallback OTP reset password untuk semua peran: saat email gagal
- * terkirim (Resend mode testing — pengirim resend.dev hanya boleh ke email
- * pemilik akun Resend), kode dikirim lewat notifikasi push ke perangkat
- * terdaftar milik user itu sendiri (faktor kepemilikan perangkat).
- * Return: jumlah perangkat yang berhasil menerima push.
- */
-export async function notifyOtpEmailFailed(userId: string, code: string, minutes: number): Promise<number> {
-  const tokens = await tokensOfUser(userId);
-  if (tokens.length === 0) return 0;
-  const report = await sendToTokens(tokens, {
-    kind: "otp",
-    title: "Kode Reset Password AGSI",
-    body: `${code} — berlaku ${minutes} menit. Jangan bagikan kode ini ke siapa pun.`,
-    tag: "agsi-otp",
-  });
-  return report.sent;
 }
 
 /* ================= HELPER BISNIS ================= */

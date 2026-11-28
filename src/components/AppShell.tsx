@@ -12,11 +12,11 @@ import { MemberCardSheet } from "@/components/shared/MemberCardSheet";
 import { ChatSheet } from "@/components/shared/ChatSheet";
 import { AdminNewOrderWatcher, ChatNotifWatcher, CustomerNotifWatcher } from "@/components/shared/NotifWatchers";
 import { NotifSuite } from "@/components/shared/NotifSuite";
+import { NotifCenterSheet } from "@/components/shared/NotifCenterSheet";
+import { CENTER_UPDATED_EVENT, listEntries, unreadCount } from "@/lib/notif-center";
 import { PushBridge } from "@/components/shared/PushBridge";
 import { ErrorReporter } from "@/components/shared/ErrorReporter";
 import { SyncBridge } from "@/components/shared/SyncBridge";
-import { MotionText } from "@/components/motion/MotionRuntime";
-import { pageTransitionAnim, useMotionTarget, boxLoopAnim, useBindSpeed } from "@/components/motion/MotionRuntime";
 import { initAudioUnlock } from "@/lib/sound";
 import { AuthView } from "@/components/auth/AuthView";
 import { HomeView } from "@/components/customer/HomeView";
@@ -36,10 +36,9 @@ import { useAppStore, useCartStore, useNoticeStore, useUiStore, type AppView } f
 import { apiFetch, clearAuthToken, SESSION_EXPIRED_EVENT } from "@/lib/api";
 import { hasValidConsent } from "@/lib/data-policy";
 import { hasValidTerms } from "@/lib/app-terms";
-import { useSettingsStore } from "@/lib/hooks";
 import type { AppUser } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { Coins } from "lucide-react";
+import { Bell, Coins } from "lucide-react";
 
 function isAdminRole(role?: string | null) {
   return role === "ADMIN" || role === "OWNER";
@@ -51,10 +50,9 @@ export function AppShell() {
   const [user, setUser] = useState<AppUser | null>(null);
   const [showSplash, setShowSplash] = useState(true);
   const [memberOpen, setMemberOpen] = useState(false);
-  // v1.3.38 (permintaan pemilik): LONCENG notifikasi & gelembung melayang
-  // DIHAPUS dari semua halaman (sebelumnya sudah tanpa lonceng utk admin).
-  // Kabar tetap berjalan lewat heads-up, banner & toast; pusat notifikasi
-  // (NotifCenterSheet) ikut dinonaktifkan karena pintunya hilang.
+  // 🗂️ PUSAT NOTIFIKASI (v1.3.10): sheet daftar semua notifikasi + badge angka
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [centerUnread, setCenterUnread] = useState(0);
   const view = useAppStore((s) => s.view);
   const go = useAppStore((s) => s.go);
   const clearCart = useCartStore((s) => s.clear);
@@ -64,20 +62,28 @@ export function AppShell() {
   const chatOpen = useUiStore((s) => s.chatOpen);
   const chatTargetUserId = useUiStore((s) => s.chatTargetUserId);
   const closeChat = useUiStore((s) => s.closeChat);
+  const chatUnread = useUiStore((s) => s.chatUnread);
+  // Angka badge lonceng = yang terbesar di antara chat belum dibaca & entri
+  // pusat notifikasi belum dibaca (kabar chat juga tercatat di pusat — max
+  // mencegah angka dobel).
+  const bellCount = Math.max(chatUnread, centerUnread);
   const splashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // ===== AGSI MOTION STUDIO ===== transisi halaman + splash + logo header
-  // dikendalikan konfigurasi aktif (Profil Admin → "AGSI Motion Studio").
-  // Tanpa konfigurasi target (none/disabled) → perilaku lama dipertahankan.
-  const motionDoc = useSettingsStore((s) => s.motion);
-  const pageTransition = useMotionTarget("pageTransition");
-  const headerLogo = useMotionTarget("headerLogo");
-  const headerLogoEffect = headerLogo ? boxLoopAnim(headerLogo) : null;
-  useBindSpeed();
-  const splashTarget = motionDoc.targets.splash;
-  const splashMs = Math.min(
-    3400,
-    Math.max(1800, 1400 + (splashTarget?.duration ?? 0.6) * 1000)
-  );
+
+  // 🔔 BADGE + PUSAT NOTIFIKASI (v1.3.10): angka belum dibaca menyala saat
+  // ada kabar baru (push masuk / riwayat diperbarui) dan mati setelah pusat
+  // notifikasi dibuka.
+  const refreshCenterUnread = useCallback(() => {
+    setCenterUnread(unreadCount(listEntries()));
+  }, []);
+  useEffect(() => {
+    refreshCenterUnread();
+    window.addEventListener(CENTER_UPDATED_EVENT, refreshCenterUnread);
+    window.addEventListener("agsi-push", refreshCenterUnread);
+    return () => {
+      window.removeEventListener(CENTER_UPDATED_EVENT, refreshCenterUnread);
+      window.removeEventListener("agsi-push", refreshCenterUnread);
+    };
+  }, [refreshCenterUnread]);
 
   // 🔗 DEEP LINK NOTIFIKASI (v1.3.10): aplikasi Android menyuntikkan event
   // "agsi-nav" setelah tap notifikasi (MainActivity.onPageFinished) → buka
@@ -157,14 +163,13 @@ export function AppShell() {
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, [go, showNotice]);
 
-  // ===== Splash pembuka (sekali per muat aplikasi) — durasi mengikuti
-  // konfigurasi Motion Studio target "splash" (±1,8–3,4 dtk) =====
+  // ===== Splash pembuka (sekali per muat aplikasi) =====
   useEffect(() => {
-    splashTimer.current = setTimeout(() => setShowSplash(false), splashMs);
+    splashTimer.current = setTimeout(() => setShowSplash(false), 2400);
     return () => {
       if (splashTimer.current) clearTimeout(splashTimer.current);
     };
-  }, [splashMs]);
+  }, []);
 
   const handleLoginSuccess = useCallback(
     (u: AppUser) => {
@@ -289,15 +294,9 @@ export function AppShell() {
         </div>
       )}
 
-      {/* ===== SPLASH PEMBUKA (varian animasi logo dari Motion Studio) ===== */}
+      {/* ===== SPLASH PEMBUKA ===== */}
       <AnimatePresence>
-        {showSplash && (
-          <SplashScreen
-            key="splash"
-            onDone={() => setShowSplash(false)}
-            effect={splashTarget?.effect ?? "pop"}
-          />
-        )}
+        {showSplash && <SplashScreen key="splash" onDone={() => setShowSplash(false)} />}
       </AnimatePresence>
 
       {/* ===== BANNER PEMBARUAN APLIKASI (hanya di aplikasi Android versi lama) =====
@@ -310,13 +309,7 @@ export function AppShell() {
           {/* Bar atas aplikasi dengan logo maskot ayam koki */}
           <div className="mx-auto flex h-14 max-w-xl items-center justify-between px-4">
             <div className="flex items-center gap-2.5">
-              <motion.div
-                className="flex items-center"
-                animate={headerLogo?.loop && headerLogoEffect ? headerLogoEffect.animate : undefined}
-                transition={headerLogo?.loop && headerLogoEffect ? headerLogoEffect.transition : undefined}
-              >
-                <ChickenBadge size={36} />
-              </motion.div>
+              <ChickenBadge size={36} />
               <div className="leading-tight">
                 <p className="text-sm font-black uppercase tracking-wide text-neutral-900">
                   Ayam Geprek
@@ -328,8 +321,26 @@ export function AppShell() {
             </div>
             {user && (
               <div className="flex items-center gap-2">
-                {/* v1.3.38: lonceng notifikasi DIHAPUS (permintaan pemilik) —
-                    kabar tetap lewat heads-up/banner/toast & push Android */}
+                {/* 🔔 LONCENG NOTIFIKASI — badge angka belum dibaca (kabar
+                    terkumpul di PUSAT NOTIFIKASI: notifikasi sistem saat
+                    aplikasi ditutup + popup real-time saat terbuka). Klik
+                    membuka pusat notifikasi. */}
+                <button
+                  onClick={() => setNotifOpen(true)}
+                  aria-label={
+                    bellCount > 0
+                      ? `${bellCount} notifikasi belum dibaca — buka pusat notifikasi`
+                      : "Buka pusat notifikasi"
+                  }
+                  className="press-effect relative flex h-9 w-9 items-center justify-center rounded-full bg-orange-50 ring-1 ring-orange-200 transition hover:bg-orange-100 hover:ring-orange-300"
+                >
+                  <Bell className="h-4.5 w-4.5 text-orange-700" />
+                  {bellCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-white shadow-md">
+                      {bellCount > 99 ? "99+" : bellCount}
+                    </span>
+                  )}
+                </button>
                 {user.role === "CUSTOMER" ? (
                   /* Klik teks "Member" di kanan atas → buka kartu member lengkap
                      (saldo poin sengaja TIDAK ditampilkan di header — lihat di kartu) */
@@ -352,40 +363,22 @@ export function AppShell() {
         </header>
       )}
 
-      {/* ===== KONTEN DENGAN TRANSISI HALAMAN (gaya dari Motion Studio;
-              tanpa konfigurasi → fade+slide lama yang sudah teruji) ===== */}
+      {/* ===== KONTEN DENGAN TRANSISI FADE + SLIDE ===== */}
       <main
         className={cn(
           isFullS ? "" : "relative z-10 pb-nav-offset mx-auto max-w-xl"
         )}
       >
         <AnimatePresence mode="wait" initial={false}>
-          {(() => {
-            const anim = pageTransition ? pageTransitionAnim(pageTransition) : null;
-            return (
-              <motion.div
-                key={effectiveView + (user ? user.id : "guest")}
-                initial={
-                  prefersReduced
-                    ? false
-                    : anim
-                      ? anim.initial
-                      : { opacity: 0, y: 16 }
-                }
-                animate={anim ? anim.animate : { opacity: 1, y: 0 }}
-                exit={
-                  prefersReduced
-                    ? undefined
-                    : anim
-                      ? anim.exit
-                      : { opacity: 0, y: -12 }
-                }
-                transition={anim ? anim.transition : { duration: 0.26, ease: "easeOut" }}
-              >
-                {renderView()}
-              </motion.div>
-            );
-          })()}
+          <motion.div
+            key={effectiveView + (user ? user.id : "guest")}
+            initial={prefersReduced ? false : { opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={prefersReduced ? undefined : { opacity: 0, y: -12 }}
+            transition={{ duration: 0.26, ease: "easeOut" }}
+          >
+            {renderView()}
+          </motion.div>
         </AnimatePresence>
       </main>
 
@@ -403,9 +396,8 @@ export function AppShell() {
       <CenterNotice />
 
       {/* ===== SUITE NOTIFIKASI IN-APP (v1.3.13): HEADS-UP atas + BANNER strip
-             + TOAST — gaya ke-5 (POPUP tengah) tetap di CenterNotice;
-             v1.3.38: gelembung melayang (FLOATING) dihapus atas permintaan
-             pemilik; event dari NotifWatchers & PushBridge ===== */}
+             + FLOATING gelembung + TOAST — gaya ke-5 (POPUP tengah) tetap di
+             CenterNotice; event dari NotifWatchers & PushBridge ===== */}
       {user && <NotifSuite user={user} />}
 
       {/* ===== WATCHER NOTIFIKASI MASUK (popup + suara khas AGSI) ===== */}
@@ -424,7 +416,16 @@ export function AppShell() {
 
       {/* ===== CHAT CS GLOBAL (popup notifikasi / tombol 💬 kartu pesanan admin) ===== */}
       {user && (
-        <ChatSheet open={chatOpen} onClose={closeChat} user={user} targetUserId={chatTargetUserId} />
+        <>
+          <ChatSheet open={chatOpen} onClose={closeChat} user={user} targetUserId={chatTargetUserId} />
+          <NotifCenterSheet
+            open={notifOpen}
+            onClose={() => {
+              setNotifOpen(false);
+              refreshCenterUnread();
+            }}
+          />
+        </>
       )}
 
       {/* ===== GATE PERSETUJUAN SYARAT & KEBIJAKAN =====

@@ -184,11 +184,11 @@ export function StoreSettingsSheet({ open, onClose }: StoreSettingsSheetProps) {
               : "Opsi antar pesanan disembunyikan dari pelanggan & POS. Pesanan antar baru otomatis ditolak."
             : key === "qris"
               ? next
-                ? "Pelanggan kembali bisa membayar online via DOKU — QRIS, e-wallet, Virtual Account & semua kanal aktif."
-                : "Opsi pembayaran online disembunyikan dari pelanggan & POS. Checkout online baru otomatis ditolak bila saklar E-Wallet juga mati."
+                ? "Pelanggan kembali bisa membayar dengan QRIS."
+                : "Opsi pembayaran QRIS disembunyikan dari pelanggan & POS. Pembayaran QRIS baru otomatis ditolak."
               : next
-                ? "Pembayaran online via DOKU ikut aktif — halaman bayar menampilkan semua metode aktif (QRIS, DOKU Wallet, DANA, OVO, ShopeePay, LinkAja, VA)."
-                : "Saklar ini mati — pembayaran online kini hanya bisa menyala lewat saklar QRIS.",
+                ? "Pelanggan kembali bisa membayar dengan E-Wallet (DOKU Wallet, DANA, OVO, ShopeePay)."
+                : "Opsi pembayaran E-Wallet disembunyikan dari pelanggan & POS. Pembayaran E-Wallet baru otomatis ditolak.",
       });
     } catch {
       useSettingsStore.setState(
@@ -207,11 +207,7 @@ export function StoreSettingsSheet({ open, onClose }: StoreSettingsSheetProps) {
   /** Nonaktifkan selalu dikonfirmasi dulu (menghentikan layanan itu tadi) */
   const requestToggle = (key: "delivery" | "qris" | "ewallet", next: boolean) => {
     const label =
-      key === "delivery"
-        ? "Antar Pesanan"
-        : key === "qris"
-          ? "Pembayaran Online (DOKU)"
-          : "Gerbang E-Wallet (DOKU)";
+      key === "delivery" ? "Antar Pesanan" : key === "qris" ? "Pembayaran QRIS" : "Pembayaran E-Wallet";
     if (next) {
       void save(key, true);
       return;
@@ -223,8 +219,8 @@ export function StoreSettingsSheet({ open, onClose }: StoreSettingsSheetProps) {
         key === "delivery"
           ? "Pelanggan tidak akan bisa memilih \"Antar ke Alamat\" sampai layanan diaktifkan lagi. Pesanan antar baru otomatis ditolak."
           : key === "qris"
-            ? "Pelanggan tidak akan bisa membayar online via DOKU (selama saklar E-Wallet juga mati) sampai diaktifkan lagi. Checkout online baru otomatis ditolak."
-            : "Saklar ini mati — pembayaran online tetap bisa aktif lewat saklar QRIS. Gerbang e-wallet lama ditutup sampai diaktifkan lagi.",
+            ? "Pelanggan tidak akan bisa membayar dengan QRIS sampai diaktifkan lagi. Pembayaran QRIS baru otomatis ditolak."
+            : "Pelanggan tidak akan bisa membayar lewat halaman DOKU (DOKU Wallet, DANA, OVO, ShopeePay) sampai diaktifkan lagi. Pembayaran E-Wallet baru otomatis ditolak.",
       actions: [
         { label: "Batal" },
         { label: "Ya, Nonaktifkan", variant: "destructive", onClick: () => void save(key, false) },
@@ -245,19 +241,19 @@ export function StoreSettingsSheet({ open, onClose }: StoreSettingsSheetProps) {
     {
       key: "qris" as const,
       icon: QrCode,
-      title: "Pembayaran Online (DOKU)",
-      desc: "Semua metode DOKU di halaman bayar: QRIS (GoPay, DANA, OVO, ShopeePay, LinkAja, m-Banking), DOKU Wallet, Virtual Account & kanal aktif lain — lunas terverifikasi otomatis.",
+      title: "Pembayaran QRIS",
+      desc: "Pelanggan & kasir bisa membayar lewat QRIS — semua kanal (terverifikasi otomatis saat dana masuk).",
       active: qrisEnabled,
-      onBadge: "📱 Online aktif",
+      onBadge: "📱 QRIS aktif",
       offBadge: "Nonaktif",
     },
     {
       key: "ewallet" as const,
       icon: Wallet,
-      title: "Gerbang E-Wallet (DOKU)",
-      desc: "Saklar cadangan pembayaran online: menyala = pembayaran online tetap hidup walau saklar QRIS dimatikan. Halaman bayar selalu menampilkan SEMUA metode aktif akun DOKU.",
+      title: "Pembayaran E-Wallet (DOKU)",
+      desc: "Bayar lewat halaman DOKU — pilih DOKU Wallet / DANA / OVO / ShopeePay (sesuai kanal aktif akun). Saklar TERPISAH dari QRIS: matikan salah satu, yang lain tetap jalan.",
       active: ewalletEnabled,
-      onBadge: "👛 Gerbang aktif",
+      onBadge: "👛 E-Wallet aktif",
       offBadge: "Nonaktif",
     },
   ];

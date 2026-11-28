@@ -41,20 +41,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
       if (!decision.ok) {
         return NextResponse.json({ error: decision.error }, { status: decision.code });
       }
-      // ===== WAJIB BUKTI FOTO (permintaan pemilik): antar via akun kurir
-      // baru boleh "Sampai Tujuan" setelah mengunggah foto pengiriman.
-      if (order!.type === "DELIVERY") {
-        const photo = await db.deliveryPhoto.findUnique({
-          where: { orderId: id },
-          select: { id: true },
-        });
-        if (!photo) {
-          return NextResponse.json(
-            { error: "Unggah dulu foto bukti pengiriman (tombol 📷 Bukti Foto) sebelum menandai Sampai Tujuan." },
-            { status: 400 },
-          );
-        }
-      }
       const marking = codCompletionMarking(order!);
       const updated = await db.$transaction(async (tx) => {
         const updatedOrder = await tx.order.update({

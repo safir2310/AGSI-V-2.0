@@ -57,7 +57,6 @@ import {
   cancelQrisDokuPayment,
   createQrisDokuPayment,
   getQrisDokuStatus,
-  getQrisDokuStatusMulti,
   isDokuTrx,
 } from "@/lib/qris-doku";
 import {
@@ -197,11 +196,8 @@ export async function createQrisGatewayPayment(opts: {
    *  DANA, OVO, ShopeePay, LinkAja + VA DOKU cadangan — sesuai kanal aktif).
    *  "QRIS": pelanggan LANGSUNG diarahkan ke pembayaran QRIS e-wallet DOKU
    *  (kanal "QRIS" — pindai pakai e-wallet/m-Banking apa pun).
-   *  "ALL": TANPA filter — halaman bayar DOKU menampilkan SEMUA kanal aktif
-   *  akun (QRIS, e-wallet, Virtual Account, dll.), pelanggan pilih sendiri —
-   *  dipakai untuk pesanan QRIS maupun E-WALLET sejak update 2026-11-26.
    *  Diabaikan penyedia non-DOKU (QRIS tetap QR string biasa). */
-  channelMode?: "EWALLET" | "QRIS" | "ALL";
+  channelMode?: "EWALLET" | "QRIS";
   /** ID pesanan aplikasi — redirect setelah bayar diarahkan ke halaman
    *  IN-APP /pay/<id> (bukan halaman lain). Dipakai jalur DOKU Checkout. */
   callbackRef?: string;
@@ -313,15 +309,9 @@ export async function createQrisGatewayPayment(opts: {
  * transaksi gateway bawaan (hasil fallback), selain itu Midtrans /
  * penyedia eksternal.
  */
-export async function getQrisGatewayStatus(
-  trxId: string,
-  /** DOKU Checkout ganda: invoice checkout kedua "semua metode" — PAID
-   *  begitu SALAH SATU invoice terbayar (update QR QRIS asli 2026-11-26). */
-  altTrxId?: string | null
-): Promise<GatewayStatus> {
+export async function getQrisGatewayStatus(trxId: string): Promise<GatewayStatus> {
   // ==== -1) DOKU (prefix DOKU-) — QRIS SNAP MPM DOKU ====
   if (isDokuTrx(trxId)) {
-    if (altTrxId) return getQrisDokuStatusMulti(trxId, altTrxId);
     return getQrisDokuStatus(trxId);
   }
   // ==== 0) DANA (prefix DANA-) — QRIS Acquirer resmi DANA ====

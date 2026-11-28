@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
-import { HIDDEN_UNPAID_DIGITAL_WHERE } from "@/lib/order-expiry";
+import { HIDDEN_UNPAID_APP_QRIS_WHERE } from "@/lib/order-expiry";
 
 export const dynamic = "force-dynamic";
 // SSE berjalan ±48 detik per koneksi (di bawah batas paket Vercel apa pun)
@@ -41,7 +41,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function ordersRevision(user: RtUser): Promise<string> {
   const where =
     isAdminRole(user.role) || user.role === "CASHIER"
-      ? { NOT: HIDDEN_UNPAID_DIGITAL_WHERE }
+      ? { NOT: HIDDEN_UNPAID_APP_QRIS_WHERE }
       : { userId: user.id };
   const rows = await db.order.findMany({
     where,
@@ -69,18 +69,6 @@ async function chatRevision(user: RtUser): Promise<{ rev: string; unread: number
   });
   const unread = own?.unreadCustomer ?? 0;
   return { rev: `${unread}@${own?.updatedAt.getTime() ?? 0}`, unread };
-}
-
-/** Revisi pengaturan (AGSI Motion Studio publish/restore/reset dkk): waktu
- *  ubah baris StoreSetting — 1 query skalar ringan, hanya tiap 4 tick
- *  (±6 dtk) agar murah; event hanya dikirim saat versi benar-benar naik
- *  (tanpa polling tambahan di sisi klien). */
-async function settingsRevision(): Promise<string> {
-  const row = await db.storeSetting.findUnique({
-    where: { id: "main" },
-    select: { updatedAt: true },
-  });
-  return row?.updatedAt.getTime().toString() ?? "";
 }
 
 export async function GET() {
@@ -116,7 +104,6 @@ export async function GET() {
       const startedAt = Date.now();
       let prevOrders = "";
       let prevChat = "";
-      let prevSettings = "";
       let ticks = 0;
 
       // Satu putaran snapshot: bandingkan revisi → kirim event bila berubah.
@@ -141,17 +128,6 @@ export async function GET() {
         if (initial || (chat.rev !== "" && chat.rev !== prevChat)) {
           prevChat = chat.rev;
           send("chat", { unread: chat.unread, t: Date.now() });
-        }
-        // Pengaturan (motion studio) — ukur tiap 4 tick, kirim HANYA bila
-        // berubah selama koneksi (snapshot awal tidak memicu reload ganda).
-        if (!initial && ticks % 4 === 0) {
-          try {
-            const s = await settingsRevision();
-            if (s && prevSettings && s !== prevSettings) send("settings", { t: Date.now() });
-            if (s) prevSettings = s;
-          } catch {
-            // idem
-          }
         }
       };
 

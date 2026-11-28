@@ -18,13 +18,13 @@
  * Tanpa argumen koneksi — Prisma CLI membaca DATABASE_URL dari environment
  * (schema: prisma/schema.prisma, datasource url = env("DATABASE_URL")).
  */
-import { spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import path from "node:path";
 
-const url = process.env.DIRECT_DATABASE_URL ?? "";
+const url = process.env.DATABASE_URL ?? "";
 if (!/^postgres(ql)?:\/\//.test(url)) {
-  console.log("[schema-extras] DIRECT_DATABASE_URL tidak terpasang (bukan Postgres?) — lewati.");
+  console.log("[schema-extras] DATABASE_URL bukan Postgres — lewati (dev lokal).");
   process.exit(0);
 }
 
@@ -33,11 +33,6 @@ let files = [];
 try {
   files = readdirSync(sqlDir)
     .filter((f) => f.toLowerCase().endsWith(".sql"))
-    // Lewati file era SQLite (mis. sqlite-schema.sql) — sintaksnya tidak valid
-    // di Postgres ("type datetime does not exist") dan membuat seluruh run
-    // schema-extras gagal → patch yang berada SETELAH file itu tidak pernah
-    // diterapkan (v1.3.35).
-    .filter((f) => !f.toLowerCase().includes("sqlite"))
     .sort();
 } catch {
   console.log("[schema-extras] Tidak ada folder prisma/sql — lewati.");
@@ -53,23 +48,12 @@ const prismaBin = path.resolve(process.cwd(), "node_modules", ".bin", "prisma");
 for (const file of files) {
   const full = path.join(sqlDir, file);
   console.log(`[schema-extras] Terapkan ${file} …`);
-  const res = spawnSync(prismaBin, ["db", "execute", "--file", full, "--schema", "prisma/schema.prisma"], {
-    stdio: ["ignore", "inherit", "pipe"],
-    // Patch DDL berjalan lewat koneksi DIRECT (bukan pooler pgbouncer) —
-    // pooler transaksi hanya utk runtime serverless, bukan DDL/CLI.
-    env: { ...process.env, DATABASE_URL: url },
-  });
-  const errText = res.stderr ? res.stderr.toString() : "";
-  if (errText) process.stderr.write(errText);
-  if (res.status !== 0) {
-    // v1.3.34 — KONEKSI (P1001) ≠ KEAGAGALAN SQL: gangguan jaringan build →
-    // db.prisma.io dilaporkan dgn kode keluar 42 (khusus) sehingga skrip
-    // build-with-retry.sh bisa membedakan "coba lagi / lanjut dgn peringatan"
-    // dari kegagalan SQL sungguhan yang wajib membatalkan deploy.
-    if (errText.includes("P1001") || errText.includes("Can't reach database server")) {
-      console.error("[schema-extras] KONEKSI DB TAK TERJANGKAU DARI BUILD (P1001) — kode 42 (bukan kegagalan SQL)");
-      process.exit(42);
-    }
+  try {
+    execFileSync(prismaBin, ["db", "execute", "--file", full, "--schema", "prisma/schema.prisma"], {
+      stdio: "inherit",
+      env: process.env,
+    });
+  } catch {
     console.error(`[schema-extras] GAGAL menerapkan ${file} — hentikan build.`);
     process.exit(1);
   }

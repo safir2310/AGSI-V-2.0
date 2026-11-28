@@ -78,12 +78,6 @@ type NativeBridge = {
   /** v1.3.12 — buka layar Autostart pabrikan (Xiaomi MIUI, OPPO/realme,
    *  vivo, Huawei/Honor). Pabrikan lain → detail aplikasi. */
   openAutostartSettings?: () => boolean;
-  /** v1.3.30 — SUARA NOTIFIKASI: katalog [{"key","label"}], pilihan aktif,
-   *  simpan pilihan, putar pratinjau (semua hanya aplikasi Android). */
-  getNotificationSoundCatalog?: () => string;
-  getNotificationSound?: () => string;
-  setNotificationSound?: (key: string) => boolean;
-  previewNotificationSound?: (key: string) => boolean;
 };
 
 export function getNativeBridge(): NativeBridge | null {
@@ -119,65 +113,6 @@ export function openAutostartSettings(): boolean {
   const b = getNativeBridge();
   try {
     return b?.openAutostartSettings?.() === true;
-  } catch {
-    return false;
-  }
-}
-
-/* ================= SUARA NOTIFIKASI (v1.3.30) ================= */
-
-export type NotificationSound = { key: string; label: string };
-
-/** Fallback katalog bila aplikasi versi lama tanpa metode katalog — key
- *  sinkron dengan NotifSound.kt (APK 1.3.30+). */
-const SOUND_FALLBACK: NotificationSound[] = [
-  { key: "chime", label: "AGSI Chime (klasik)" },
-  { key: "ding", label: "Ding" },
-  { key: "bell", label: "Bel" },
-  { key: "marimba", label: "Marimba" },
-  { key: "pop", label: "Pop" },
-  { key: "system", label: "Suara Sistem (setelan HP)" },
-  { key: "silent", label: "Senyap (getar saja)" },
-];
-
-/** Katalog suara (hanya aplikasi Android 1.3.30+; web → null). */
-export function notificationSoundCatalog(): NotificationSound[] | null {
-  const b = getNativeBridge();
-  if (!b?.getNotificationSoundCatalog) return null;
-  try {
-    const parsed = JSON.parse(b.getNotificationSoundCatalog()) as NotificationSound[];
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : SOUND_FALLBACK;
-  } catch {
-    return SOUND_FALLBACK;
-  }
-}
-
-/** Pilihan suara aktif di perangkat ini (null = bukan aplikasi native). */
-export function currentNotificationSound(): string | null {
-  const b = getNativeBridge();
-  if (!b?.getNotificationSound) return null;
-  try {
-    return b.getNotificationSound() || null;
-  } catch {
-    return null;
-  }
-}
-
-/** Simpan pilihan suara (per perangkat). true = tersimpan di APK 1.3.30+. */
-export function setNotificationSound(key: string): boolean {
-  const b = getNativeBridge();
-  try {
-    return b?.setNotificationSound?.(key) === true;
-  } catch {
-    return false;
-  }
-}
-
-/** Putar pratinjau suara lewat speaker notifikasi (hanya aplikasi Android). */
-export function previewNotificationSound(key: string): boolean {
-  const b = getNativeBridge();
-  try {
-    return b?.previewNotificationSound?.(key) === true;
   } catch {
     return false;
   }

@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { LiveMap, type MapPoint } from "@/components/shared/LiveMap";
 import { formatDateTime, formatIDR, type OrderData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -46,74 +45,6 @@ function waNumber(raw: string): string {
   if (d.startsWith("62")) return d;
   if (d.startsWith("0")) return `62${d.slice(1)}`;
   return `62${d}`;
-}
-
-/**
- * Data pelacakan real-time — GET /api/orders/[id]/track (dipoll tiap 6 dtk,
- * permintaan pemilik: pelanggan MELIHAT kurir bergerak di peta).
- */
-type TrackData = {
-  courier: {
-    name: string | null;
-    lat: number | null;
-    lng: number | null;
-    locAt: string | null;
-    live: boolean;
-  };
-  customerPin: { lat: number; lng: number; source: "gps" | "geocode" | "none" } | null;
-  distanceKm: number | null;
-};
-
-function formatAgo(iso?: string | null): string {
-  if (!iso) return "";
-  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
-  if (s < 10) return "baru saja";
-  if (s < 60) return `${s} dtk lalu`;
-  const m = Math.floor(s / 60);
-  return `${m} mnt lalu`;
-}
-
-/** Peta hidup satu pesanan: pin rumah pelanggan + posisi kurir bergerak. */
-function LiveTrackMap({ o, track }: { o: OrderData; track: TrackData | null }) {
-  const customerPin: MapPoint | null =
-    o.deliveryLat != null && o.deliveryLng != null
-      ? { lat: o.deliveryLat, lng: o.deliveryLng }
-      : track?.customerPin
-        ? { lat: track.customerPin.lat, lng: track.customerPin.lng }
-        : null;
-  const courierPin: MapPoint | null =
-    track?.courier.lat != null && track?.courier.lng != null
-      ? { lat: track.courier.lat, lng: track.courier.lng }
-      : null;
-  const noPin = !customerPin && !courierPin;
-
-  return (
-    <div className="px-4 pb-3">
-      {noPin ? (
-        <div className="rounded-xl border border-dashed border-orange-200 bg-orange-50/60 px-3 py-3 text-center text-[11px] font-semibold text-orange-600">
-          Menunggu posisi kurir & pin lokasi…
-        </div>
-      ) : (
-        <>
-          <LiveMap
-            customerPin={customerPin}
-            courierPin={courierPin}
-            heightClass="h-56"
-            ariaLabel={`Peta posisi kurir untuk ${o.code}`}
-          />
-          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1 text-[10px] font-bold text-neutral-500">
-            <span className="flex items-center gap-1 text-orange-600">
-              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-orange-500" />
-              {courierPin ? `Posisi kurir: ${formatAgo(track?.courier.locAt)}` : "Menunggu posisi kurir…"}
-            </span>
-            {track?.distanceKm != null && (
-              <span>± {track.distanceKm.toLocaleString("id-ID", { maximumFractionDigits: 1 })} km menuju kamu</span>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
 }
 
 type TrackStep = {
@@ -174,7 +105,7 @@ function buildSteps(o: OrderData): TrackStep[] {
   ];
 }
 
-function CourierCard({ o, track }: { o: OrderData; track: TrackData | null }) {
+function CourierCard({ o }: { o: OrderData }) {
   const steps = buildSteps(o);
   const otw = !!o.onTheWayAt && o.status !== "COMPLETED";
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
@@ -260,9 +191,6 @@ function CourierCard({ o, track }: { o: OrderData; track: TrackData | null }) {
         ))}
       </ol>
 
-      {/* PETA HIDUP — posisi kurir real-time (permintaan pemilik) */}
-      {otw && <LiveTrackMap o={o} track={track} />}
-
       {/* Kurir + aksi kontak & rute */}
       {otw && (
         <div className="space-y-2 border-t border-orange-50 bg-green-50/60 px-4 py-3">
@@ -326,37 +254,8 @@ function CourierCard({ o, track }: { o: OrderData; track: TrackData | null }) {
 export function CourierTrackingSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const prefersReduced = useReducedMotion();
   const [orders, setOrders] = useState<OrderData[] | null>(null);
-  const [tracks, setTracks] = useState<Record<string, TrackData>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // ===== PELACAKAN REAL-TIME (permintaan pemilik): posisi kurir dipoll
-  // tiap 6 dtk untuk setiap pesanan yang sedang diantar — peta di kartu
-  // bergerak mengikuti kurir. Gagal satu pesanan tidak memengaruhi lainnya.
-  const otwIds = (orders ?? [])
-    .filter((o) => o.onTheWayAt && o.status !== "COMPLETED" && o.status !== "CANCELLED")
-    .map((o) => o.id)
-    .join(",");
-
-  useEffect(() => {
-    if (!open || !otwIds) return;
-    const ids = otwIds.split(",");
-    const poll = async () => {
-      for (const id of ids) {
-        try {
-          const res = await apiFetch(`/api/orders/${id}/track`, { cache: "no-store" });
-          if (!res.ok) continue;
-          const d = (await res.json()) as TrackData;
-          setTracks((prev) => ({ ...prev, [id]: d }));
-        } catch {
-          // jaringan sesak → tunggu tick berikutnya
-        }
-      }
-    };
-    void poll();
-    const iv = setInterval(() => void poll(), 6000);
-    return () => clearInterval(iv);
-  }, [open, otwIds]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -467,7 +366,7 @@ export function CourierTrackingSheet({ open, onClose }: { open: boolean; onClose
               ) : (
                 <div className="space-y-3">
                   {(orders ?? []).map((o) => (
-                    <CourierCard key={o.id} o={o} track={tracks[o.id] ?? null} />
+                    <CourierCard key={o.id} o={o} />
                   ))}
                   <p className="pb-1 text-center text-[10px] text-neutral-300">
                     Status diperbarui otomatis tiap 15 detik

@@ -36,20 +36,7 @@ export async function POST(req: NextRequest) {
         appTermsVersion: user.appTermsVersion,
       },
     });
-  } catch (e) {
-    // v1.3.38 — jangan gagal diam-diam: catat sebabnya ke log Vercel
-    // (mis. P1001 "Can't reach database server" = instance Prisma Postgres
-    // pause di console.prisma.io — aktifkan di sana, data & akun utuh).
-    console.error(
-      "[auth/login] gagal:",
-      e instanceof Error ? `${e.message}` : e,
-    );
-    return NextResponse.json(
-      {
-        error:
-          "Server belum bisa menghubungi basis data — coba lagi beberapa saat. Bila terus, hubungi pengelola (cek /api/health).",
-      },
-      { status: 500 }
-    );
+  } catch {
+    return NextResponse.json({ error: "Terjadi kesalahan server." }, { status: 500 });
   }
 }

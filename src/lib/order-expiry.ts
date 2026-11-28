@@ -34,14 +34,9 @@ export function isHiddenUnpaidAppQris(o: {
   );
 }
 
-/**
- * Kondisi Prisma: pesanan DIGITAL (QRIS / E-Wallet) yang BELUM DIBAYAR —
- * disembunyikan dari daftar admin/kasir/kurir, SSE realtime & laporan:
- * pesanan digital baru "masuk" ke admin SETELAH dananya terverifikasi
- * (permintaan pemilik, superseding kebijakan lama yang masih menampilkan
- * sumber POS). Pesanan tunai tetap tampil langsung.
- */
-export const HIDDEN_UNPAID_DIGITAL_WHERE = {
+/** Kondisi Prisma: pesanan digital app yang belum dibayar (untuk filter NOT) */
+export const HIDDEN_UNPAID_APP_QRIS_WHERE = {
+  source: "APP" as const,
   paymentMethod: PAYMENT_METHOD_DIGITAL_IN,
   paymentStatus: "UNPAID" as const,
 };

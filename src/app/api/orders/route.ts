@@ -2,7 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser, isAdminRole } from "@/lib/auth";
 import { checkVoucherForUser, normalizeVoucherCode } from "@/lib/voucher";
-import { cancelExpiredQrisOrders, HIDDEN_UNPAID_DIGITAL_WHERE } from "@/lib/order-expiry";
+import { cancelExpiredQrisOrders, HIDDEN_UNPAID_APP_QRIS_WHERE } from "@/lib/order-expiry";
 import { DELIVERY_AREA_LABEL, calcDeliveryFee, findDeliveryArea } from "@/lib/delivery";
 import { getStoreSettings } from "@/lib/store-settings";
 import { notifyNewOrder } from "@/lib/push";
@@ -30,13 +30,13 @@ export async function GET(req: NextRequest) {
     // sweep gagal (mis. DB sibuk) -> jangan gagalkan daftar pesanan
   }
 
-  // Admin/owner/kasir melihat semua pesanan — KECUALI pesanan DIGITAL
-  // (QRIS / E-Wallet) yang belum dibayar, dari aplikasi maupun POS: pesanan
-  // belum "masuk" sampai dananya terverifikasi (permintaan pemilik).
+  // Admin/owner/kasir melihat semua pesanan — KECUALI pesanan QRIS aplikasi
+  // yang belum dibayar: pesanan belum "masuk" sampai dananya terverifikasi.
+  // (Pesanan QRIS buatan POS tetap tampil — kasir memantau langsung di kasir.)
   // Customer hanya melihat miliknya sendiri (termasuk yang belum dibayar).
   const where =
     scope === "all" && (isAdminRole(user.role) || user.role === "CASHIER")
-      ? { NOT: HIDDEN_UNPAID_DIGITAL_WHERE }
+      ? { NOT: HIDDEN_UNPAID_APP_QRIS_WHERE }
       : { userId: user.id };
 
   const orders = await db.order.findMany({
@@ -97,39 +97,11 @@ export async function POST(req: NextRequest) {
     const now = new Date();
     const type = ["DINE_IN", "TAKEAWAY", "DELIVERY"].includes(body.type) ? body.type : "DINE_IN";
 
-    // ===== JADWAL JAM PENGAMBILAN (type TAKEAWAY — permintaan pemilik) =====
-    // Pelanggan "Bungkus / Ambil" dapat menjadwalkan jam datang mengambil
-    // pesanan (slot 30 menit, hari ini atau besok). Server memvalidasi ulang:
-    // hanya untuk TAKEAWAY, ISO valid, tidak di masa lalu (toleransi 10
-    // menit), dan maksimal besok — agar tidak bisa menyisipkan tanggal jauh
-    // lewat request langsung ke API.
-    let pickupAt: Date | null = null;
-    if (type === "TAKEAWAY" && body.pickupAt) {
-      const t = new Date(String(body.pickupAt));
-      if (Number.isNaN(t.getTime())) {
-        return NextResponse.json({ error: "Jadwal pengambilan tidak valid." }, { status: 400 });
-      }
-      if (t.getTime() < now.getTime() - 10 * 60 * 1000) {
-        return NextResponse.json(
-          { error: "Jadwal pengambilan sudah lewat — pilih jam yang lain." },
-          { status: 400 }
-        );
-      }
-      if (t.getTime() > now.getTime() + 2 * 24 * 60 * 60 * 1000) {
-        return NextResponse.json({ error: "Jadwal pengambilan maksimal untuk besok." }, { status: 400 });
-      }
-      pickupAt = t;
-    }
-
     // ===== SAKLAR LAYANAN TOKO (Profil Admin → Pengaturan Toko) =====
-    // Layanan antar dan pembayaran online bisa dinonaktifkan admin — selain
+    // Layanan antar, QRIS, dan E-Wallet bisa dinonaktifkan admin — selain
     // disembunyikan di UI, checkout juga DITOLAK di sini agar tidak bisa
-    // dilewati lewat request langsung ke API.
-    // UPDATE (2026-11-26): QRIS & E-Wallet digabung SATU pembayaran online
-    // via DOKU (semua metode). Checkout "QRIS" ditolak hanya bila KEDUA
-    // saklar (qrisEnabled & ewalletEnabled) mati — salah satu menyala berarti
-    // pembayaran online aktif. Gate lama untuk paymentMethod "EWALLET"
-    // tetap berlaku untuk pesanan historis.
+    // dilewati lewat request langsung ke API. QRIS & E-Wallet saklarnya
+    // TERPISAH sejak v1.3.4 (ewalletEnabled) — matikan satu, satu lagi hidup.
     const storeSettings = await getStoreSettings();
     if (type === "DELIVERY" && !storeSettings.deliveryEnabled) {
       return NextResponse.json(
@@ -137,13 +109,9 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (
-      body.paymentMethod === "QRIS" &&
-      !storeSettings.qrisEnabled &&
-      !storeSettings.ewalletEnabled
-    ) {
+    if (body.paymentMethod === "QRIS" && !storeSettings.qrisEnabled) {
       return NextResponse.json(
-        { error: "Pembayaran online (QRIS & E-Wallet via DOKU) sedang dinonaktifkan. Silakan bayar tunai." },
+        { error: "Pembayaran QRIS sedang dinonaktifkan. Silakan bayar tunai." },
         { status: 400 }
       );
     }
@@ -275,7 +243,6 @@ export async function POST(req: NextRequest) {
           deliveryFee,
           deliveryLat,
           deliveryLng,
-          pickupAt,
           phone: body.phone ? String(body.phone).slice(0, 20) : null,
           note: body.note ? String(body.note).slice(0, 300) : null,
           status: "PENDING",

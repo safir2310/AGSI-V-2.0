@@ -90,8 +90,7 @@ class PushService : FirebaseMessagingService() {
         // dobel). Event tetap diteruskan ke halaman hanya untuk segarkan
         // data (daftar pesanan & badge chat).
         if (AgsiApp.isForeground) {
-            // v1.3.30 — channel mengikuti pilihan suara Profil (NotifSound)
-            val channelFg = NotifSound.channelFor(this, kind)
+            val channelFg = if (kind == "chat") AgsiApp.CHANNEL_CHAT else AgsiApp.CHANNEL_ORDERS
             AgsiNotifications.show(
                 this,
                 kind = kind,
@@ -118,9 +117,8 @@ class PushService : FirebaseMessagingService() {
             return
         }
 
-        // Chat CS tampil di channel sendiri agar bisa diatur terpisah.
-        // v1.3.30 — channel mengikuti pilihan suara Profil (NotifSound)
-        val channel = NotifSound.channelFor(this, kind)
+        // Chat CS tampil di channel sendiri agar bisa diatur terpisah
+        val channel = if (kind == "chat") AgsiApp.CHANNEL_CHAT else AgsiApp.CHANNEL_ORDERS
 
         // v1.3.10: pembuatan kartu notifikasi dipindah ke AgsiNotifications —
         // satu pintu untuk 10 fitur notifikasi (heads-up, layar kunci penuh +

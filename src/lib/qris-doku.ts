@@ -1061,144 +1061,6 @@ async function checkoutQueryStatus(
 // ============================================================
 
 /**
- * CHECKOUT GANDA DOKU (update QR QRIS asli, 2026-11-26).
- *
- * Checkout API DOKU tidak mengembalikan string QRIS EMVCo (teruji langsung ke
- * api.doku.com: respons hanya berisi payment.url), dan jalur SNAP qr-mpm
- * (yang mengembalikan qrContent) butuh MID hasil approval QRIS yang akun
- * produksi ini belum miliki. Untuk menampilkan QR QRIS DOKU ASLI di kartu QR
- * aplikasi, dibuat DUA checkout (dua invoice, nominal sama):
- *
- *   1) PRIMARY — filter kanal ["QRIS"]: docs DOKU, satu kanal = pelanggan
- *      LANGSUNG dibawa ke layar QRIS, jadi halaman inilah QRIS DOKU aslinya.
- *      URL-nya ditampilkan sebagai IFRAME di kartu QR layar pembayaran.
- *   2) WEB — tanpa filter (semua kanal aktif: DOKU Wallet, DANA, OVO,
- *      ShopeePay, LinkAja, VA, dll.) dengan invoice dasar + "-WEB": tombol
- *      "Semua Metode" di layar pembayaran.
- *
- * Pelanggan boleh lunas lewat SALAH SATU invoice — status digabung lewat
- * getQrisDokuStatusMulti (polling) dan webhook (invoice mana pun → PAID).
- * Invoice duplikat dicoba ulang dengan suffix unik (sama seperti ladder lama).
- * Bila kanal QRIS ditolak (belum aktif): PRIMARY = checkout tanpa filter dan
- * kartu QR kembali menampilkan QR tautan (perilaku lama) — transparan lewat
- * fallbackReason.
- */
-async function checkoutCreateDualQris(opts: {
-  partnerReferenceNo: string;
-  amount: number;
-  /** ID pesanan aplikasi — callback_url /pay/<orderId> (in-app) */
-  callbackRef?: string;
-}): Promise<GatewayTransaction> {
-  const base = opts.partnerReferenceNo;
-  let firstError: unknown = null;
-
-  // ==== 1) PRIMARY: halaman QRIS DOKU asli (kanal ["QRIS"]) ====
-  let primary: GatewayTransaction | null = null;
-  let primaryRef = base;
-  for (let attempt = 0; attempt < 2 && !primary; attempt++) {
-    try {
-      const body = await legacyPost(
-        "/checkout/v1/payment",
-        checkoutPayload({
-          partnerReferenceNo: primaryRef,
-          amount: opts.amount,
-          channelTypes: DOKU_QRIS_CHANNEL_TYPES,
-          callbackRef: opts.callbackRef,
-        })
-      );
-      primary = finishCheckoutCreate(body, primaryRef);
-    } catch (err) {
-      firstError ??= err;
-      const msg = err instanceof Error ? err.message : "";
-      if (attempt === 0 && /invoice|duplicate|exist|already/i.test(msg)) {
-        // Invoice duplikat (kode dibuat ulang setelah kedaluwarsa) — coba
-        // sekali lagi dengan suffix unik di tingkat filter yang sama.
-        primaryRef = `${base}-${Date.now().toString(36)}`;
-        continue;
-      }
-      break; // kanal QRIS ditolak / galat lain — lanjut ke checkout WEB
-    }
-  }
-
-  // ==== 2) WEB: halaman semua metode (tanpa filter) — opsional ====
-  let web: GatewayTransaction | null = null;
-  if (primary) {
-    try {
-      const webBody = await legacyPost(
-        "/checkout/v1/payment",
-        checkoutPayload({
-          partnerReferenceNo: `${primaryRef}-WEB`,
-          amount: opts.amount,
-          callbackRef: opts.callbackRef,
-        })
-      );
-      web = finishCheckoutCreate(webBody, `${primaryRef}-WEB`);
-    } catch (err) {
-      // WEB opsional — QRIS asli tetap dipakai bila gagal dibuat.
-      firstError ??= err;
-      web = null;
-    }
-  }
-
-  if (!primary && !web) {
-    throw firstError ?? new QrisGatewayError("DOKU Checkout gagal membuat halaman bayar.");
-  }
-  if (!primary && web) {
-    // Kanal QRIS ditolak — halaman semua-metode menjadi utama (kartu QR
-    // menampilkan QR tautan, perilaku sebelumnya).
-    return { ...web, qrPage: false };
-  }
-  return {
-    trxId: primary!.trxId,
-    paymentUrl: primary!.paymentUrl,
-    expiresAt: primary!.expiresAt,
-    qrPage: true,
-    ...(web ? { webTrxId: web.trxId, webUrl: web.paymentUrl } : {}),
-  };
-}
-
-/**
- * Cek status DOKU untuk checkout GANDA — PAID begitu SALAH SATU invoice
- * terbayar; PENDING selama masih ada yang bisa dibayar; EXPIRED hanya bila
- * semuanya kedaluwarsa/gagal. 404 pada salah satu invoice dianggap "masih
- * menunggu" (invoice kedua mungkin masih hidup); 404 pada SEMUA invoice
- * dilempar 404 agar layar bayar membuat kode baru.
- */
-export async function getQrisDokuStatusMulti(
-  trxId: string,
-  altTrxId?: string | null
-): Promise<GatewayStatus> {
-  if (DOKU_SNAP_READY) {
-    return snapQueryStatus(partnerReferenceNoOf(trxId));
-  }
-  const invoices = [trxId, ...(altTrxId ? [altTrxId] : [])].filter(Boolean);
-  if (!DOKU_CHECKOUT_READY) {
-    return mcpQueryStatus(partnerReferenceNoOf(trxId));
-  }
-  let notFound = 0;
-  let expired = 0;
-  for (const inv of invoices) {
-    try {
-      const st = await checkoutQueryStatus(partnerReferenceNoOf(inv));
-      if (st === "PAID") return "PAID";
-      if (st === "EXPIRED") expired += 1;
-    } catch (err) {
-      if (err instanceof QrisGatewayError && err.status === 404) {
-        notFound += 1;
-        continue;
-      }
-      // Galat jaringan/5xx pada satu invoice — jangan bunuh layar bayar;
-      // perlakukan sementara sebagai menunggu (polling berikutnya coba lagi).
-    }
-  }
-  if (notFound === invoices.length) {
-    throw new QrisGatewayError("Transaksi tidak ditemukan di DOKU.", 404);
-  }
-  if (expired === invoices.length) return "EXPIRED";
-  return "PENDING";
-}
-
-/**
  * Buat transaksi QRIS dinamis DOKU.
  * trxId yang disimpan di Order.qrisTrxId = "DOKU-<kode pesanan>" — dipakai
  * juga sebagai partnerReferenceNo / invoice number di DOKU.
@@ -1218,13 +1080,8 @@ export async function createQrisDokuPayment(opts: {
   amount: number;
   reference: string;
   /** "EWALLET": halaman bayar difilter kanal e-wallet.
-   *  "QRIS": langsung ke pembayaran QRIS e-wallet DOKU (kanal "QRIS").
-   *  "ALL": TANPA filter kanal — halaman bayar DOKU menampilkan SEMUA kanal
-   *  aktif akun merchant (QRIS, DOKU Wallet, DANA, OVO, ShopeePay, LinkAja,
-   *  Virtual Account, & kanal aktif lainnya); pelanggan memilih sendiri.
-   *  Permintaan pemilik (update 2026-11-26): pembayaran QRIS & E-Wallet
-   *  memakai SEMUA metode DOKU. */
-  channelMode?: "EWALLET" | "QRIS" | "ALL";
+   *  "QRIS": langsung ke pembayaran QRIS e-wallet DOKU (kanal "QRIS"). */
+  channelMode?: "EWALLET" | "QRIS";
   /** ID pesanan aplikasi — callback_url DOKU diarahkan ke /pay/<id> (in-app) */
   callbackRef?: string;
 }): Promise<GatewayTransaction> {
@@ -1251,12 +1108,6 @@ export async function createQrisDokuPayment(opts: {
   }
 
   if (DOKU_CHECKOUT_READY) {
-    // Mode "ALL" (dipakai semua pesanan digital sejak update 2026-11-26):
-    // CHECKOUT GANDA — kartu QR = halaman QRIS DOKU asli + tombol semua
-    // metode. Mode lama "QRIS"/"EWALLET" tetap lewat ladder tunggal (kompat).
-    if (opts.channelMode === "ALL") {
-      return checkoutCreateDualQris({ partnerReferenceNo, amount, callbackRef: opts.callbackRef });
-    }
     return checkoutCreateQris({
       partnerReferenceNo,
       amount,

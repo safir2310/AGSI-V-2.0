@@ -139,21 +139,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
       order.qrisPayload?.startsWith("http")
         ? order.qrisPayload
         : undefined;
-    // Checkout ganda: qrisPayload = halaman QRIS DOKU ASLI (kanal QRIS saja)
-    // dan TIDAK ada fallbackReason (kanal QRIS aktif) → kartu QR layar
-    // pembayaran merender halaman itu (iframe), bukan QR tautan.
-    const cachedQrPage =
-      !!cachedPaymentUrl &&
-      cachedProvider.startsWith("doku") &&
-      !order.qrisFallbackReason;
     return NextResponse.json({
       ...base,
       amount: payAmount,
       ...(uniqueCode !== null ? { uniqueCode } : {}),
       payload: order.qrisPayload,
       ...(cachedPaymentUrl ? { paymentUrl: cachedPaymentUrl } : {}),
-      ...(cachedQrPage ? { qrPage: true } : {}),
-      ...(order.qrisWebUrl ? { webUrl: order.qrisWebUrl } : {}),
       mode: "GATEWAY",
       autoVerify: true,
       // tombol simulasi dana masuk hanya untuk gateway bawaan (sandbox lokal)
@@ -174,25 +165,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   // ==== 2) Buat transaksi baru di penyedia gateway ====
-  // UPDATE (permintaan pemilik, 2026-11-26): CHECKOUT GANDA DOKU untuk kartu
-  // QR QRIS asli + semua metode:
-  //   - PRIMARY: checkout kanal ["QRIS"] → halaman QRIS DOKU ASLI (invoice
-  //     dasar) — dirender sebagai kartu QR di layar pembayaran (iframe),
-  //     karena API Checkout DOKU tidak mengembalikan string QRIS EMVCo dan
-  //     jalur SNAP qr-mpm butuh MID yang belum dimiliki akun produksi.
-  //   - WEB: checkout tanpa filter (semua kanal aktif — DOKU Wallet, DANA,
-  //     OVO, ShopeePay, LinkAja, VA, dll.), invoice dasar + "-WEB" — tombol
-  //     "Semua Metode" di layar pembayaran.
-  // Pelanggan boleh lunas lewat SALAH SATU invoice; status digabung
-  // (polling getQrisDokuStatusMulti + webhook kedua invoice) → PAID begitu
-  // dana masuk lewat jalur mana pun — hanya SISTEM yang melunaskan.
+  // Pesanan QRIS: pelanggan LANGSUNG diarahkan ke pembayaran QRIS E-WALLET
+  // DOKU — halaman bayar difilter ke SATU kanal "QRIS" (docs DOKU: satu kanal
+  // = langsung diarahkan ke pembayaran itu). Pelanggan pindai QRIS-nya pakai
+  // aplikasi e-wallet/m-Banking apa pun. Bila kanal QRIS akun DOKU belum
+  // aktif, adapter otomatis mencoba ulang tanpa filter (semua kanal aktif).
+  // Pesanan E-Wallet: halaman bayar DOKU difilter ke kanal e-wallet
+  // (DOKU Wallet, DANA, OVO, ShopeePay, LinkAja + VA DOKU cadangan —
+  // sesuai kanal yang aktif di akun DOKU merchant).
   // callbackRef = id pesanan: redirect browser setelah bayar diarahkan ke
   // halaman IN-APP /pay/<orderId> — tetap dalam satu aplikasi.
   try {
     const trx = await createQrisGatewayPayment({
       amount: order.total,
       reference: order.code,
-      channelMode: "ALL",
+      channelMode: order.paymentMethod === "EWALLET" ? "EWALLET" : "QRIS",
       callbackRef: order.id,
     });
     // Jalur DOKU Checkout tidak mengembalikan QR string — URL halaman bayar
@@ -213,9 +200,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
         // Jejak penyedia aktual + alasan fallback (transparansi layar bayar)
         qrisProvider: trx.provider ?? null,
         qrisFallbackReason: trx.fallbackReason ?? null,
-        // Checkout ganda DOKU: invoice + URL halaman "semua metode" (bila ada)
-        qrisWebTrxId: trx.webTrxId ?? null,
-        qrisWebUrl: trx.webUrl ?? null,
       },
     });
     const trxProvider =
@@ -233,9 +217,6 @@ export async function GET(_req: NextRequest, { params }: Params) {
       payload,
       imageUrl: trx.imageUrl ?? undefined,
       ...(paymentUrl ? { paymentUrl } : {}),
-      // Kartu QR = halaman QRIS DOKU asli (iframe) + tombol semua metode
-      ...(trx.qrPage && paymentUrl ? { qrPage: true } : {}),
-      ...(trx.webUrl ? { webUrl: trx.webUrl } : {}),
       mode: "GATEWAY",
       autoVerify: true,
       sandbox: trxProvider === "internal" && QRIS_SANDBOX_ENABLED,

@@ -57,59 +57,37 @@ class AgsiNativeBridge(
     @JavascriptInterface
     fun getAppVersion(): String = BuildConfig.VERSION_NAME
 
-    /** v1.3.35 — SEMUA metode jembatan dijamin TIDAK PERNAH melempar ke JS:
-     *  objek interface yang usang (pasca WebView dibuat ulang) bisa membuat
-     *  panggilan JS→Java melempar pengecualian — pengguna melihat error
-     *  "jembatan native tidak tersedia". Kini pengecualian apa pun ditangkap
-     *  di sini dan dikembalikan sebagai nilai aman / callback gagal. */
     @JavascriptInterface
-    fun isBiometricAvailable(): String = try {
+    fun isBiometricAvailable(): String =
         when (AppLock.availability(appContext)) {
             AppLock.Availability.OK -> "ok"
             AppLock.Availability.NOT_ENROLLED -> "not_enrolled"
             AppLock.Availability.NO_HARDWARE -> "no_hardware"
         }
-    } catch (e: Throwable) {
-        "no_hardware"
-    }
 
     @JavascriptInterface
-    fun isBiometricEnabled(): Boolean = try {
-        AppLock.isEnabled(appContext)
-    } catch (e: Throwable) {
-        false
-    }
+    fun isBiometricEnabled(): Boolean = AppLock.isEnabled(appContext)
 
     /**
      * Aktifkan layar buka kunci biometrik. Dialog verifikasi ditampilkan
      * dulu; hasil (sukses/gagal) dikirim balik lewat
-     * `window.__agsiNativeResult(cbId, ok, message)`.
+     * `window.__agsiNativeResult(cbId, ok, message)` di WebView utama.
      */
     @JavascriptInterface
     fun enableBiometric(cbId: String) {
-        try {
-            val activity = hostProvider() ?: return resolve(cbId, false, "aplikasi tidak aktif")
-            activity.main.post {
-                try {
-                    activity.showBiometricEnableFlow(
-                        onSuccess = { resolve(cbId, true, "aktif") },
-                        onFailure = { reason -> resolve(cbId, false, reason) },
-                    )
-                } catch (e: Throwable) {
-                    resolve(cbId, false, "verifikasi gagal dimulai: ${e.message ?: e.javaClass.simpleName}")
-                }
-            }
-        } catch (e: Throwable) {
-            resolve(cbId, false, "jembatan biometrik bermasalah: ${e.message ?: e.javaClass.simpleName}")
+        val activity = hostProvider() ?: return resolve(cbId, false, "aplikasi tidak aktif")
+        activity.main.post {
+            activity.showBiometricEnableFlow(
+                onSuccess = { resolve(cbId, true, "aktif") },
+                onFailure = { reason -> resolve(cbId, false, reason) },
+            )
         }
     }
 
     @JavascriptInterface
-    fun disableBiometric(): Boolean = try {
+    fun disableBiometric(): Boolean {
         AppLock.setEnabled(appContext, false)
-        true
-    } catch (e: Throwable) {
-        false
+        return true
     }
 
     /**
@@ -120,12 +98,10 @@ class AgsiNativeBridge(
      * jadi ini pintu tercepat yang sah. Return false bila aplikasi tidak aktif.
      */
     @JavascriptInterface
-    fun openBiometricEnroll(): Boolean = try {
+    fun openBiometricEnroll(): Boolean {
         val activity = hostProvider() ?: return false
         activity.main.post { activity.openBiometricEnrollSettings() }
-        true
-    } catch (e: Throwable) {
-        false
+        return true
     }
 
     /**
@@ -206,31 +182,6 @@ class AgsiNativeBridge(
     /** Status saklar notifikasi latar belakang (default: aktif). */
     @JavascriptInterface
     fun isNotifPollingEnabled(): Boolean = NotifPollerService.isEnabled(appContext)
-
-    /**
-     * SUARA NOTIFIKASI (v1.3.30 — permintaan pemilik): pilihan suara dari
-     * Profil ▸ Notifikasi Push ▸ "Suara Notifikasi". Disimpan per perangkat;
-     * berlaku untuk SEMUA notifikasi berikutnya (FCM & poller) walau aplikasi
-     * ditutup / layar terkunci. key katalog: chime | ding | bell | marimba |
-     * pop | system | silent. Return true bila key dikenal & tersimpan.
-     */
-    @JavascriptInterface
-    fun setNotificationSound(key: String): Boolean = NotifSound.set(appContext, key)
-
-    /** Pilihan suara aktif saat ini (key katalog di atas). */
-    @JavascriptInterface
-    fun getNotificationSound(): String = NotifSound.get(appContext)
-
-    /** Katalog suara sebagai JSON [{"key","label"}] — label dari aplikasi. */
-    @JavascriptInterface
-    fun getNotificationSoundCatalog(): String = NotifSound.catalogJson(appContext)
-
-    /** Putar pratinjau suara (stream notifikasi — sama seperti saat pesanan masuk). */
-    @JavascriptInterface
-    fun previewNotificationSound(key: String): Boolean {
-        NotifSound.preview(appContext, key)
-        return true
-    }
 
     /**
      * IZIN BERJALAN DI LATAR BELAKANG (v1.3.12): true bila AGSI sudah

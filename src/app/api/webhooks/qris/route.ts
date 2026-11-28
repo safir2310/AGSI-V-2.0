@@ -139,12 +139,6 @@ export async function POST(req: NextRequest) {
       if (order) break;
       order = await db.order.findFirst({ where: { qrisTrxId: c } });
     }
-    // Checkout ganda DOKU: notifikasi bisa datang untuk invoice halaman
-    // "semua metode" (invoice dasar + "-WEB") — cocokkan juga ke qrisWebTrxId.
-    for (const c of candidates) {
-      if (order) break;
-      order = await db.order.findFirst({ where: { qrisWebTrxId: c } });
-    }
     for (const c of candidates) {
       if (order) break;
       const bare = c.replace(/^DOKU-/, "");
@@ -309,11 +303,6 @@ export async function POST(req: NextRequest) {
     for (const c of candidates) {
       if (legacyOrderMatch) break;
       legacyOrderMatch = await db.order.findFirst({ where: { qrisTrxId: c } });
-    }
-    // Checkout ganda DOKU: notifikasi halaman "semua metode" (invoice + "-WEB")
-    for (const c of candidates) {
-      if (legacyOrderMatch) break;
-      legacyOrderMatch = await db.order.findFirst({ where: { qrisWebTrxId: c } });
     }
     for (const c of candidates) {
       if (legacyOrderMatch) break;
