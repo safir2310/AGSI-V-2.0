@@ -170,6 +170,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
       trxId: order.qrisTrxId,
       expiresAt: order.qrisExpiresAt?.toISOString() ?? null,
       cancelAt,
+      // Kanal pilihan pelanggan (halaman Metode Pembayaran) + data instruksinya
+      ...(order.payChannel ? { payChannel: order.payChannel } : {}),
+      ...(order.payMeta ? { payMeta: order.payMeta } : {}),
     });
   }
 
@@ -216,6 +219,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
         // Checkout ganda DOKU: invoice + URL halaman "semua metode" (bila ada)
         qrisWebTrxId: trx.webTrxId ?? null,
         qrisWebUrl: trx.webUrl ?? null,
+        // Layar kembali ke QR default → kanal pilihan lama tidak berlaku lagi
+        payChannel: null,
+        payMeta: null,
       },
     });
     const trxProvider =

@@ -194,6 +194,17 @@ model Order {
   // (POST /api/orders/[id]/qris/declare). NULL = lunas lewat webhook
   // gateway (verifikasi otomatis), bukan deklarasi manual.
   qrisDeclaredAt     DateTime?
+  // ===== DOKU — METODE PILIHAN PELANGGAN (halaman "Metode Pembayaran") =====
+  // Kanal yang dipilih pelanggan pada halaman metode pembayaran (accordion
+  // E-Wallet/Minimarket/VA/Kartu). Invoice kanal ini DISIMPAN DI qrisTrxId
+  // (satu invoice aktif) — polling & webhook DOKU legacy mencocokkan lewat
+  // kolom itu, jadi verifikasi otomatis berlaku untuk SEMUA kanal tanpa
+  // cabang baru. Invoice kanal lain yang pernah dibuat tetap hidup di DOKU
+  // dan tetap dikenali webhook lewat pencocokan suffix ke kode pesanan.
+  payChannel         String? // DANA | OVO | SHOPEEPAY | LINKAJA | ALFAMART | INDOMARET | PERMATA | MANDIRI | BCA | BNI | BRI | VISA | MASTERCARD
+  // Data instruksi per kanal dari DOKU (nomor VA / kode bayar minimarket /
+  // URL halaman bayar / halaman how-to-pay) — dirender layar instruksi.
+  payMeta            Json?
   // ===== Jejak pelunasan =====
   paidAt             DateTime? // Waktu uang benar-benar masuk / tunai diterima
   paidVia            String? // AUTO (sistem QRIS) | CASH (kasir menerima tunai)
@@ -421,6 +432,11 @@ model StoreSetting {
   // bisa dimatikan TERPISAH dari QRIS — Profil Admin → "Pengaturan Toko".
   // Nonaktif → opsi disembunyikan di UI pelanggan/POS & checkout ditolak API.
   ewalletEnabled            Boolean   @default(true)
+  // ===== SAKLAR GRUP KANAL "METODE PEMBAYARAN" DOKU =====
+  // JSON {va: boolean, card: boolean} — Virtual Account & Kartu Kredit di
+  // halaman Metode Pembayaran. NULL/kosong = semua grup aktif. (E-Wallet &
+  // Minimarket/QRIS memakai saklar ewalletEnabled / qrisEnabled di atas.)
+  payChannels               Json?
   // ===== POPUP BANNER BERANDA =====
   // Diatur dari Profil Admin → "Popup Banner Beranda".
   // Aktif + ada gambar → popup muncul otomatis saat pelanggan membuka Beranda.

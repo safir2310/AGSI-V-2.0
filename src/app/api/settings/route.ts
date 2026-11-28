@@ -132,6 +132,8 @@ export async function GET() {
         deliveryEnabled: true,
         qrisEnabled: true,
         ewalletEnabled: true,
+        payVaEnabled: true,
+        payCardEnabled: true,
         banner: {
           bannerEnabled: false,
           bannerTitle: null,
@@ -211,7 +213,13 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const patch: { deliveryEnabled?: boolean; qrisEnabled?: boolean; ewalletEnabled?: boolean } = {};
+    const patch: {
+      deliveryEnabled?: boolean;
+      qrisEnabled?: boolean;
+      ewalletEnabled?: boolean;
+      payVaEnabled?: boolean;
+      payCardEnabled?: boolean;
+    } = {};
 
     if ("deliveryEnabled" in body) {
       if (typeof body.deliveryEnabled !== "boolean") {
@@ -239,6 +247,25 @@ export async function PUT(req: NextRequest) {
         );
       }
       patch.ewalletEnabled = body.ewalletEnabled;
+    }
+    // Saklar grup kanal halaman "Metode Pembayaran" (JSON payChannels)
+    if ("payVaEnabled" in body) {
+      if (typeof body.payVaEnabled !== "boolean") {
+        return NextResponse.json(
+          { error: "payVaEnabled harus boolean." },
+          { status: 400 }
+        );
+      }
+      patch.payVaEnabled = body.payVaEnabled;
+    }
+    if ("payCardEnabled" in body) {
+      if (typeof body.payCardEnabled !== "boolean") {
+        return NextResponse.json(
+          { error: "payCardEnabled harus boolean." },
+          { status: 400 }
+        );
+      }
+      patch.payCardEnabled = body.payCardEnabled;
     }
 
     if (Object.keys(patch).length > 0) {

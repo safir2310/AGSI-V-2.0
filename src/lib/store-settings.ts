@@ -94,6 +94,7 @@ type StoreSettingsMetaRow = {
   videoPromoSlot3Mime: string | null;
   courierAnim: unknown;
   motion: unknown;
+  payChannels: unknown;
 };
 
 /** Bentuk mentah hasil $queryRaw (boolean bisa 1/0 di SQLite, tanggal bisa string, JSON bisa string). */
@@ -114,9 +115,10 @@ type RawMetaRow = {
  */
 export async function readStoreSettingsMetaRow(): Promise<StoreSettingsMetaRow> {
   await ensureCourierAnimColumn();
+  await ensurePayChannelsColumn();
   const query = () =>
     db.$queryRaw<RawMetaRow[]>`
-      SELECT "deliveryEnabled", "qrisEnabled", "ewalletEnabled",
+      SELECT "deliveryEnabled", "qrisEnabled", "ewalletEnabled", "payChannels",
              "bannerEnabled", "bannerTitle", "bannerText",
              ("bannerImageData" IS NOT NULL) AS "bannerImageData", "bannerUpdatedAt",
              "promoStripEnabled", "promoStripBadge", "promoStripTitle", "promoStripText",
@@ -193,6 +195,7 @@ export async function readStoreSettingsMetaRow(): Promise<StoreSettingsMetaRow> 
     videoPromoSlot3Mime: r.videoPromoSlot3Mime,
     courierAnim: asJson(r.courierAnim),
     motion: asJson(r.motion),
+    payChannels: asJson(r.payChannels),
   };
 }
 
@@ -251,10 +254,63 @@ async function ensureMotionColumn(): Promise<void> {
   }
 }
 
+/* [JARING PENGAMAN PAY-CHANNELS] Kolom "payChannels" (saklar grup kanal
+   Virtual Account & Kartu Kredit di halaman Metode Pembayaran) — pola sama
+   dengan jaring pengaman courierAnim/motion: ADD COLUMN IF NOT EXISTS
+   murni aditif & idempotent, sekali per proses, tanpa menyentuh data. */
+let payChannelsColumnEnsured = false;
+async function ensurePayChannelsColumn(): Promise<void> {
+  if (payChannelsColumnEnsured) return;
+  payChannelsColumnEnsured = true;
+  try {
+    await db.$executeRawUnsafe(
+      `ALTER TABLE "StoreSetting" ADD COLUMN IF NOT EXISTS "payChannels" JSONB`
+    );
+  } catch (e) {
+    console.warn(
+      "[store-settings] penerapan kolom payChannels lewat runtime gagal (abaikan bila memang sudah ada):",
+      e instanceof Error ? e.message : e
+    );
+  }
+}
+
+/** Urai JSON saklar grup kanal pembayaran ({va, card}) — default semua aktif. */
+function payTogglesOf(raw: unknown): { va: boolean; card: boolean } {
+  const r = (raw ?? {}) as { va?: unknown; card?: unknown };
+  return { va: r.va !== false, card: r.card !== false };
+}
+
+/**
+ * Saklar grup kanal halaman "Metode Pembayaran" — Virtual Account & Kartu
+ * Kredit (E-Wallet & Minimarket/QRIS memakai saklar ewalletEnabled/qrisEnabled).
+ * null = belum pernah diatur (grup aktif).
+ */
+export async function getPayChannelToggles(): Promise<{
+  va: boolean | null;
+  card: boolean | null;
+}> {
+  await ensurePayChannelsColumn();
+  try {
+    const row = await db.storeSetting.findUnique({
+      where: { id: "main" },
+      select: { payChannels: true },
+    });
+    if (!row?.payChannels) return { va: null, card: null };
+    const r = payTogglesOf(row.payChannels);
+    return { va: r.va, card: r.card };
+  } catch {
+    return { va: null, card: null };
+  }
+}
+
 export type StoreSettings = {
   deliveryEnabled: boolean;
   qrisEnabled: boolean;
   ewalletEnabled: boolean;
+  /** Saklar grup Virtual Account (halaman Metode Pembayaran) — default true */
+  payVaEnabled: boolean;
+  /** Saklar grup Kartu Kredit (halaman Metode Pembayaran) — default true */
+  payCardEnabled: boolean;
 };
 
 /** Konten popup banner beranda (disimpan di baris StoreSetting yang sama). */
@@ -270,10 +326,13 @@ export type BannerSettings = {
 /** Ambil pengaturan toko — read-only (baris dibuat di jalur tulis bila belum ada). */
 export async function getStoreSettings(): Promise<StoreSettings> {
   const row = await readStoreSettingsRow();
+  const toggles = payTogglesOf(row.payChannels);
   return {
     deliveryEnabled: row.deliveryEnabled,
     qrisEnabled: row.qrisEnabled,
     ewalletEnabled: row.ewalletEnabled,
+    payVaEnabled: toggles.va,
+    payCardEnabled: toggles.card,
   };
 }
 
@@ -327,15 +386,41 @@ export type BannerPatch = {
   bannerTouch?: boolean;
 };
 
-/** Simpan sebagian pengaturan toko (hanya field yang dikirim yang berubah). */
+/** Simpan sebagian pengaturan toko (hanya field yang dikirim yang berubah).
+ *  payVaEnabled/payCardEnabled = saklar grup Virtual Account / Kartu Kredit
+ *  di halaman Metode Pembayaran — disimpan sebagai JSON payChannels. */
 export async function updateStoreSettings(
-  patch: Partial<{ deliveryEnabled: boolean; qrisEnabled: boolean; ewalletEnabled: boolean }>
+  patch: Partial<{
+    deliveryEnabled: boolean;
+    qrisEnabled: boolean;
+    ewalletEnabled: boolean;
+    payVaEnabled: boolean;
+    payCardEnabled: boolean;
+  }>
 ): Promise<StoreSettings> {
-  const data = {
+  const data: Record<string, unknown> = {
     ...(typeof patch.deliveryEnabled === "boolean" ? { deliveryEnabled: patch.deliveryEnabled } : {}),
     ...(typeof patch.qrisEnabled === "boolean" ? { qrisEnabled: patch.qrisEnabled } : {}),
     ...(typeof patch.ewalletEnabled === "boolean" ? { ewalletEnabled: patch.ewalletEnabled } : {}),
   };
+  const pay: { va?: boolean; card?: boolean } = {};
+  if (typeof patch.payVaEnabled === "boolean") pay.va = patch.payVaEnabled;
+  if (typeof patch.payCardEnabled === "boolean") pay.card = patch.payCardEnabled;
+  if (Object.keys(pay).length > 0) {
+    await ensurePayChannelsColumn();
+    const existing = await db.storeSetting.findUnique({
+      where: { id: "main" },
+      select: { payChannels: true },
+    });
+    const current = payTogglesOf(existing?.payChannels ?? {});
+    data.payChannels = {
+      ...(existing?.payChannels && typeof existing.payChannels === "object"
+        ? (existing.payChannels as Record<string, unknown>)
+        : {}),
+      va: pay.va ?? current.va,
+      card: pay.card ?? current.card,
+    };
+  }
   await ensureStoreRowForWrite();
   const row = await db.storeSetting.update({ where: { id: "main" }, data });
   return {
@@ -1097,11 +1182,14 @@ export async function getStoreSettingsSnapshot(): Promise<StoreSettingsSnapshot>
   const row = await readStoreSettingsMetaRow();
   const banners = readMenuPromoBanners(row.menuPromoBanners);
   const slides = readVideoPromoSlides(row.videoPromoSlides);
+  const payToggles = payTogglesOf(row.payChannels);
   return {
     settings: {
       deliveryEnabled: row.deliveryEnabled,
       qrisEnabled: row.qrisEnabled,
       ewalletEnabled: row.ewalletEnabled,
+      payVaEnabled: payToggles.va,
+      payCardEnabled: payToggles.card,
     },
     banner: {
       bannerEnabled: row.bannerEnabled,

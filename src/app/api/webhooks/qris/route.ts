@@ -294,14 +294,21 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Cari pesanan: qrisTrxId = invoice DOKU (bisa + suffix retry unik);
-    // fallback: kode pesanan dari invoice tanpa prefix "DOKU-".
+    // Cari pesanan: qrisTrxId = invoice DOKU (bisa + suffix retry unik ATAU
+    // suffix kanal pilihan pelanggan "-C<CH>" dari halaman Metode Pembayaran,
+    // bisa keduanya). Lepas suffix BERULANG (maks 3) supaya semua bentuk
+    // invoice mengenali pesanannya; fallback: kode pesanan tanpa prefix.
     const candidates = new Set<string>();
     const addCandidate = (s: string) => {
       if (!s) return;
-      candidates.add(s);
-      const noSuffix = s.replace(/-[0-9a-z]+$/i, "");
-      if (noSuffix !== s) candidates.add(noSuffix);
+      let cur = s;
+      candidates.add(cur);
+      for (let i = 0; i < 3; i++) {
+        const noSuffix = cur.replace(/-[0-9a-z]+$/i, "");
+        if (!noSuffix || noSuffix === cur) break;
+        cur = noSuffix;
+        candidates.add(cur);
+      }
     };
     addCandidate(legacyInvoice);
     addCandidate(legacyInvoice.replace(/^DOKU-/, ""));

@@ -132,6 +132,9 @@ export async function GET(req: NextRequest, { params }: Params) {
       autoVerify: true,
       gatewayStatus: gwStatus,
       cancelAt: cancelAt.toISOString(),
+      // Kanal aktif + instruksi (layar instruksi per metode memakai ini)
+      ...(order.payChannel ? { payChannel: order.payChannel } : {}),
+      ...(order.payMeta ? { payMeta: order.payMeta } : {}),
     });
   } catch (err) {
     // Transaksi tidak dikenal penyedia (mis. gateway sandbox baru restart dan
@@ -147,6 +150,8 @@ export async function GET(req: NextRequest, { params }: Params) {
           qrisExpiresAt: null,
           qrisWebTrxId: null,
           qrisWebUrl: null,
+          payChannel: null,
+          payMeta: null,
         },
       });
       return NextResponse.json({

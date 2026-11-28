@@ -330,6 +330,10 @@ type SettingsState = {
   deliveryEnabled: boolean;
   qrisEnabled: boolean;
   ewalletEnabled: boolean;
+  /** Saklar grup Virtual Account (halaman Metode Pembayaran) — default aktif */
+  payVaEnabled: boolean;
+  /** Saklar grup Kartu Kredit (halaman Metode Pembayaran) — default aktif */
+  payCardEnabled: boolean;
   banner: BannerInfo;
   promo: PromoStripInfo;
   menuHero: MenuHeroInfo;
@@ -514,6 +518,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   deliveryEnabled: true,
   qrisEnabled: true,
   ewalletEnabled: true,
+  payVaEnabled: true,
+  payCardEnabled: true,
   banner: FALLBACK_BANNER,
   promo: FALLBACK_PROMO,
   menuHero: FALLBACK_MENU_HERO,
@@ -535,6 +541,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           deliveryEnabled: data.deliveryEnabled !== false,
           qrisEnabled: data.qrisEnabled !== false,
           ewalletEnabled: data.ewalletEnabled !== false,
+          payVaEnabled: data.payVaEnabled !== false,
+          payCardEnabled: data.payCardEnabled !== false,
           banner: normalizeBanner(data.banner),
           promo: normalizePromo(data.promo),
           menuHero: normalizeMenuHero(data.menuHero),

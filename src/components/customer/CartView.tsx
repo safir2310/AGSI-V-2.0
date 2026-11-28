@@ -445,6 +445,14 @@ export function CartView({ user, go }: { user: AppUser; go: (v: AppView) => void
           code: created.code,
           total: finalTotal,
           method: created.paymentMethod === "EWALLET" ? "EWALLET" : "QRIS",
+          // Rincian biaya transparan untuk panel Total Pembayaran
+          rincian: [
+            { label: "Subtotal menu", value: subtotal },
+            ...(voucherDiscount > 0
+              ? [{ label: "Diskon voucher", value: -voucherDiscount }]
+              : []),
+            ...(deliveryFee > 0 ? [{ label: "Ongkir antar", value: deliveryFee }] : []),
+          ],
         });
         return;
       }

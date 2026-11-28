@@ -387,9 +387,10 @@ export async function markOrderPaidBySystem(orderId: string): Promise<{
       return { already: false, cancelled: true, order };
     }
 
-    // Pelunasan QRIS ditolak bila pesanan bukan QRIS — jalur ini khusus sistem.
-    if (order.paymentMethod !== "QRIS") {
-      throw new Error("Pesanan ini bukan pembayaran QRIS.");
+    // Pelunasan otomatis ditolak bila pesanan bukan pembayaran DIGITAL
+    // (QRIS / E-Wallet) — jalur ini khusus sistem, bukan kasir.
+    if (order.paymentMethod !== "QRIS" && order.paymentMethod !== "EWALLET") {
+      throw new Error("Pesanan ini bukan pembayaran digital (QRIS/E-Wallet).");
     }
 
     const updated = await tx.order.update({

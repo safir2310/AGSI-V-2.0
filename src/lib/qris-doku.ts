@@ -960,39 +960,8 @@ function finishCheckoutCreate(
     );
   }
   // expired_datetime contoh: "2026-11-09T08:47:21Z" (UTC ISO) atau
-  // "20261109225045" (14 digit TANPA zona waktu).
-  //
-  // !!! PERBAIKAN BUG (2026-11-10): string 14 digit dari DOKU Checkout
-  // produksi ternyata berbasis UTC, bukan WIB. Menebak "+07:00" membuat
-  // kedaluwarsa jatuh 7 JAM di masa lalu — kode bayar dianggap "Hangus"
-  // begitu dibuat, dan layar pembayaran MENUTUP halaman DOKU seketika
-  // setelah dibuka (tombol "Bayar dengan E-Wallet (DOKU)" tampak tidak
-  // melakukan apa-apa). String telanjang itu memang ambigu, jadi coba
-  // kedua zona (UTC dulu — perilaku teramati, lalu WIB) dan ambil tafsir
-  // yang masih DI MASA DEPAN dan paling dekat dengan sekarang. Bila
-  // keduanya sudah lewat (data tak masuk akal), biarkan null — UI lalu
-  // memakai batas 5 menit pesanan, tidak pernah "Hangus" palsu.
-  let expiresAt: string | null = null;
-  const resp = body.response as Record<string, unknown> | undefined;
-  const payment = (resp?.payment ?? body.payment) as
-    | Record<string, unknown>
-    | undefined;
-  const exp = payment?.expired_datetime ?? payment?.expired_date;
-  if (typeof exp === "string" && exp.trim()) {
-    const digits = exp.replace(/\D/g, "");
-    if (digits.length === 14) {
-      const iso = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}`;
-      const nowMs = Date.now();
-      const parsed = [`${iso}Z`, `${iso}+07:00`]
-        .map((c) => new Date(c))
-        .filter((d) => !Number.isNaN(d.getTime()) && d.getTime() > nowMs)
-        .sort((a, b) => a.getTime() - b.getTime());
-      if (parsed.length > 0) expiresAt = parsed[0].toISOString();
-    } else {
-      const d = new Date(exp);
-      if (!Number.isNaN(d.getTime())) expiresAt = d.toISOString();
-    }
-  }
+  // "20261109225045" (14 digit TANPA zona waktu) — diurai parseCheckoutExpiry.
+  const expiresAt = parseCheckoutExpiry(body);
   return {
     trxId: partnerReferenceNo,
     paymentUrl,
@@ -1404,4 +1373,220 @@ export function dokuEnvironmentLabel(): string {
 /** true bila jalur aktif adalah DOKU Checkout (halaman bayar, bukan QR string) */
 export function isDokuCheckoutPath(): boolean {
   return !DOKU_SNAP_READY && DOKU_CHECKOUT_READY;
+}
+
+// ============================================================
+//  METODE PEMBAYARAN PILIHAN PELANGGAN (halaman "Metode Pembayaran")
+//  — checkout SATU KANAL + Direct API Alfamart
+// ============================================================
+
+/** Urai expired_datetime DOKU Checkout → ISO UTC atau null.
+ *  String 14 digit dari produksi ternyata berbasis UTC (bug 2026-11-10):
+ *  coba kedua zona, ambil tafsir yang masih DI MASA DEPAN terdekat. */
+function parseCheckoutExpiry(body: Record<string, unknown>): string | null {
+  const resp = body.response as Record<string, unknown> | undefined;
+  const payment = (resp?.payment ?? body.payment) as
+    | Record<string, unknown>
+    | undefined;
+  const exp = payment?.expired_datetime ?? payment?.expired_date;
+  if (typeof exp !== "string" || !exp.trim()) return null;
+  const digits = exp.replace(/\D/g, "");
+  if (digits.length === 14) {
+    const iso = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}`;
+    const nowMs = Date.now();
+    const parsed = [`${iso}Z`, `${iso}+07:00`]
+      .map((c) => new Date(c))
+      .filter((d) => !Number.isNaN(d.getTime()) && d.getTime() > nowMs)
+      .sort((a, b) => a.getTime() - b.getTime());
+    return parsed.length > 0 ? parsed[0].toISOString() : null;
+  }
+  const d = new Date(exp);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/** Cari string PERTAMA yang terisi untuk salah satu kunci, di kedalaman mana
+ *  pun (toleran struktur — respons DOKU beda bentuk antar kanal/jalur). */
+function findFirstByKeys(value: unknown, keys: string[], depth = 0): string | undefined {
+  if (depth > 6 || value == null) return undefined;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const hit = findFirstByKeys(item, keys, depth + 1);
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    for (const k of keys) {
+      const v = obj[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+    }
+    for (const v of Object.values(obj)) {
+      const hit = findFirstByKeys(v, keys, depth + 1);
+      if (hit) return hit;
+    }
+  }
+  return undefined;
+}
+
+/** Hasil pembuatan invoice SATU kanal DOKU untuk halaman instruksi */
+export type DokuChannelPayment = {
+  /** Invoice DOKU final (SUDAH berprefix "DOKU-") — disimpan Order.qrisTrxId */
+  invoice: string;
+  /** URL halaman bayar DOKU langsung ke kanal ini (satu kanal = pelanggan
+   *  langsung dibawa ke pembayaran itu — docs DOKU) */
+  paymentUrl?: string;
+  /** Nomor Virtual Account bila respons membawanya (varian jalur) */
+  vaNumber?: string;
+  /** Kode pembayaran minimarket (Direct API Alfa v2) */
+  paymentCode?: string;
+  /** Halaman petunjuk bayar resmi DOKU (how_to_pay_page Alfa) */
+  howToPayUrl?: string;
+  /** Kedaluwarsa transaksi (ISO UTC) */
+  expiresAt?: string;
+};
+
+/**
+ * Buat invoice DOKU Checkout untuk SATU kanal pembayaran pilihan pelanggan
+ * (Virtual Account BCA/BNI/BRI/Mandiri/Permata, e-wallet DANA/OVO/ShopeePay/
+ * LinkAja, minimarket Indomaret, kartu kredit). Docs DOKU: bila HANYA SATU
+ * payment_method_types dikirim, pelanggan LANGSUNG diarahkan ke pembayaran
+ * itu — tanpa memilih-milih di halaman DOKU. Jalur legacy terbukti produksi
+ * (signature HMACSHA256= Client-Id/Request-Id/Timestamp/Target/Digest).
+ * Invoice duplikat dicoba ulang dengan suffix unik pada kanal yang sama.
+ */
+export async function checkoutCreateChannelPayment(opts: {
+  reference: string; // kode pesanan aplikasi
+  amount: number;
+  /** Kode kanal DOKU (payment_method_types): "VIRTUAL_ACCOUNT_BCA", dst. */
+  channelType: string;
+  /** Suffix invoice per kanal: "CBCA", "CDANA", "CINDO", "CCARD", ... */
+  channelSuffix: string;
+  callbackRef?: string;
+}): Promise<DokuChannelPayment> {
+  const amount = Math.round(Number(opts.amount));
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new QrisGatewayError("Nominal pembayaran harus angka lebih dari 0.");
+  }
+  const base = partnerReferenceNoOf(`${opts.reference}-C${opts.channelSuffix}`);
+  let partnerRef = base;
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const body = await legacyPost(
+        "/checkout/v1/payment",
+        checkoutPayload({
+          partnerReferenceNo: partnerRef,
+          amount,
+          channelTypes: [opts.channelType],
+          callbackRef: opts.callbackRef,
+        })
+      );
+      const paymentUrl = findPaymentUrl(body);
+      if (!paymentUrl) {
+        throw new QrisGatewayError(
+          `DOKU Checkout tidak mengembalikan URL pembayaran kanal ini. ${legacyErrorMessage(body, "")}`.trim()
+        );
+      }
+      return {
+        invoice: partnerRef,
+        paymentUrl,
+        vaNumber: findFirstByKeys(body, [
+          "va_number",
+          "vaNumber",
+          "virtual_account_no",
+          "virtualAccountNo",
+          "virtual_account_number",
+        ]),
+        paymentCode: findFirstByKeys(body, ["payment_code", "paymentCode"]),
+        expiresAt: parseCheckoutExpiry(body) ?? undefined,
+      };
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : "";
+      if (/invoice|duplicate|exist|already/i.test(msg) && attempt === 0) {
+        // Invoice duplikat (kode dibuat ulang setelah kedaluwarsa) — sekali
+        // coba lagi dengan suffix unik pada kanal yang sama.
+        partnerRef = `${base}-${Date.now().toString(36)}`;
+        continue;
+      }
+      break;
+    }
+  }
+  throw lastError ?? new QrisGatewayError("DOKU Checkout gagal membuat kanal pembayaran.");
+}
+
+/**
+ * Direct API DOKU — kode pembayaran ALFAMART (Online-to-Offline v2).
+ * POST /alfa-online-to-offline/v2/payment-code (signature legacy sama dengan
+ * Check Status yang terbukti). Respons memuat online_to_offline_info.
+ * payment_code — KODE BAYAR ASLI yang ditunjukkan kasir Alfamart, plus
+ * how_to_pay_page (petunjuk resmi) & expired_date. Uang masuk tetap
+ * diverifikasi lewat HTTP Notification DOKU legacy yang sudah ada.
+ * Dipanggil SEBELUM checkout satu-kanal; gagal → fallback ke sana.
+ */
+export async function alfaCreatePaymentCode(opts: {
+  reference: string;
+  amount: number;
+  /** Masa berlaku kode (menit) — online_to_offline_info.expired_time */
+  expiredMinutes: number;
+  customerName?: string;
+}): Promise<DokuChannelPayment> {
+  const amount = Math.round(Number(opts.amount));
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new QrisGatewayError("Nominal pembayaran harus angka lebih dari 0.");
+  }
+  const invoice = partnerReferenceNoOf(`${opts.reference}-CALFA`);
+  const body = await legacyPost("/alfa-online-to-offline/v2/payment-code", {
+    order: { invoice_number: invoice, amount },
+    online_to_offline_info: {
+      expired_time: Math.max(1, Math.round(opts.expiredMinutes)),
+      reusable_status: false,
+    },
+    ...(opts.customerName
+      ? { customer: { name: opts.customerName.slice(0, 64) } }
+      : {}),
+  });
+  const o2o = (body.online_to_offline_info ??
+    (body.response as Record<string, unknown> | undefined)
+      ?.online_to_offline_info) as Record<string, unknown> | undefined;
+  const paymentCode =
+    (o2o && typeof o2o.payment_code === "string" && o2o.payment_code.trim()) ||
+    findFirstByKeys(body, ["payment_code", "paymentCode"]);
+  if (!paymentCode) {
+    throw new QrisGatewayError(
+      `DOKU tidak mengembalikan kode pembayaran Alfamart. ${legacyErrorMessage(body, "")}`.trim()
+    );
+  }
+  // expired_date_utc ("...Z") diutamakan; expired_date 14 digit = WIB (+07:00)
+  let expiresAt: string | undefined;
+  const expUtc =
+    (typeof body.expired_date_utc === "string" && body.expired_date_utc) ||
+    (o2o && typeof o2o.expired_date_utc === "string" && o2o.expired_date_utc) ||
+    "";
+  const expWib =
+    (typeof body.expired_date === "string" && body.expired_date) ||
+    (o2o && typeof o2o.expired_date === "string" && o2o.expired_date) ||
+    "";
+  if (expUtc) {
+    const d = new Date(expUtc);
+    if (!Number.isNaN(d.getTime())) expiresAt = d.toISOString();
+  } else if (expWib) {
+    const digits = expWib.replace(/\D/g, "");
+    if (digits.length === 14) {
+      const iso = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}+07:00`;
+      const d = new Date(iso);
+      if (!Number.isNaN(d.getTime())) expiresAt = d.toISOString();
+    }
+  }
+  const howToPayUrl =
+    (typeof body.how_to_pay_page === "string" && body.how_to_pay_page) ||
+    (o2o && typeof o2o.how_to_pay_page === "string" && o2o.how_to_pay_page) ||
+    undefined;
+  return {
+    invoice,
+    paymentCode,
+    howToPayUrl: howToPayUrl || undefined,
+    expiresAt,
+  };
 }

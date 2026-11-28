@@ -198,6 +198,12 @@ export function OrdersView() {
                           code: o.code,
                           total: o.total,
                           method: o.paymentMethod === "EWALLET" ? "EWALLET" : "QRIS",
+                          // Rincian biaya transparan untuk panel Total Pembayaran
+                          rincian: [
+                            ...(o.subtotal ? [{ label: "Subtotal menu", value: o.subtotal }] : []),
+                            ...(o.serviceFee ? [{ label: "Biaya layanan", value: o.serviceFee }] : []),
+                            ...(o.deliveryFee ? [{ label: "Ongkir antar", value: o.deliveryFee }] : []),
+                          ],
                         })
                       }
                       className="press-effect flex items-center gap-1.5 rounded-full bg-orange-600 px-3.5 py-1.5 text-[11px] font-extrabold text-white shadow-md shadow-orange-500/30 hover:bg-orange-700"
