@@ -20,7 +20,7 @@ try {
 const db = new PrismaClient({ log: ["error"] });
 
 const row = await db.storeSetting.findUnique({ where: { id: "main" }, select: { courierAnim: true } });
-const before = (row?.courierAnim ?? {}) as Record<string, unknown>;
+const before = (row?.courierAnim ?? {});
 console.log("SEBELUM:", JSON.stringify({ animStyle: before.animStyle ?? "(kosong)" }));
 
 if (before.animStyle === "emoji") {
