@@ -819,14 +819,16 @@ export const COURIER_ANIM_COLORS = [
 ] as const;
 export type CourierAnimColor = (typeof COURIER_ANIM_COLORS)[number];
 
-/** Preset gaya animasi spanduk 3D (pilihan admin di "Animasi Beranda").
-    klasik = wipe teks semula; sisanya varian transformasi 3D (perspektif CSS). */
+/** Preset gaya animasi spanduk (pilihan admin di "Animasi Beranda").
+    emoji = MODEL BARU — spanduk tampil instant tanpa animasi + trio emoji
+    🔥⛵️🎃 meletup berurutan; klasik = wipe teks; sisanya varian 3D. */
 export const COURIER_ANIM_STYLES = [
   "klasik",
   "flip3d",
   "carousel3d",
   "zoom3d",
   "swing3d",
+  "emoji",
 ] as const;
 export type CourierAnimStyle = (typeof COURIER_ANIM_STYLES)[number];
 
@@ -859,7 +861,8 @@ export type CourierAnimConfig = {
   textColor: CourierAnimColor;
   /** warna kata terakhir (aksen) */
   accentColor: CourierAnimColor;
-  /** preset gaya animasi spanduk (klasik = wipe; sisanya varian 3D) */
+  /** preset gaya animasi spanduk (emoji = model baru tanpa animasi + 🔥⛵️🎃;
+      klasik = wipe; sisanya varian 3D) */
   animStyle: CourierAnimStyle;
   /** durasi satu siklus adegan (detik, 6–12) — makin kecil makin cepat */
   cycleSec: number;
@@ -867,7 +870,7 @@ export type CourierAnimConfig = {
   boom: boolean;
 };
 
-/** Nilai bawaan — persis tampilan adegan sebelum fitur setting ada. */
+/** Nilai bawaan — gaya kini default ke MODEL BARU (emoji 🔥⛵️🎃). */
 export const DEFAULT_COURIER_ANIM: CourierAnimConfig = {
   enabled: true,
   text: "Ayam Geprek Sambal Ijo",
@@ -878,7 +881,7 @@ export const DEFAULT_COURIER_ANIM: CourierAnimConfig = {
   fontSize: 10,
   textColor: "orange",
   accentColor: "green",
-  animStyle: "klasik",
+  animStyle: "emoji",
   cycleSec: 8,
   boom: true,
 };

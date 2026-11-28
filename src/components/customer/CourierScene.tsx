@@ -38,6 +38,13 @@ const WORD_POP = 0.055;
 /** Waktu mulai pop-up kata ke-i (fraksi siklus) */
 const wordIn = (i: number) => RIDE.textIn + 0.02 + i * WORD_STAGGER;
 
+/** MODEL BARU (gaya "emoji") — trio emoji meletup berurutan di depan teks;
+    spanduknya sendiri tampil instant TANPA animasi apa pun. */
+const EMOJI_TRIO = ["🔥", "⛵️", "🎃"];
+const EMOJI_T0 = RIDE.textIn + 0.02;
+const EMOJI_STAGGER = 0.05;
+const emojiIn = (i: number) => EMOJI_T0 + i * EMOJI_STAGGER;
+
 /** Stack font per pilihan admin — undefined = font aplikasi (Geist Sans). */
 const FONT_STACKS: Record<CourierAnimInfo["font"], string | undefined> = {
   default: undefined,
@@ -80,7 +87,8 @@ function splitBannerWords(text: string): SceneWord[] {
     membentang 0→1 dengan tahan di kedua ujung — framer-motion memakai WAAPI:
     times wajib berakhir di 1 agar teks tidak "muncul balik" setelah motor
     pergi) dan transformPerspective agar rotasi terasa benar-benar 3D.
-    klasik = null (wipe clip-path semula, inline di JSX). */
+    klasik & emoji = null (klasik: wipe clip-path inline di JSX; emoji:
+    tanpa animasi sama sekali — opacity toggle inline di JSX). */
 function pill3dAnim(style: CourierAnimInfo["animStyle"]): TargetAndTransition | null {
   const P = [900, 900, 900, 900, 900, 900, 900];
   switch (style) {
@@ -162,11 +170,13 @@ export function CourierScene({ cfg }: { cfg: CourierAnimInfo }) {
   return (
     /* ===== JALANAN ANIMASI: KURIR + TIPOGRAFI KINETIK (dikelola admin dari
         Profil → "Animasi Beranda": teks, font, gaya huruf, warna, ukuran,
-        GAYA ANIMASI 3D, kecepatan, BOOM) — satu siklus cfg.cycleSec dtk:
+        GAYA ANIMASI, kecepatan, BOOM) — satu siklus cfg.cycleSec dtk:
         motor masuk dari kiri lalu BERHENTI → spanduk di belakangnya tampil
-        dengan gaya pilihan admin (wipe klasik / flip / karosel / zoom / ayun
-        3D) sambil kata-katanya muncul berurutan dengan tipografi kinetik
-        (slide-in per kata, tracking mengetat, motion blur hilang, pop-up) →
+        dengan gaya pilihan admin — MODEL BARU "emoji": spanduk + kata-kata
+        tampil INSTANT tanpa animasi spanduk, trio 🔥⛵️🎃 meletup berurutan
+        di depan teks; gaya lain (wipe klasik / flip / karosel / zoom / ayun
+        3D): kata-kata muncul berurutan dengan tipografi kinetik (slide-in
+        per kata, tracking mengetat, motion blur hilang, pop-up) →
         BOOM! konfeti → motor melesat ke kanan sambil teks memudar (fade out +
         tracking melebar + motion blur). Emoji 🛵 dibalik agar menghadap kanan.
         Murni dekorasi: aria-hidden + pointer-events-none, dimatikan saat
@@ -277,6 +287,9 @@ export function CourierScene({ cfg }: { cfg: CourierAnimInfo }) {
             transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
           >
             {/* Kapsul spanduk — gaya animasi pilihan admin:
+                emoji   = MODEL BARU, tanpa animasi: tampil instant saat motor
+                          berhenti + trio 🔥⛵️🎃 meletup berurutan di depan
+                          kata-kata yang tampil statis;
                 klasik  = TEXT REVEAL wipe kiri→kanan (clip-path), menutup kanan saat pergi;
                 flip3d / carousel3d / zoom3d / swing3d = varian 3D (rotateX/Y, zoom, ayun)
                 dengan perspektif CSS. Font, ketebalan, gaya huruf & ukuran
@@ -292,39 +305,100 @@ export function CourierScene({ cfg }: { cfg: CourierAnimInfo }) {
               animate={
                 prefersReduced
                   ? undefined
-                  : pill3d
-                    ? pill3d
-                    : {
-                        clipPath: [
-                          "inset(-40% 100% -40% 0%)",
-                          "inset(-40% 100% -40% 0%)",
-                          "inset(-40% -12% -40% 0%)",
-                          "inset(-40% -12% -40% 0%)",
-                          "inset(-40% -12% -40% 110%)",
-                          "inset(-40% -12% -40% 110%)",
-                        ],
-                      }
+                  : cfg.animStyle === "emoji"
+                    ? { opacity: [0, 0, 1, 1, 0, 0] }
+                    : pill3d
+                      ? pill3d
+                      : {
+                          clipPath: [
+                            "inset(-40% 100% -40% 0%)",
+                            "inset(-40% 100% -40% 0%)",
+                            "inset(-40% -12% -40% 0%)",
+                            "inset(-40% -12% -40% 0%)",
+                            "inset(-40% -12% -40% 110%)",
+                            "inset(-40% -12% -40% 110%)",
+                          ],
+                        }
               }
               transition={
                 prefersReduced
                   ? undefined
-                  : pill3d
+                  : cfg.animStyle === "emoji"
                     ? {
+                        // MODEL BARU — tanpa animasi spanduk: tampil INSTANT saat
+                        // motor berhenti (dua times berturut sama = lompatan
+                        // langsung, tanpa wipe/3D), hilang instant sebelum motor
+                        // hendak pergi.
                         duration: cycle,
-                        times: pill3dTimes,
-                        ease: PILL_3D_EASE,
+                        times: [0, RIDE.textIn, RIDE.textIn, RIDE.textOut, RIDE.textGone, 1],
+                        ease: "linear",
                         repeat: Infinity,
                       }
-                    : {
-                        duration: cycle,
-                        times: [0, RIDE.textIn, wipeEnd, RIDE.textOut, RIDE.textGone, 1],
-                        ease: ["linear", "linear", "linear", "easeIn", "linear"],
-                        repeat: Infinity,
-                      }
+                    : pill3d
+                      ? {
+                          duration: cycle,
+                          times: pill3dTimes,
+                          ease: PILL_3D_EASE,
+                          repeat: Infinity,
+                        }
+                      : {
+                          duration: cycle,
+                          times: [0, RIDE.textIn, wipeEnd, RIDE.textOut, RIDE.textGone, 1],
+                          ease: ["linear", "linear", "linear", "easeIn", "linear"],
+                          repeat: Infinity,
+                        }
               }
             >
+              {cfg.animStyle === "emoji" &&
+                EMOJI_TRIO.map((e, i) => {
+                  const tIn = emojiIn(i);
+                  return (
+                    <motion.span
+                      key={`emoji-${i}`}
+                      className="inline-block text-[1.35em] leading-none"
+                      animate={
+                        prefersReduced
+                          ? undefined
+                          : {
+                              // Letup berurutan: pop besar → mengecil pas → tahan →
+                              // mengecil hilang bersama spanduk.
+                              scale: [0, 0, 1.5, 1, 1, 0.85, 0.85],
+                              opacity: [0, 0, 1, 1, 1, 0, 0],
+                              rotate: [-14, -14, 5, 0, 0, 0, 0],
+                            }
+                      }
+                      transition={
+                        prefersReduced
+                          ? undefined
+                          : {
+                              duration: cycle,
+                              times: [0, tIn, tIn + 0.05, tIn + 0.09, RIDE.textOut, RIDE.textGone, 1],
+                              ease: ["linear", "easeOut", "easeOut", "linear", "linear", "linear"],
+                              repeat: Infinity,
+                            }
+                      }
+                    >
+                      {e}
+                    </motion.span>
+                  );
+                })}
               {words.map((w, i) => {
                 const tIn = wordIn(i);
+                // MODEL BARU (emoji): kata tampil statis tanpa animasi — warna
+                // tetap dari konfigurasi admin, kata terakhir beraksen.
+                if (cfg.animStyle === "emoji") {
+                  return (
+                    <span
+                      key={`${w.text}-${i}`}
+                      className={cn(
+                        "inline-block",
+                        w.accent ? TEXT_COLORS[cfg.accentColor] : TEXT_COLORS[cfg.textColor]
+                      )}
+                    >
+                      {w.text}
+                    </span>
+                  );
+                }
                 return (
                   <motion.span
                     key={`${w.text}-${i}`}

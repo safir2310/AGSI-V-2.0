@@ -270,7 +270,8 @@ export type CourierAnimInfo = {
   fontSize: number;
   textColor: (typeof COURIER_ANIM_COLORS)[number];
   accentColor: (typeof COURIER_ANIM_COLORS)[number];
-  /** preset gaya animasi spanduk (klasik = wipe; sisanya varian 3D) */
+  /** preset gaya animasi spanduk (emoji = model baru tanpa animasi + 🔥⛵️🎃;
+      klasik = wipe; sisanya varian 3D) */
   animStyle: (typeof COURIER_ANIM_STYLES)[number];
   /** durasi satu siklus adegan (detik, 6–12) — makin kecil makin cepat */
   cycleSec: number;
@@ -287,7 +288,7 @@ const FALLBACK_COURIER_ANIM: CourierAnimInfo = {
   fontSize: 10,
   textColor: "orange",
   accentColor: "green",
-  animStyle: "klasik",
+  animStyle: "emoji",
   cycleSec: 8,
   boom: true,
 };
@@ -319,7 +320,7 @@ function normalizeCourierAnim(raw: unknown): CourierAnimInfo {
       : "green",
     animStyle: (COURIER_ANIM_STYLES as readonly string[]).includes(r.animStyle ?? "")
       ? (r.animStyle as CourierAnimInfo["animStyle"])
-      : "klasik",
+      : "emoji",
     cycleSec: num(r.cycleSec, 6, 12, 8),
     boom: r.boom !== false,
   };
