@@ -279,3 +279,47 @@
     margin: 5mm;
   }
 }
+
+/* ===== AGSI MOTION — GRADIENT SHIMMER TEKS (shimmerText / showcase) =====
+   Kilauan bergerak di atas glif huruf: salinan teks aria-hidden dengan
+   gradient yang di-clip ke bentuk huruf (background-clip: text) — teks
+   salinan transparan, yang tampak hanya sapuan kilauannya. Timeline
+   0–45% = sapuan, 45–100% = diam (jeda alami antar kilau). animation-delay
+   diatur inline dari MotionRuntime (setelah entrance teks selesai). */
+.agsi-text-shimmer {
+  color: transparent;
+  background-image: linear-gradient(
+    110deg,
+    transparent 20%,
+    rgba(255, 237, 213, 0.95) 40%,
+    rgba(255, 214, 153, 0.95) 50%,
+    rgba(255, 237, 213, 0.85) 58%,
+    transparent 80%
+  );
+  background-size: 250% 100%;
+  background-repeat: no-repeat;
+  background-position: 200% 0%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  /* Glow hangat menyertai sapuan — membuat kilauan kentara pada teks
+     PUTIH (hero Beranda) maupun teks gelap/oranye di konteks lain. */
+  filter: drop-shadow(0 0 7px rgba(255, 214, 153, 0.85));
+  animation: agsi-shimmer-sweep 3.2s ease-in-out infinite;
+}
+@keyframes agsi-shimmer-sweep {
+  0% {
+    background-position: 200% 0%;
+  }
+  45% {
+    background-position: -60% 0%;
+  }
+  100% {
+    background-position: -60% 0%;
+  }
+}
+/* Hormati preferensi reduce-motion perangkat — kilauan dimatikan */
+@media (prefers-reduced-motion: reduce) {
+  .agsi-text-shimmer {
+    animation: none;
+  }
+}

@@ -198,6 +198,30 @@ export function textWordAnim(t: MotionTarget, i: number): { initial: TargetAndTr
       return mk({ opacity: 0, x: d }, { opacity: 1, x: 0 });
     case "slideRight":
       return mk({ opacity: 0, x: -d }, { opacity: 1, x: 0 });
+    // ===== Teknik teks Beranda (2026-11-28) =====
+    case "staggerReveal":
+      // Staggered Text Reveal: tiap kata muncul bergantian — naik + membesar
+      return mk({ opacity: 0, y: d * 0.7, scale: 0.88 }, { opacity: 1, y: 0, scale: 1 });
+    case "slideInSmooth":
+      // Smooth Slide-In: masuk lembut dari samping (easeInOut panjang;
+      // pilihan spring admin tetap dihormati)
+      return {
+        initial: { opacity: 0, x: -d * 1.2 },
+        animate: { opacity: 1, x: 0 },
+        transition:
+          t.easing === "spring"
+            ? springOf(t, staggerS)
+            : transitionOf(t, staggerS, { ease: "easeInOut" }),
+      };
+    case "fadeUp":
+      // Fade-In Up: jarak lebih jauh + easeInOut = terasa "melayang naik"
+      return mk({ opacity: 0, y: d * 1.25 }, { opacity: 1, y: 0 });
+    case "showcase":
+      // Gabungan 5 teknik: slide-in dari samping + naik + fade, per kata
+      return mk(
+        { opacity: 0, x: -d, y: d * 0.55, scale: 0.92 },
+        { opacity: 1, x: 0, y: 0, scale: 1 }
+      );
     case "zoomIn":
       return mk({ opacity: 0, scale: 0.72 + 0.2 * (t.intensity / 100) }, { opacity: 1, scale: 1 });
     case "zoomOut":
@@ -258,9 +282,12 @@ export function textCapsuleAnim(t: MotionTarget): { initial: TargetAndTransition
   return null;
 }
 
-/** Ambient loop kapsul teks (float/wave/neon/glitch saat loop aktif). */
+/** Ambient loop kapsul teks (float/wave/neon/glitch saat loop aktif).
+    pulseSoft & showcase berdenyut SECARA ALAM — ambient jalan walau loop
+    tidak dicentang admin (denyut memang bagian dari efeknya). */
 export function textLoopAnim(t: MotionTarget): { animate: TargetAndTransition; transition: Transition } | null {
-  if (!t.loop) return null;
+  const ambientAlways = t.effect === "pulseSoft" || t.effect === "showcase";
+  if (!t.loop && !ambientAlways) return null;
   const d = (8 * t.intensity) / 100;
   switch (t.effect) {
     case "float":
@@ -279,6 +306,18 @@ export function textLoopAnim(t: MotionTarget): { animate: TargetAndTransition; t
       };
     case "pulse":
       return { animate: { scale: [1, 1.04, 1] }, transition: { duration: Math.max(1, t.duration), repeat: Infinity, ease: "easeInOut" } };
+    case "pulseSoft":
+      // Subtle Pulse: denyut LEMBUT — jauh lebih kecil dari pulse biasa
+      return {
+        animate: { scale: [1, 1 + 0.016 * (t.intensity / 100), 1] },
+        transition: { duration: Math.max(2.2, t.duration * 2.5), repeat: Infinity, ease: "easeInOut" },
+      };
+    case "showcase":
+      // Ambient showcase: denyut lembut + napas opacity tipis
+      return {
+        animate: { scale: [1, 1 + 0.014 * (t.intensity / 100), 1], opacity: [1, 0.96, 1] },
+        transition: { duration: Math.max(2.6, t.duration * 3), repeat: Infinity, ease: "easeInOut" },
+      };
     default:
       return null;
   }
@@ -421,7 +460,8 @@ type SplitMode = "whole" | "word" | "char";
 function splitModeOf(effect: string): SplitMode {
   if (effect === "staggerLetter" || effect === "wave" || effect === "glitch") return "char";
   if (
-    ["slideUp", "slideDown", "slideLeft", "slideRight", "pop", "bounce", "elastic", "flip3d", "rotate3d", "kinetic", "zoomIn", "zoomOut"].includes(effect)
+    ["slideUp", "slideDown", "slideLeft", "slideRight", "pop", "bounce", "elastic", "flip3d", "rotate3d", "kinetic", "zoomIn", "zoomOut",
+     "staggerReveal", "slideInSmooth", "fadeUp", "showcase"].includes(effect)
   )
     return "word";
   return "whole";
@@ -452,6 +492,24 @@ export function MotionText({
   const mode = splitModeOf(t.effect);
   const words = text.split(/\s+/).filter(Boolean);
   const chars = Array.from(text);
+
+  // ===== GRADIENT SHIMMER (shimmerText / showcase) =====
+  // Kilauan bergerak DI ATAS GLIF huruf: salinan teks aria-hidden dengan
+  // gradient yang di-clip ke bentuk huruf (bg-clip:text) — animasi CSS
+  // memindahkan posisi gradient. Kilau baru menyapu SETELAH entrance
+  // selesai (animation-delay = total durasi entrance × kecepatan global),
+  // dan sebelum itu gradient berada di posisi "kosong" (transparan).
+  // Emoji dihapus dari salinan: glyph emoji berwarna mengabaikan
+  // text-transparent sehingga akan tampak "hantu" di atas animasi.
+  const shimmerOn = t.effect === "shimmerText" || t.effect === "showcase";
+  const sp = useSpeedRef.current;
+  const entranceSec =
+    t.delay * sp +
+    t.duration * sp +
+    (mode === "word" ? ((t.stagger * Math.max(0, words.length - 1)) / 1000) * sp : 0);
+  const shimmerStr = text
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2190}-\u{2BFF}\u{FE0F}\u{200D}]/gu, "")
+    .trimEnd();
 
   const inner =
     mode === "word" ? (
@@ -491,13 +549,24 @@ export function MotionText({
 
   return (
     <motion.span className={className} style={style} {...(caps ?? {})}>
-      {loop ? (
-        <motion.span className="block will-change-transform" animate={loop.animate} transition={loop.transition}>
-          {inner}
-        </motion.span>
-      ) : (
-        inner
-      )}
+      <span className={shimmerOn ? "relative inline-block" : undefined}>
+        {loop ? (
+          <motion.span className="block will-change-transform" animate={loop.animate} transition={loop.transition}>
+            {inner}
+          </motion.span>
+        ) : (
+          inner
+        )}
+        {shimmerOn && (
+          <span
+            aria-hidden
+            className="agsi-text-shimmer pointer-events-none absolute inset-0 select-none"
+            style={{ animationDelay: `${Math.max(0.3, entranceSec + 0.4).toFixed(2)}s` }}
+          >
+            {shimmerStr}
+          </span>
+        )}
+      </span>
     </motion.span>
   );
 }

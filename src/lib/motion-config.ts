@@ -82,6 +82,13 @@ export const MOTION_TEXT_EFFECTS = [
   "staggerLetter",
   "glitch",
   "kinetic",
+  // ===== Teknik animasi teks Beranda (2026-11-28) =====
+  "staggerReveal", // Staggered Text Reveal — tiap kata muncul bergantian
+  "slideInSmooth", // Smooth Slide-In — teks masuk lembut dari samping
+  "fadeUp", // Fade-In Up — muncul halus dari bawah
+  "pulseSoft", // Subtle Pulse — denyut lembut berulang
+  "shimmerText", // Gradient Shimmer — kilauan bergerak pada huruf
+  "showcase", // Gabungan 5 teknik sekaligus (khusus teks Beranda)
 ] as const;
 export type MotionTextEffect = (typeof MOTION_TEXT_EFFECTS)[number];
 
@@ -167,6 +174,12 @@ export const MOTION_EFFECT_LABELS: Record<string, string> = {
   staggerLetter: "Stagger Letter",
   glitch: "Glitch",
   kinetic: "Kinetic",
+  staggerReveal: "Staggered Reveal (per kata)",
+  slideInSmooth: "Slide-In Halus (dari samping)",
+  fadeUp: "Fade-In Up",
+  pulseSoft: "Pulse Lembut (denyut)",
+  shimmerText: "Shimmer Teks (kilauan)",
+  showcase: "Showcase Beranda (5-in-1)",
   tilt: "3D Tilt",
   kenBurns: "Ken Burns",
   shimmer: "Shimmer",
@@ -559,6 +572,22 @@ export const BUILTIN_MOTION_PRESETS: MotionPreset[] = [
       splash: { effect: "none" },
       pageTransition: { effect: "fade", duration: 0.22 },
       cartBadge: { effect: "pop", duration: 0.3 },
+    }),
+  },
+  {
+    // Preset "animasi teks beranda" — 5 teknik sekaligus: staggered reveal,
+    // slide-in halus, fade-in up, pulse lembut & gradient shimmer.
+    id: "beranda-showcase",
+    name: "Teks Beranda Showcase",
+    builtin: true,
+    targets: presetTargets({
+      heroTitle: { effect: "showcase", duration: 0.7, stagger: 110, intensity: 110, loop: true },
+      sectionTitles: { effect: "staggerReveal", duration: 0.55, stagger: 80 },
+      productCards: { effect: "fadeUp", duration: 0.5, stagger: 65 },
+      promoStrip: { effect: "shimmer", duration: 2.6, loop: true },
+      bannerPopup: { effect: "fadeUp", duration: 0.5 },
+      headerLogo: { effect: "float", duration: 3.5, loop: true },
+      pageTransition: { effect: "fade", duration: 0.26 },
     }),
   },
 ];
